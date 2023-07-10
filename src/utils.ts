@@ -15,7 +15,7 @@ export function convertAegisubToRGBA(aegisubColor: string, tags: Tag[]) {
 
 	// Create the RGBA string
 	const rgba = `rgba(${red}, ${green}, ${blue}, ${alpha})`;
-	console.debug(`Converted ${aegisubColor} to ${rgba}`);
+	// console.debug(`Converted ${aegisubColor} to ${rgba}`);
 	return rgba;
 }
 

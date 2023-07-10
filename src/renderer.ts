@@ -300,7 +300,7 @@ export class Renderer {
                 this.ctx.strokeText(line, x, y);
             }
             this.ctx.fillText(line, x, y);
-            y += lineHeight;
+            y += lineHeight + lineHeight / lines.length;
         })
 
         this.ctx.lineWidth = 0;
