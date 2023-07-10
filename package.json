@@ -1,0 +1,40 @@
+{
+  "name": "ass-html5",
+  "version": "0.0.0",
+  "description": "Display ASS/SSA subtitles on html5 videos",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup",
+    "dev" : "tsup --watch",
+    "release": "pnpm run build && changeset publish",
+    "lint": "tsc"
+  },
+  
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/luxluth/ass-html5.git"
+  },
+
+  "keywords": [
+    "ASS",
+    "SSA",
+    "subtitles",
+    "aegisub",
+    "libass"
+  ],
+  "author": "luxluth",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/luxluth/ass-html5/issues"
+  },
+  "homepage": "https://github.com/luxluth/ass-html5#readme",
+  "devDependencies": {
+    "@changesets/cli": "^2.26.2",
+    "prettier": "^3.0.0",
+    "terser": "^5.18.2",
+    "tsup": "^7.1.0",
+    "typescript": "^5.1.6"
+  }
+}
