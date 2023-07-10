@@ -8,4 +8,5 @@ export default defineConfig({
 	splitting: true,
 	platform: 'browser',
 	target: 'es2018',
+    noExternal: ["ass-compiler"],
 })

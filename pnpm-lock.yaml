@@ -4,15 +4,13 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-dependencies:
-  ass-compiler:
-    specifier: ^0.1.8
-    version: 0.1.8
-
 devDependencies:
   '@changesets/cli':
     specifier: ^2.26.2
     version: 2.26.2
+  ass-compiler:
+    specifier: ^0.1.8
+    version: 0.1.8
   prettier:
     specifier: ^3.0.0
     version: 3.0.0
@@ -619,7 +617,7 @@ packages:
 
   /ass-compiler@0.1.8:
     resolution: {integrity: sha512-Oo2CIDAC90RWCSX7QuVnKez6kWkCdSPxJMrOthYIL6V0HRJkW1C2uDj81rddYxyeO5nrFaZ6ewtOD5KEn5OH3A==}
-    dev: false
+    dev: true
 
   /available-typed-arrays@1.0.5:
     resolution: {integrity: sha512-DMD0KiN46eipeziST1LPP/STfDU0sufISXmjSgvVsoU2tqxctQeASejWcfNtxYKqETM1UxQ8sp2OrSBWpHY6sw==}

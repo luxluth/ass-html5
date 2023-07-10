@@ -31,12 +31,10 @@
 	"homepage": "https://github.com/luxluth/ass-html5#readme",
 	"devDependencies": {
 		"@changesets/cli": "^2.26.2",
+		"ass-compiler": "^0.1.8",
 		"prettier": "^3.0.0",
 		"terser": "^5.18.2",
 		"tsup": "^7.1.0",
 		"typescript": "^5.1.6"
-	},
-	"dependencies": {
-		"ass-compiler": "^0.1.8"
 	}
 }
