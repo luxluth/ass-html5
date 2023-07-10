@@ -62,8 +62,8 @@ export class Renderer {
     }
 
     showText(Text: ParsedASSEventText, style: SingleStyle) {
-        // console.debug(style.Name, Text)
         const text = Text.parsed[0]?.text as string
+        // console.debug(style.Name, text)
         const tags = Text.parsed[0]?.tags as Tag[]
 
         let fontDescriptor = this.getFontDescriptor(style) // FontDescriptor
@@ -108,7 +108,7 @@ export class Renderer {
             if (typeof tweaks.angle !== "undefined") { }
             if (typeof tweaks.borderStyle !== "undefined") { }
             if (typeof tweaks.outline !== "undefined") {
-                console.debug("tweaks.outline", tweaks.outline)
+                // console.debug("tweaks.outline", tweaks.outline)
                 if (tweaks.outline === 0) {
                     this.ctx.strokeStyle = "rgba(0,0,0,0)"
                 } else {
@@ -146,7 +146,7 @@ export class Renderer {
         // put all the tags in the same object
         let tagsCombined: Tag = {};
         tags.forEach((tag) => {tagsCombined = { ...tagsCombined, ...tag }})
-        console.debug("tagsCombined", tagsCombined)
+        // console.debug("tagsCombined", tagsCombined)
         const primaryColor = typeof tagsCombined.c1 !== "undefined" ? convertAegisubToRGBA("00" + tagsCombined.c1, tags) : undefined;
         const secondaryColor = typeof tagsCombined.c2 !== "undefined" ? convertAegisubToRGBA("00" + tagsCombined.c2, tags) : undefined;
         const outlineColor = typeof tagsCombined.c3 !== "undefined" ? convertAegisubToRGBA("00" + tagsCombined.c3, tags) : undefined;
@@ -329,7 +329,7 @@ export class Renderer {
                     break;
             }
             if (this.ctx.lineWidth > 0) {
-                console.debug("strokeText", lineWidth);
+                // console.debug("strokeText", lineWidth);
                 this.ctx.strokeText(line, x, y);
             }
             this.ctx.fillText(line, x, y);
