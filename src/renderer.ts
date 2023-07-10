@@ -23,12 +23,12 @@ export class Renderer {
         this.video = video
         this.ctx = canvas.getContext("2d") as CanvasRenderingContext2D
         if (this.ctx === null) { throw new Error("Unable to initilize the Canvas 2D context") }
-        let data = [
-            {parsedAss : this.parsedAss},
-            {canvas : this.canvas},
-            {ctx : this.ctx}
-        ]
-        console.debug(data)
+        // let data = [
+        //     {parsedAss : this.parsedAss},
+        //     {canvas : this.canvas},
+        //     {ctx : this.ctx}
+        // ]
+        // console.debug(data)
     }
 
     render() {
@@ -54,7 +54,7 @@ export class Renderer {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
         overlappingDialoguesEvents.forEach(event => {
-            console.debug(event)
+            // console.debug(event)
             const { Style, Text, MarginL, MarginR, MarginV } = event;
             const style = this.getStyle(Style);
             if (style === undefined) { return; }
