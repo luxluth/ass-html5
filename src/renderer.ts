@@ -108,7 +108,12 @@ export class Renderer {
             if (typeof tweaks.angle !== "undefined") { }
             if (typeof tweaks.borderStyle !== "undefined") { }
             if (typeof tweaks.outline !== "undefined") {
-                this.ctx.lineWidth = ruleOfThree(this.playerResX, this.canvas.width) * tweaks.outline / 100 * 2;
+                console.debug("tweaks.outline", tweaks.outline)
+                if (tweaks.outline === 0) {
+                    this.ctx.strokeStyle = "rgba(0,0,0,0)"
+                } else {
+                    this.ctx.lineWidth = ruleOfThree(this.playerResX, this.canvas.width) * tweaks.outline / 100 * 2;
+                }
             }
             if (typeof tweaks.shadow !== "undefined") {
                 this.ctx.shadowBlur = ruleOfThree(this.playerResX, this.canvas.width) * tweaks.shadow / 100;
