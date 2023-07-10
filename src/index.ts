@@ -1,4 +1,5 @@
 import { parse } from 'ass-compiler'
+import { Renderer } from './renderer'
 import { ASSOptions } from './types'
 import { newCanvas } from './utils'
 
@@ -7,6 +8,7 @@ export default class ASS {
     video: HTMLVideoElement | string
     videoElement: HTMLVideoElement | null = null
     canvas: HTMLCanvasElement| null = null
+    renderer: Renderer | null = null
     constructor(
         options: ASSOptions
     ) {
@@ -23,21 +25,23 @@ export default class ASS {
         } else {
             this.videoElement = this.video
         }
-        console.log(this.videoElement)
+        
         this.setCanvasSize()
-
+        this.renderer = new Renderer(parse(this.assText), this.canvas as HTMLCanvasElement)
         this.videoElement?.addEventListener('loadedmetadata', () => {
             this.setCanvasSize()
         })
 
         window.addEventListener('resize', () => {
             this.setCanvasSize();
+            this.renderer?.redraw()
         });
+
+        this.renderer.render()
     }
 
 
     setCanvasSize() {
-        console.log("set Canva size")
         const { videoWidth, videoHeight, offsetTop, offsetLeft } = this.videoElement as HTMLVideoElement
         const aspectRatio = videoWidth / videoHeight;
 
