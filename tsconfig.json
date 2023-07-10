@@ -8,6 +8,7 @@
 		"skipLibCheck": true /* Skip type checking all .d.ts files. */,
 		"noUncheckedIndexedAccess": true,
 		"noEmit": true,
-		"lib": ["esnext", "dom"]
+		"lib": ["esnext", "dom"],
+		"removeComments": true,
 	}
 }

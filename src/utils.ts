@@ -9,8 +9,9 @@ export function convertAegisubToRGBA(aegisubColor: string) {
 	let red = parseInt(aegisubColor.slice(2, 4), 16)
 	let green = parseInt(aegisubColor.slice(4, 6), 16)
 	let blue = parseInt(aegisubColor.slice(6, 8), 16)
-
-	return 'rgba(' + red + ',' + green + ',' + blue + ',' + alpha + ')'
+	let clr = `rgba(${red}, ${green}, ${blue}, ${alpha})`
+	console.debug(clr, aegisubColor)
+	return `rgba(${red}, ${green}, ${blue}, ${alpha})`
 }
 
 export function ruleOfThree(
@@ -34,6 +35,7 @@ export function genRandomString(ln: number) {
 
 export function newCanvas(top: number, left: number, width: number, height: number, insertAfter?: HTMLElement, zIndex?: number) {
 	const canvas = document.createElement('canvas');
+	canvas.id = "ASSRendererCanvas-" + genRandomString(10);
 	canvas.style.position = 'absolute';
 	canvas.style.width = width + 'px';
 	canvas.style.height = height + 'px';

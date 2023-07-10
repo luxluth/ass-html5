@@ -19,15 +19,11 @@ export default class ASS {
     init() {
         if (typeof this.video == 'string') {
             this.videoElement = document.querySelector(this.video)
-            if (this.videoElement === null) {
-                throw new Error("Unable to find the video element")
-            }
-        } else {
-            this.videoElement = this.video
-        }
+            if (this.videoElement === null) { throw new Error("Unable to find the video element") }
+        } else { this.videoElement = this.video }
         
         this.setCanvasSize()
-        this.renderer = new Renderer(parse(this.assText), this.canvas as HTMLCanvasElement)
+        this.renderer = new Renderer(parse(this.assText), this.canvas as HTMLCanvasElement, this.videoElement)
         this.videoElement?.addEventListener('loadedmetadata', () => {
             this.setCanvasSize()
         })
