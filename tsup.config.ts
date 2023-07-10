@@ -7,5 +7,4 @@ export default defineConfig({
     clean: true,
     splitting: true,
     platform: 'browser',
-    target: 'esnext',
 })
