@@ -4,3 +4,4 @@ tsconfig.json
 tsup.config.ts
 CHANGELOG.md
 .github
+src
