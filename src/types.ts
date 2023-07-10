@@ -48,3 +48,8 @@ export type FontDescriptor = {
 }
 
 export type Tag = { [K in keyof ParsedTag]: ParsedTag[K]; }
+
+export type FadeAnimation = {
+    name: string,
+    values: [number, number] | [number, number, number, number, number, number]
+}

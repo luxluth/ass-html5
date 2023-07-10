@@ -1,5 +1,5 @@
 import type { ParsedASS, ParsedASSEventText } from "ass-compiler";
-import { SingleStyle, FontDescriptor, Tag } from "./types";
+import { SingleStyle, FontDescriptor, Tag, FadeAnimation } from "./types";
 import { ruleOfThree, convertAegisubToRGBA } from "./utils";
 
 export class Renderer {
@@ -33,6 +33,12 @@ export class Renderer {
 
     render() {
         this.video.addEventListener('timeupdate', () => {
+            this.diplay(this.video.currentTime)
+        })
+    }
+
+    destroy() {
+        this.video.removeEventListener('timeupdate', () => {
             this.diplay(this.video.currentTime)
         })
     }
@@ -85,17 +91,18 @@ export class Renderer {
 
     showText(Text: ParsedASSEventText, style: SingleStyle) {
         // console.debug(style.Name, Text)
+        const text = Text.parsed[0]?.text as string
+        const tags = Text.parsed[0]?.tags as Tag[]
+
         let fontDescriptor = this.getFontDescriptor(style) // FontDescriptor
-        let c1 = convertAegisubToRGBA(style.PrimaryColour) // primary color
-        let c2 = convertAegisubToRGBA(style.SecondaryColour) // secondary color
-        let c3 = convertAegisubToRGBA(style.OutlineColour) // outline color
-        let c4 = convertAegisubToRGBA(style.BackColour) // shadow color
+        let c1 = convertAegisubToRGBA(style.PrimaryColour, tags) // primary color
+        let c2 = convertAegisubToRGBA(style.SecondaryColour, tags) // secondary color
+        let c3 = convertAegisubToRGBA(style.OutlineColour, tags) // outline color
+        let c4 = convertAegisubToRGBA(style.BackColour, tags) // shadow color
         let marginL = ruleOfThree(this.playerResX, this.canvas.width) * parseFloat(style.MarginL) / 100
         let marginV = ruleOfThree(this.playerResY, this.canvas.height) * parseFloat(style.MarginV) / 100
         let marginR = ruleOfThree(this.playerResX, this.canvas.width) * parseFloat(style.MarginR) / 100
         // console.debug(marginL, marginV, marginR)
-        const text = Text.parsed[0]?.text as string
-        const tags = Text.parsed[0]?.tags as Tag[]
 
         this.ctx.font = ` ${fontDescriptor.bold ? "bold" : ""} ${fontDescriptor.italic ? "italic" : ""}  ${fontDescriptor.fontsize}px ${fontDescriptor.fontname}`;
         // console.debug(this.ctx.font)
@@ -113,24 +120,133 @@ export class Renderer {
         this.ctx.shadowOffsetX = ruleOfThree(this.playerResX, this.canvas.width) * parseFloat(style.Shadow) / 100;
         this.ctx.shadowOffsetY = ruleOfThree(this.playerResY, this.canvas.height) * parseFloat(style.Shadow) / 100;
 
-        this.teawksDrawSettings(text, tags, textAlign, textBaseline, marginL, marginV, marginR, fontDescriptor);
+        let alreadyDrawn = false;
 
-        this.drawText(text, textAlign, textBaseline, marginL, marginV, marginR);
+        let tweaks = this.teawksDrawSettings(tags, fontDescriptor);
+        if (tweaks.tweaked) {
+            console.debug("tweaks", tweaks)
+
+            if (typeof tweaks.primaryColor !== "undefined") { this.ctx.fillStyle = tweaks.primaryColor }
+            if (typeof tweaks.secondaryColor !== "undefined") { this.ctx.strokeStyle = tweaks.secondaryColor }
+            if (typeof tweaks.outlineColor !== "undefined") { this.ctx.strokeStyle = tweaks.outlineColor }
+            if (typeof tweaks.shadowColor !== "undefined") { this.ctx.shadowColor = tweaks.shadowColor }
+            if (typeof tweaks.scaleX !== "undefined") { }
+            if (typeof tweaks.scaleY !== "undefined") { }
+            if (typeof tweaks.spacing !== "undefined") { }
+            if (typeof tweaks.angle !== "undefined") { }
+            if (typeof tweaks.borderStyle !== "undefined") { }
+            if (typeof tweaks.outline !== "undefined") {
+                this.ctx.lineWidth = ruleOfThree(this.playerResX, this.canvas.width) * tweaks.outline / 100 * 2;
+            }
+            if (typeof tweaks.shadow !== "undefined") {
+                this.ctx.shadowBlur = ruleOfThree(this.playerResX, this.canvas.width) * tweaks.shadow / 100;
+                this.ctx.shadowOffsetX = ruleOfThree(this.playerResX, this.canvas.width) * tweaks.shadow / 100;
+                this.ctx.shadowOffsetY = ruleOfThree(this.playerResY, this.canvas.height) * tweaks.shadow / 100;
+            }
+            if (typeof tweaks.fontDescriptor !== "undefined") {
+                this.ctx.font = ` ${tweaks.fontDescriptor.bold ? "bold" : ""} ${tweaks.fontDescriptor.italic ? "italic" : ""}  ${tweaks.fontDescriptor.fontsize}px ${tweaks.fontDescriptor.fontname}`;
+            }
+            if (typeof tweaks.alignment !== "undefined") { 
+                textAlign = this.getAlignment(tweaks.alignment) as CanvasTextAlign;
+                textBaseline = this.getBaseLine(tweaks.alignment as number) as CanvasTextBaseline;
+            }
+            if (typeof tweaks.position !== "undefined") {
+                this.drawTextAtPosition(text, tweaks.position, textAlign, textBaseline);
+                alreadyDrawn = true;
+            }
+        }
+
+        if (!alreadyDrawn) {
+            this.drawText(text, textAlign, textBaseline, marginL, marginV, marginR);
+        }
     }
 
     teawksDrawSettings(
-        text: string,
         tags: Tag[],
-        textAlign: CanvasTextAlign,
-        textBaseline: CanvasTextBaseline,
-        marginL: number,
-        marginV: number,
-        marginR: number,
         fontDescriptor: FontDescriptor
     ) {
-        // console.debug("tags", tags)
+        const tweaked = tags.length > 0 ? true : false;
         // put all the tags in the same object
-        let tagsObject = {};
+        let tagsCombined: Tag = {};
+        tags.forEach((tag) => {tagsCombined = { ...tagsCombined, ...tag }})
+        console.debug("tagsCombined", tagsCombined)
+        const primaryColor = typeof tagsCombined.c1 !== "undefined" ? convertAegisubToRGBA("00" + tagsCombined.c1, tags) : undefined;
+        const secondaryColor = typeof tagsCombined.c2 !== "undefined" ? convertAegisubToRGBA("00" + tagsCombined.c2, tags) : undefined;
+        const outlineColor = typeof tagsCombined.c3 !== "undefined" ? convertAegisubToRGBA("00" + tagsCombined.c3, tags) : undefined;
+        const shadowColor = typeof tagsCombined.c4 !== "undefined" ? convertAegisubToRGBA("00" + tagsCombined.c4, tags) : undefined;
+        const bold = typeof tagsCombined.b !== "undefined" ? true : undefined;
+        const italic = typeof tagsCombined.i !== "undefined" ? true : undefined;
+        const underline = typeof tagsCombined.u !== "undefined" ? true : undefined;
+        const strikeOut = typeof tagsCombined.s !== "undefined" ? true : undefined;
+        const scaleX = typeof tagsCombined.xbord !== "undefined" ? tagsCombined.xbord : undefined;
+        const scaleY = typeof tagsCombined.ybord !== "undefined" ? tagsCombined.ybord : undefined;
+        const spacing = typeof tagsCombined.xshad !== "undefined" ? tagsCombined.xshad : undefined;
+        const angle = typeof tagsCombined.fax !== "undefined" ? tagsCombined.fax : undefined;
+        const borderStyle = typeof tagsCombined.bord !== "undefined" ? tagsCombined.bord : undefined;
+        const outline = typeof tagsCombined.bord !== "undefined" ? tagsCombined.bord : undefined;
+        const shadow = typeof tagsCombined.shad !== "undefined" ? tagsCombined.shad : undefined;
+        const alignment = typeof tagsCombined.a !== "undefined" ? tagsCombined.a : undefined;
+        const position = typeof tagsCombined.pos !== "undefined" ? 
+            [
+                ruleOfThree(this.playerResX, this.canvas.width) * tagsCombined.pos[0] / 100,
+                ruleOfThree(this.playerResY, this.canvas.height) * tagsCombined.pos[1] / 100
+            ] as [number, number] : undefined;
+        
+        const fontsize = tagsCombined.fs ? tagsCombined.fs : undefined;
+        const fontname = tagsCombined.fn ? tagsCombined.fn : undefined;
+
+        // Animation
+        const simpleFadeAnimation = typeof tagsCombined.fad !== "undefined" ? tagsCombined.fad : undefined;
+        const complexFadeAnimation = typeof tagsCombined.fade !== "undefined" ? tagsCombined.fade : undefined;
+        
+        const fadeAnimation = typeof simpleFadeAnimation !== "undefined" ? {
+            name: "simpleFade",
+            values: simpleFadeAnimation
+        } as FadeAnimation : typeof complexFadeAnimation !== "undefined" ? {
+            name: "complexFade",
+            values: complexFadeAnimation
+        } as FadeAnimation : undefined;
+
+        if (typeof fontsize !== "undefined") {
+            fontDescriptor.fontsize = ruleOfThree(this.playerResY, this.canvas.height) * parseFloat(fontsize) / 100;
+        }
+        if (typeof fontname !== "undefined") {
+            fontDescriptor.fontname = fontname;
+        }
+        if (typeof bold !== "undefined") {
+            fontDescriptor.bold = bold;
+        }
+        if (typeof italic !== "undefined") {
+            fontDescriptor.italic = italic;
+        }
+        if (typeof underline !== "undefined") {
+            fontDescriptor.underline = underline;
+        }
+        if (typeof strikeOut !== "undefined") {
+            fontDescriptor.strikeout = strikeOut;
+        }
+
+        console.debug("new Font", `${fontDescriptor.bold ? "bold" : ""} ${fontDescriptor.italic ? "italic" : ""}  ${fontDescriptor.fontsize}px ${fontDescriptor.fontname}`)
+
+        return {
+            tweaked,
+            primaryColor,
+            secondaryColor,
+            outlineColor,
+            shadowColor,
+            scaleX,
+            scaleY,
+            spacing,
+            angle,
+            borderStyle,
+            outline,
+            shadow,
+            alignment,
+            position,
+            fontDescriptor,
+            custompositioning: typeof position !== 'undefined' ? true : false,
+            fadeAnimation
+        }
     }
 
     drawText(
@@ -180,10 +296,68 @@ export class Renderer {
                     x = marginL;
                     break;
             }
-            this.ctx.strokeText(line, x, y);
+            if (this.ctx.lineWidth > 0) {
+                this.ctx.strokeText(line, x, y);
+            }
             this.ctx.fillText(line, x, y);
             y += lineHeight;
         })
+
+        this.ctx.lineWidth = 0;
+    }
+
+    drawTextAtPosition(
+        text: string,
+        position: [number, number],
+        textAlign: CanvasTextAlign,
+        textBaseline: CanvasTextBaseline,
+    ) {
+        let lines = text.split("\\N");
+        let lineHeights = lines.map(line => this.ctx.measureText(line).actualBoundingBoxAscent + this.ctx.measureText(line).actualBoundingBoxDescent);
+        let lineHeight = Math.max(...lineHeights);
+        let totalHeight = lineHeight * lines.length;
+        let y = 0;
+        switch (textBaseline) {
+            case "top":
+                y = position[1] + lineHeight;
+                if (lines.length > 1) { y -= totalHeight / lines.length; }
+                break;
+            case "middle":
+                y = position[1] - totalHeight / 2 + lineHeight;
+                break;
+            case "bottom":
+                y = position[1] - lineHeight;
+                break;
+            default:
+                y = position[1] + lineHeight;
+                break;
+        }
+
+        lines.forEach(line => {
+            let lineWidth = this.ctx.measureText(line).width;
+            let x = 0;
+            switch (textAlign) {
+                case "left":
+                    x = position[0];
+                    break;
+                case "center":
+                    x = position[0] - lineWidth / 2;
+                    break;
+                case "right":
+                    x = position[0] - lineWidth;
+                    break;
+                default:
+                    x = position[0];
+                    break;
+            }
+            if (this.ctx.lineWidth > 0) {
+                this.ctx.strokeText(line, x, y);
+            }
+            this.ctx.fillText(line, x, y);
+            y += lineHeight;
+        })
+
+        this.ctx.lineWidth = 0;
     }
 
     getAlignment(alignment: number) {

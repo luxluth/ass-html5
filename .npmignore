@@ -5,3 +5,5 @@ tsup.config.ts
 CHANGELOG.md
 .github
 src
+.prettierignore
+.prettierrc

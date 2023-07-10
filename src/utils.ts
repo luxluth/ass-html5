@@ -1,17 +1,30 @@
+import type { Tag } from "./types";
 /**
  * Convert a color in RGBA format to Aegisub format
  * @param aegisubColor The color in Aegisub format
  * @returns The color in RGBA format
  */
-export function convertAegisubToRGBA(aegisubColor: string) {
-	aegisubColor = aegisubColor.replace(/&H/g, '').replace(/&/g, '')
-	let alpha = parseInt(aegisubColor.slice(0, 2), 16) / 255 + 1
-	let red = parseInt(aegisubColor.slice(2, 4), 16)
-	let green = parseInt(aegisubColor.slice(4, 6), 16)
-	let blue = parseInt(aegisubColor.slice(6, 8), 16)
-	// let clr = `rgba(${red}, ${green}, ${blue}, ${alpha})`
-	// console.debug(clr, aegisubColor)
-	return `rgba(${red}, ${green}, ${blue}, ${alpha})`
+export function convertAegisubToRGBA(aegisubColor: string, tags: Tag[]) {
+	const colorValue = aegisubColor.replace(/&H|&/g, '');
+
+	// Extract the individual color components from the Aegisub color value
+	const alpha = getAlpha(tags);
+	const blue = parseInt(colorValue.slice(2, 4), 16);
+	const green = parseInt(colorValue.slice(4, 6), 16);
+	const red = parseInt(colorValue.slice(6, 8), 16);
+
+	// Create the RGBA string
+	const rgba = `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+	console.debug(`Converted ${aegisubColor} to ${rgba}`);
+	return rgba;
+}
+
+export function getAlpha(tags: Tag[]) {
+	let alpha = 1;
+	let tagsCombined: Tag = {};
+	tags.forEach((tag) => {tagsCombined = { ...tagsCombined, ...tag }})
+	if (typeof tagsCombined.alpha !== 'undefined') {alpha = parseFloat(tagsCombined.alpha);}
+	return alpha;
 }
 
 export function ruleOfThree(

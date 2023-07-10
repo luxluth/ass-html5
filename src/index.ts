@@ -44,9 +44,11 @@ export default class ASS {
             this.setCanvasSize();
             this.renderer?.redraw()
         })
-        // remove canvas
+
         this.canvas?.remove()
-        // remove renderer
+        this.canvas = null
+
+        this.renderer?.destroy()
         this.renderer = null
     }
 
