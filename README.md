@@ -2,7 +2,7 @@
 
 # ass-html5
 
-Display ASS/SSA subtitles on html5 videos 
+Display ASS/SSA subtitles on html5 videos
 
 ![CI workflow](https://github.com/luxluth/ass-html5/actions/workflows/main.yml/badge.svg)
 ![Publish workflow](https://github.com/luxluth/ass-html5/actions/workflows/publish.yml/badge.svg)

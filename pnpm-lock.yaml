@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+dependencies:
+  ass-compiler:
+    specifier: ^0.1.8
+    version: 0.1.8
+
 devDependencies:
   '@changesets/cli':
     specifier: ^2.26.2
@@ -611,6 +616,10 @@ packages:
     resolution: {integrity: sha512-3CYzex9M9FGQjCGMGyi6/31c8GJbgb0qGyrx5HWxPd0aCwh4cB2YjMb2Xf9UuoogrMrlO9cTqnB5rI5GHZTcUA==}
     engines: {node: '>=0.10.0'}
     dev: true
+
+  /ass-compiler@0.1.8:
+    resolution: {integrity: sha512-Oo2CIDAC90RWCSX7QuVnKez6kWkCdSPxJMrOthYIL6V0HRJkW1C2uDj81rddYxyeO5nrFaZ6ewtOD5KEn5OH3A==}
+    dev: false
 
   /available-typed-arrays@1.0.5:
     resolution: {integrity: sha512-DMD0KiN46eipeziST1LPP/STfDU0sufISXmjSgvVsoU2tqxctQeASejWcfNtxYKqETM1UxQ8sp2OrSBWpHY6sw==}
