@@ -12,6 +12,12 @@ export type ASSOptions = {
     video: HTMLVideoElement | string
 }
 
+export type Shift = {
+    marginL: number
+    marginR: number
+    marginV: number
+}
+
 export type SingleStyle = {
     Name: string
     Fontname: string

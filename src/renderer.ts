@@ -1,5 +1,5 @@
 import type { ParsedASS, ParsedASSEventText } from "ass-compiler";
-import { SingleStyle, FontDescriptor, Tag, FadeAnimation } from "./types";
+import { SingleStyle, FontDescriptor, Tag, FadeAnimation, Shift } from "./types";
 import { ruleOfThree, convertAegisubToRGBA } from "./utils";
 
 export class Renderer {
@@ -23,12 +23,12 @@ export class Renderer {
         this.video = video
         this.ctx = canvas.getContext("2d") as CanvasRenderingContext2D
         if (this.ctx === null) { throw new Error("Unable to initilize the Canvas 2D context") }
-        // let data = [
-        //     {parsedAss : this.parsedAss},
-        //     {canvas : this.canvas},
-        //     {ctx : this.ctx}
-        // ]
-        // console.debug(data)
+        let data = [
+            {parsedAss : this.parsedAss},
+            {canvas : this.canvas},
+            {ctx : this.ctx}
+        ]
+        console.debug(data)
     }
 
     render() {
@@ -54,14 +54,15 @@ export class Renderer {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
         overlappingDialoguesEvents.forEach(event => {
-            const { Style, Text } = event;
+            console.debug(event)
+            const { Style, Text, MarginL, MarginR, MarginV } = event;
             const style = this.getStyle(Style);
             if (style === undefined) { return; }
-            this.showText(Text, style);
+            this.showText(Text, style, { marginL: MarginL, marginR: MarginR, marginV: MarginV });
         });
     }
 
-    showText(Text: ParsedASSEventText, style: SingleStyle) {
+    showText(Text: ParsedASSEventText, style: SingleStyle, shift: Shift) {
         const text = Text.parsed[0]?.text as string
         // console.debug(style.Name, text)
         const tags = Text.parsed[0]?.tags as Tag[]
@@ -71,9 +72,12 @@ export class Renderer {
         let c2 = convertAegisubToRGBA(style.SecondaryColour, tags) // secondary color
         let c3 = convertAegisubToRGBA(style.OutlineColour, tags) // outline color
         let c4 = convertAegisubToRGBA(style.BackColour, tags) // shadow color
-        let marginL = ruleOfThree(this.playerResX, this.canvas.width) * parseFloat(style.MarginL) / 100
-        let marginV = ruleOfThree(this.playerResY, this.canvas.height) * parseFloat(style.MarginV) / 100
-        let marginR = ruleOfThree(this.playerResX, this.canvas.width) * parseFloat(style.MarginR) / 100
+        let marginL = ruleOfThree(this.playerResX, this.canvas.width) * parseFloat(style.MarginL) / 100 +
+            ruleOfThree(this.playerResX, this.canvas.width) * shift.marginL / 100
+        let marginV = ruleOfThree(this.playerResY, this.canvas.height) * parseFloat(style.MarginV) / 100 +
+            ruleOfThree(this.playerResY, this.canvas.height) * shift.marginV / 100
+        let marginR = ruleOfThree(this.playerResX, this.canvas.width) * parseFloat(style.MarginR) / 100 +
+            ruleOfThree(this.playerResX, this.canvas.width) * shift.marginR / 100
         // console.debug(marginL, marginV, marginR)
 
         this.ctx.font = ` ${fontDescriptor.bold ? "bold" : ""} ${fontDescriptor.italic ? "italic" : ""}  ${fontDescriptor.fontsize}px ${fontDescriptor.fontname}`;
@@ -242,7 +246,7 @@ export class Renderer {
         switch (textBaseline) {
             case "top":
                 y = marginV + lineHeight;
-                if (lines.length > 1) { y -= totalHeight / lines.length; }
+                // if (lines.length > 1) { y -= totalHeight / lines.length; }
                 break;
             case "middle":
                 y = (this.canvas.height - totalHeight) / 2 + lineHeight;
