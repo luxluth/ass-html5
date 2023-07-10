@@ -1,5 +1,5 @@
 import type { ParsedASS, ParsedASSEventText } from "ass-compiler";
-import { SingleStyle, FontDescriptor } from "./types";
+import { SingleStyle, FontDescriptor, Tag } from "./types";
 import { ruleOfThree, convertAegisubToRGBA } from "./utils";
 
 export class Renderer {
@@ -23,12 +23,12 @@ export class Renderer {
         this.video = video
         this.ctx = canvas.getContext("2d") as CanvasRenderingContext2D
         if (this.ctx === null) { throw new Error("Unable to initilize the Canvas 2D context") }
-        let data = [
-            {parsedAss : this.parsedAss},
-            {canvas : this.canvas},
-            {ctx : this.ctx}
-        ]
-        console.debug(data)
+        // let data = [
+        //     {parsedAss : this.parsedAss},
+        //     {canvas : this.canvas},
+        //     {ctx : this.ctx}
+        // ]
+        // console.debug(data)
     }
 
     render() {
@@ -84,7 +84,7 @@ export class Renderer {
     */
 
     showText(Text: ParsedASSEventText, style: SingleStyle) {
-        console.debug(style.Name, Text)
+        // console.debug(style.Name, Text)
         let fontDescriptor = this.getFontDescriptor(style) // FontDescriptor
         let c1 = convertAegisubToRGBA(style.PrimaryColour) // primary color
         let c2 = convertAegisubToRGBA(style.SecondaryColour) // secondary color
@@ -94,16 +94,17 @@ export class Renderer {
         let marginV = ruleOfThree(this.playerResY, this.canvas.height) * parseFloat(style.MarginV) / 100
         let marginR = ruleOfThree(this.playerResX, this.canvas.width) * parseFloat(style.MarginR) / 100
         // console.debug(marginL, marginV, marginR)
-        let text = Text.parsed[0]?.text as string
+        const text = Text.parsed[0]?.text as string
+        const tags = Text.parsed[0]?.tags as Tag[]
 
-        this.ctx.font = `${fontDescriptor.fontsize}px ${fontDescriptor.bold ? "bold" : ""} ${fontDescriptor.italic ? "italic" : ""} ${fontDescriptor.fontname}`;
-        console.debug(this.ctx.font)
+        this.ctx.font = ` ${fontDescriptor.bold ? "bold" : ""} ${fontDescriptor.italic ? "italic" : ""}  ${fontDescriptor.fontsize}px ${fontDescriptor.fontname}`;
+        // console.debug(this.ctx.font)
         let textAlign = this.getAlignment(parseInt(style.Alignment)) as CanvasTextAlign;
         let textBaseline = this.getBaseLine(parseInt(style.Alignment)) as CanvasTextBaseline;
         this.ctx.fillStyle = c1;
         this.ctx.strokeStyle = c3;
         this.ctx.lineWidth = ruleOfThree(this.playerResX, this.canvas.width) * parseFloat(style.Outline) / 100 * 2;
-        console.debug(this.ctx.lineWidth, style.Outline)
+        // console.debug(this.ctx.lineWidth, style.Outline)
         this.ctx.lineJoin = "round";
         this.ctx.lineCap = "round";
         this.ctx.miterLimit = 2;
@@ -112,7 +113,24 @@ export class Renderer {
         this.ctx.shadowOffsetX = ruleOfThree(this.playerResX, this.canvas.width) * parseFloat(style.Shadow) / 100;
         this.ctx.shadowOffsetY = ruleOfThree(this.playerResY, this.canvas.height) * parseFloat(style.Shadow) / 100;
 
+        this.teawksDrawSettings(text, tags, textAlign, textBaseline, marginL, marginV, marginR, fontDescriptor);
+
         this.drawText(text, textAlign, textBaseline, marginL, marginV, marginR);
+    }
+
+    teawksDrawSettings(
+        text: string,
+        tags: Tag[],
+        textAlign: CanvasTextAlign,
+        textBaseline: CanvasTextBaseline,
+        marginL: number,
+        marginV: number,
+        marginR: number,
+        fontDescriptor: FontDescriptor
+    ) {
+        // console.debug("tags", tags)
+        // put all the tags in the same object
+        let tagsObject = {};
     }
 
     drawText(
@@ -131,7 +149,7 @@ export class Renderer {
         switch (textBaseline) {
             case "top":
                 y = marginV + lineHeight;
-                if (lines.length === 1) { y -= lineHeight; } else { y -= totalHeight / lines.length; }
+                if (lines.length > 1) { y -= totalHeight / lines.length; }
                 break;
             case "middle":
                 y = (this.canvas.height - totalHeight) / 2 + lineHeight;
@@ -162,8 +180,8 @@ export class Renderer {
                     x = marginL;
                     break;
             }
-            this.ctx.fillText(line, x, y);
             this.ctx.strokeText(line, x, y);
+            this.ctx.fillText(line, x, y);
             y += lineHeight;
         })
     }

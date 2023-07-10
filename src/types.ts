@@ -1,3 +1,5 @@
+import type { ParsedTag } from "ass-compiler/types/tags"
+
 export type ASSOptions = {
     /**
      * The ass text string
@@ -44,3 +46,5 @@ export type FontDescriptor = {
     underline: boolean
     strikeout: boolean
 }
+
+export type Tag = { [K in keyof ParsedTag]: ParsedTag[K]; }

@@ -9,8 +9,8 @@ export function convertAegisubToRGBA(aegisubColor: string) {
 	let red = parseInt(aegisubColor.slice(2, 4), 16)
 	let green = parseInt(aegisubColor.slice(4, 6), 16)
 	let blue = parseInt(aegisubColor.slice(6, 8), 16)
-	let clr = `rgba(${red}, ${green}, ${blue}, ${alpha})`
-	console.debug(clr, aegisubColor)
+	// let clr = `rgba(${red}, ${green}, ${blue}, ${alpha})`
+	// console.debug(clr, aegisubColor)
 	return `rgba(${red}, ${green}, ${blue}, ${alpha})`
 }
 
@@ -53,6 +53,8 @@ export function newCanvas(top: number, left: number, width: number, height: numb
 
 	if (insertAfter) {
 		insertAfter.after(canvas);
+	} else {
+		document.body.appendChild(canvas);
 	}
 	return canvas;
 }

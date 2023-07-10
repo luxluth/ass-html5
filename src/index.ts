@@ -36,8 +36,22 @@ export default class ASS {
         this.renderer.render()
     }
 
+    destroy() {
+        this.videoElement?.removeEventListener('loadedmetadata', () => {
+            this.setCanvasSize()
+        })
+        window.removeEventListener('resize', () => {
+            this.setCanvasSize();
+            this.renderer?.redraw()
+        })
+        // remove canvas
+        this.canvas?.remove()
+        // remove renderer
+        this.renderer = null
+    }
 
-    setCanvasSize() {
+
+    private setCanvasSize() {
         const { videoWidth, videoHeight, offsetTop, offsetLeft } = this.videoElement as HTMLVideoElement
         const aspectRatio = videoWidth / videoHeight;
 
