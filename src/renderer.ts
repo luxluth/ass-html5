@@ -61,34 +61,6 @@ export class Renderer {
         });
     }
 
-    /*
-    type SingleStyle = {
-        Name: string;
-        Fontname: string;
-        Fontsize: string;
-        PrimaryColour: string;
-        SecondaryColour: string;
-        OutlineColour: string;
-        BackColour: string;
-        Bold: string;
-        Italic: string;
-        Underline: string;
-        StrikeOut: string;
-        ScaleX: string;
-        ScaleY: string;
-        Spacing: string;
-        Angle: string;
-        BorderStyle: string;
-        Outline: string;
-        Shadow: string;
-        Alignment: string;
-        MarginL: string;
-        MarginR: string;
-        MarginV: string;
-        Encoding: string;
-    }
-    */
-
     showText(Text: ParsedASSEventText, style: SingleStyle) {
         // console.debug(style.Name, Text)
         const text = Text.parsed[0]?.text as string
@@ -124,7 +96,7 @@ export class Renderer {
 
         let tweaks = this.teawksDrawSettings(tags, fontDescriptor);
         if (tweaks.tweaked) {
-            console.debug("tweaks", tweaks)
+            // console.debug("tweaks", tweaks)
 
             if (typeof tweaks.primaryColor !== "undefined") { this.ctx.fillStyle = tweaks.primaryColor }
             if (typeof tweaks.secondaryColor !== "undefined") { this.ctx.strokeStyle = tweaks.secondaryColor }
@@ -226,7 +198,7 @@ export class Renderer {
             fontDescriptor.strikeout = strikeOut;
         }
 
-        console.debug("new Font", `${fontDescriptor.bold ? "bold" : ""} ${fontDescriptor.italic ? "italic" : ""}  ${fontDescriptor.fontsize}px ${fontDescriptor.fontname}`)
+        // console.debug("new Font", `${fontDescriptor.bold ? "bold" : ""} ${fontDescriptor.italic ? "italic" : ""}  ${fontDescriptor.fontsize}px ${fontDescriptor.fontname}`)
 
         return {
             tweaked,
@@ -297,10 +269,11 @@ export class Renderer {
                     break;
             }
             if (this.ctx.lineWidth > 0) {
+                // console.debug("strokeText", lineWidth);
                 this.ctx.strokeText(line, x, y);
             }
             this.ctx.fillText(line, x, y);
-            y += lineHeight + lineHeight / lines.length;
+            y += lineHeight
         })
 
         this.ctx.lineWidth = 0;
@@ -351,10 +324,12 @@ export class Renderer {
                     break;
             }
             if (this.ctx.lineWidth > 0) {
+                console.debug("strokeText", lineWidth);
                 this.ctx.strokeText(line, x, y);
             }
             this.ctx.fillText(line, x, y);
-            y += lineHeight;
+            // TODO: add line spacing
+            y += lineHeight + this.ctx.lineWidth;
         })
 
         this.ctx.lineWidth = 0;
