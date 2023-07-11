@@ -1,5 +1,5 @@
 import type { ParsedASS, ParsedASSEventText } from "ass-compiler";
-import { SingleStyle, FontDescriptor, Tag, FadeAnimation, Shift, CommonPropertiesInlineText, Tweaks } from "./types";
+import { SingleStyle, FontDescriptor, Tag, ASSAnimation , Shift, Tweaks } from "./types";
 import { ruleOfThree, convertAegisubToRGBA, insertTags } from "./utils";
 
 export class Renderer {
@@ -63,6 +63,7 @@ export class Renderer {
     }
 
     showText(Text: ParsedASSEventText, style: SingleStyle, shift: Shift) {
+        console.debug(Text)
         const textsInline = Text.parsed.map(textEvent => textEvent.text);
         let previousTextWidth = 0;
         let startBaseline = 0;
@@ -218,16 +219,33 @@ export class Renderer {
         const fontname = tagsCombined.fn ? tagsCombined.fn : undefined;
 
         // Animation
+        let animations: ASSAnimation.Animation[] = [];
+        const MoveAnimation = typeof tagsCombined.move !== "undefined" ? tagsCombined.move : undefined;
         const simpleFadeAnimation = typeof tagsCombined.fad !== "undefined" ? tagsCombined.fad : undefined;
         const complexFadeAnimation = typeof tagsCombined.fade !== "undefined" ? tagsCombined.fade : undefined;
-        
+        const orgAnimation = typeof tagsCombined.org !== "undefined" ? tagsCombined.org : undefined;
+
         const fadeAnimation = typeof simpleFadeAnimation !== "undefined" ? {
-            name: "simpleFade",
             values: simpleFadeAnimation
-        } as FadeAnimation : typeof complexFadeAnimation !== "undefined" ? {
-            name: "complexFade",
+        } as ASSAnimation.Fade : typeof complexFadeAnimation !== "undefined" ? {
             values: complexFadeAnimation
-        } as FadeAnimation : undefined;
+        } as ASSAnimation.Fade : undefined;
+        const moveAnimation = typeof MoveAnimation !== "undefined" ? {
+            values: MoveAnimation
+        } as ASSAnimation.Move : undefined;
+        const orgAnimationParsed = typeof orgAnimation !== "undefined" ? {
+            values: orgAnimation
+        } as ASSAnimation.Org : undefined;
+        
+        if (typeof fadeAnimation !== "undefined") {
+            animations = [...animations, fadeAnimation];
+        }
+        if (typeof moveAnimation !== "undefined") {
+            animations = [...animations, moveAnimation];
+        }
+        if (typeof orgAnimationParsed !== "undefined") {
+            animations = [...animations, orgAnimationParsed];
+        }
 
         if (typeof fontsize !== "undefined") {
             fontDescriptor.fontsize = ruleOfThree(this.playerResY, this.canvas.height) * parseFloat(fontsize) / 100;
@@ -267,7 +285,7 @@ export class Renderer {
             position,
             fontDescriptor,
             custompositioning: typeof position !== 'undefined' ? true : false,
-            fadeAnimation
+            animations,
         } as Tweaks
     }
 

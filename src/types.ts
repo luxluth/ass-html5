@@ -55,12 +55,35 @@ export type FontDescriptor = {
 
 export type Tag = { [K in keyof ParsedTag]: ParsedTag[K]; }
 
-export type FadeAnimation = {
-    name: string,
-    values: [number, number] | [number, number, number, number, number, number]
-}
+export declare namespace ASSAnimation {
+    export type Fade = {
+        name: 'fad',
+        /**
+         * The values of the fade animation
+         * `\fad(<fadein>,<fadeout>)` or `\fade(<a1>,<a2>,<a3>,<t1>,<t2>,<t3>,<t4>)`
+         */
+        values: [number, number] | [number, number, number, number, number, number]
+    }
+    export type Move = {
+        name: 'move',
+        /**
+         * The values of the move animation
+         * `\move(<x1>,<y1>,<x2>,<y2>)` or `\move(<x1>,<y1>,<x2>,<y2>,<t1>,<t2>)`
+         */
+        values: [number, number, number, number] | [number, number,number, number, number, number]
+    }
 
-export type CommonPropertiesInlineText = Tag[]
+    export type Org = {
+        name: 'org',
+        /**
+         * The values of the Rotation origin animation
+         * `\org(<x>,<y>)`
+         */
+        values: [number, number]
+    }
+
+    export type Animation = Fade | Move | Org
+}
 
 export type Tweaks = {
     tweaked: boolean | undefined
@@ -79,5 +102,5 @@ export type Tweaks = {
     position: [number, number]  | undefined
     fontDescriptor: FontDescriptor
     custompositioning: boolean,
-    fadeAnimation: FadeAnimation | undefined
+    animations: ASSAnimation.Animation[]
 }
