@@ -1,5 +1,11 @@
 # ass-html5
 
+## 0.2.1
+
+### Patch Changes
+
+- fe65d34: Adding Inline Multi-Styling
+
 ## 0.2.0
 
 ### Minor Changes
