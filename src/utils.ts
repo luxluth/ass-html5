@@ -8,7 +8,7 @@ export function convertAegisubToRGBA(aegisubColor: string, tags: Tag) {
 	const colorValue = aegisubColor.replace(/&H|&/g, '');
 
 	// Extract the individual color components from the Aegisub color value
-	const alpha = getAlpha(tags);
+	const alpha = getAlphaFromTag(tags);
 	const blue = parseInt(colorValue.slice(2, 4), 16);
 	const green = parseInt(colorValue.slice(4, 6), 16);
 	const red = parseInt(colorValue.slice(6, 8), 16);
@@ -17,6 +17,15 @@ export function convertAegisubToRGBA(aegisubColor: string, tags: Tag) {
 	const rgba = `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 	// console.debug(`Converted ${aegisubColor} to ${rgba}`);
 	return rgba;
+}
+
+export function changeAlpha(color: string, alpha: number) {
+	return color.replace(/rgba\((\d+), (\d+), (\d+), (\d+)\)/, `rgba($1, $2, $3, ${alpha})`);
+}
+
+export function getAlphaFromColor(color: string) {
+	const alpha = color.replace(/rgba\((\d+), (\d+), (\d+), (\d+)\)/, '$4');
+	return parseFloat(alpha);
 }
 
 export function insertTags(tags: Tag[], tag: Tag) {
@@ -31,7 +40,7 @@ export function insertTags(tags: Tag[], tag: Tag) {
 	return tag;
 }
 
-export function getAlpha(tags: Tag) {
+export function getAlphaFromTag(tags: Tag) {
 	let alpha = 1;
 	if (typeof tags.alpha !== 'undefined') {alpha = parseFloat(tags.alpha);}
 	// console.debug(`Alpha: ${alpha}`);

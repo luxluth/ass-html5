@@ -10,6 +10,10 @@ export class Renderer {
     playerResX: number
     playerResY: number
     styles: SingleStyle[]
+
+    previousTextWidth = 0;
+    previousTextPos = { x: 0, y: 0 }
+    startBaseline = 0;
     constructor(
         parsedASS: ParsedASS, 
         canvas: HTMLCanvasElement,
@@ -63,10 +67,8 @@ export class Renderer {
     }
 
     showText(Text: ParsedASSEventText, style: SingleStyle, shift: Shift) {
-        console.debug(Text)
         const textsInline = Text.parsed.map(textEvent => textEvent.text);
-        let previousTextWidth = 0;
-        let startBaseline = 0;
+        // console.debug(textsInline.join(''))
         let pos = [0, 0] as [number, number];
         // console.debug(textsInline)
         let communTags: Tag = {}
@@ -118,7 +120,7 @@ export class Renderer {
                 //       |_____| this is the width of "Hello "
                 //             |__________ this is the new x position
                 if (typeof communTags.pos !== "undefined") {
-                    pos = [previousTextWidth, 0]
+                    pos = [this.previousTextWidth, 0]
                     // console.debug("pos", pos.toString())
                     tweaks = this.teawksDrawSettings(tags, fontDescriptor, true, communTags, pos)
 
@@ -158,19 +160,31 @@ export class Renderer {
                     textAlign = this.getAlignment(tweaks.alignment) as CanvasTextAlign;
                     textBaseline = this.getBaseLine(tweaks.alignment as number) as CanvasTextBaseline;
                 }
+
+                if (tweaks.animations.length > 0) {
+                    // console.debug("tweaks.animations", tweaks.animations)
+                }
+
                 if (typeof tweaks.position !== "undefined") {
-                    this.drawTextAtPosition(text, tweaks.position, textAlign, textBaseline, startBaseline);
+                    this.drawTextAtPosition(text, tweaks.position, textAlign, textBaseline);
                     alreadyDrawn = true;
                 }
             }
     
             if (!alreadyDrawn) {
-                this.drawText(text, textAlign, textBaseline, marginL, marginV, marginR);
+                this.drawText(text, textAlign, textBaseline, marginL, marginV, marginR, textsInline, index);
             }
 
-            previousTextWidth += this.ctx.measureText(text).width;
+            this.previousTextWidth += this.ctx.measureText(text).width;
+            // if text ends with a \N, we need to reset the baseline
+            if (text.endsWith("\\N") || index === textsInline.length - 1) {
+                this.startBaseline = 0;
+                this.previousTextWidth = 0;
+                this.previousTextPos.x = 0;
+                this.previousTextPos.y = 0;
+            } 
             if (textsInline.length > 1 && index === 0) {
-                startBaseline = this.ctx.measureText(text).actualBoundingBoxAscent;
+                this.startBaseline = this.ctx.measureText(text).actualBoundingBoxAscent;
                 // console.debug("startBaseline", startBaseline)
             }
         })
@@ -226,14 +240,18 @@ export class Renderer {
         const orgAnimation = typeof tagsCombined.org !== "undefined" ? tagsCombined.org : undefined;
 
         const fadeAnimation = typeof simpleFadeAnimation !== "undefined" ? {
+            name: "fad",
             values: simpleFadeAnimation
         } as ASSAnimation.Fade : typeof complexFadeAnimation !== "undefined" ? {
+            name: "fad",
             values: complexFadeAnimation
         } as ASSAnimation.Fade : undefined;
         const moveAnimation = typeof MoveAnimation !== "undefined" ? {
+            name: "move",
             values: MoveAnimation
         } as ASSAnimation.Move : undefined;
         const orgAnimationParsed = typeof orgAnimation !== "undefined" ? {
+            name: "org",
             values: orgAnimation
         } as ASSAnimation.Org : undefined;
         
@@ -296,6 +314,8 @@ export class Renderer {
         marginL: number,
         marginV: number,
         marginR: number,
+        parsedBatch: string[],
+        parsedBatchIdx: number,
         ) {
         let lines = text.split("\\N");
         let lineHeights = lines.map(line => this.ctx.measureText(line).actualBoundingBoxAscent + this.ctx.measureText(line).actualBoundingBoxDescent);
@@ -317,9 +337,12 @@ export class Renderer {
             default:
                 y = marginV + lineHeight;
                 break;
+            }
+            
+        if (this.previousTextPos.y > 0) {
+            y = this.previousTextPos.y
         }
-
-        lines.forEach(line => {
+        lines.forEach((line, index) => {
             let lineWidth = this.ctx.measureText(line).width;
             let x = 0;
             switch (textAlign) {
@@ -336,8 +359,27 @@ export class Renderer {
                     x = marginL;
                     break;
             }
+            if (this.previousTextPos.x > 0) {
+                x = this.previousTextPos.x
+            }
+            // need to reserve space for the following words or not
+            if (parsedBatchIdx < parsedBatch.length - 1 && index === lines.length - 1) {
+                let nextWordsWidth = 0;
+                for (let i = parsedBatchIdx + 1; i < parsedBatch.length; i++) {
+                    if (parsedBatch[i] === "\\N") {
+                        break;
+                    }
+                    nextWordsWidth += this.ctx.measureText(parsedBatch[i] as string).width;
+                }
+                // console.debug("next word", parsedBatch[parsedBatchIdx + 1], nextWordsWidth)
+                x -= nextWordsWidth / 2;
+                let currentWordsWidth = this.ctx.measureText(line).width;
+                // console.debug("current word", `"${line}"`)
+                this.previousTextWidth += currentWordsWidth;
+                this.previousTextPos.x = x + currentWordsWidth;
+                this.previousTextPos.y = y;
+            }
             if (this.ctx.lineWidth > 0) {
-                // console.debug("strokeText", lineWidth);
                 this.ctx.strokeText(line, x, y);
             }
             this.ctx.fillText(line, x, y);
@@ -352,7 +394,6 @@ export class Renderer {
         position: [number, number],
         textAlign: CanvasTextAlign,
         textBaseline: CanvasTextBaseline,
-        alignOnBaseline: number=0,
     ) {
         let lines = text.split("\\N");
         let lineHeights = lines.map(line => this.ctx.measureText(line).actualBoundingBoxAscent + this.ctx.measureText(line).actualBoundingBoxDescent);
@@ -395,14 +436,14 @@ export class Renderer {
             const lineBaseline = this.ctx.measureText(line).actualBoundingBoxAscent;
             if (this.ctx.lineWidth > 0) {
                 // console.debug("strokeText", lineWidth);
-                if (alignOnBaseline > 0) {
-                    this.ctx.strokeText(line, x, y + (alignOnBaseline - lineBaseline));
+                if (this.startBaseline > 0) {
+                    this.ctx.strokeText(line, x, y + (this.startBaseline - lineBaseline));
                 } else {
                     this.ctx.strokeText(line, x, y);
                 }
             }
-            if (alignOnBaseline > 0) {
-                this.ctx.fillText(line, x, y + (alignOnBaseline - lineBaseline));
+            if (this.startBaseline > 0) {
+                this.ctx.fillText(line, x, y + (this.startBaseline - lineBaseline));
             } else {
                 this.ctx.fillText(line, x, y);
             }
