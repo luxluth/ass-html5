@@ -1,5 +1,12 @@
 # ass-html5
 
+## 0.2.2
+
+### Patch Changes
+
+- a51ae35: - Inline Changes in normal text display fix (with this bug, an inline transformation on a text while result in an overlapping on other drawn text)
+  - Mutilines Texts Tweaks fix (End of Line Shifts)
+
 ## 0.2.1
 
 ### Patch Changes
