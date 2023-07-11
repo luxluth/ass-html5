@@ -4,7 +4,7 @@ import type { Tag } from "./types";
  * @param aegisubColor The color in Aegisub format
  * @returns The color in RGBA format
  */
-export function convertAegisubToRGBA(aegisubColor: string, tags: Tag[]) {
+export function convertAegisubToRGBA(aegisubColor: string, tags: Tag) {
 	const colorValue = aegisubColor.replace(/&H|&/g, '');
 
 	// Extract the individual color components from the Aegisub color value
@@ -19,11 +19,22 @@ export function convertAegisubToRGBA(aegisubColor: string, tags: Tag[]) {
 	return rgba;
 }
 
-export function getAlpha(tags: Tag[]) {
+export function insertTags(tags: Tag[], tag: Tag) {
+	tags.forEach((singleTag) => {
+		// if the tag is already present, it will be overwritten
+		tag = { ...tag, ...singleTag };
+	})
+	// console.debug('insertTags -------------------')
+	// console.debug(`Tags: ${JSON.stringify(tags)}`);
+	// console.debug(`Result: ${JSON.stringify(tag)}`)
+	// console.debug('-------------------');
+	return tag;
+}
+
+export function getAlpha(tags: Tag) {
 	let alpha = 1;
-	let tagsCombined: Tag = {};
-	tags.forEach((tag) => {tagsCombined = { ...tagsCombined, ...tag }})
-	if (typeof tagsCombined.alpha !== 'undefined') {alpha = parseFloat(tagsCombined.alpha);}
+	if (typeof tags.alpha !== 'undefined') {alpha = parseFloat(tags.alpha);}
+	// console.debug(`Alpha: ${alpha}`);
 	return alpha;
 }
 

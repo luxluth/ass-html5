@@ -59,3 +59,25 @@ export type FadeAnimation = {
     name: string,
     values: [number, number] | [number, number, number, number, number, number]
 }
+
+export type CommonPropertiesInlineText = Tag[]
+
+export type Tweaks = {
+    tweaked: boolean | undefined
+    primaryColor: string | undefined
+    secondaryColor: string | undefined
+    outlineColor: string | undefined
+    shadowColor: string | undefined
+    scaleX: number | undefined
+    scaleY: number | undefined
+    spacing: number | undefined
+    angle: number | undefined
+    borderStyle: number  | undefined
+    outline: number | undefined
+    shadow: number  | undefined
+    alignment: number | undefined
+    position: [number, number]  | undefined
+    fontDescriptor: FontDescriptor
+    custompositioning: boolean,
+    fadeAnimation: FadeAnimation | undefined
+}
