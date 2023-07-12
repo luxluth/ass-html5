@@ -1,5 +1,11 @@
 # ass-html5
 
+## 0.2.3
+
+### Patch Changes
+
+- fc82eb5: Minor bug fixes
+
 ## 0.2.2
 
 ### Patch Changes
