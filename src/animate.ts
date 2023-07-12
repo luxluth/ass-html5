@@ -1,4 +1,4 @@
-import type { ASSAnimation } from "./types";
+import type { ASSAnimation } from './types'
 export class Animate {
-    constructor() {}
+	constructor() {}
 }
