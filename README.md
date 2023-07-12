@@ -13,3 +13,74 @@ Display ASS/SSA subtitles on html5 videos
 **🏗 PROJECT UNDER DEVELOPEMENT 🏗**
 
 </div>
+
+## Table of Contents
+- [ass-html5](#ass-html5)
+  - [Table of Contents](#table-of-contents)
+  - [Installation](#installation)
+  - [Example](#example)
+    - [svelte and plry](#svelte-and-plry)
+
+## Installation
+
+```bash
+pnpm add ass-html5
+```
+
+## Example
+
+### [svelte](https://svelte.dev/) and [plry](https://github.com/sampotts/plyr)
+
+```svelte
+<script lang="ts">
+    import video from '$lib/assets/JJK0201.mp4'
+    import cc from '$lib/assets/JJK0201.ass?raw'
+    import ASS from 'ass-html5'
+    import { onMount } from 'svelte';
+    import Plyr from 'plyr'
+
+    const ass = new ASS({
+        assText: cc,
+        video: "#video-test"
+    })
+
+    const controls = [
+        'rewind',
+        'play', 
+        'fast-forward', 
+        'progress', 
+        'current-time',
+        'duration', 
+        'mute',
+        'volume',
+        'settings',
+        'airplay', 
+        'fullscreen', 
+    ]
+
+    let vidElement: HTMLVideoElement
+    
+    onMount(() => {
+        const player = new Plyr(vidElement, {
+            controls
+        })
+        
+        ass.init()
+
+    })
+
+</script>
+
+<div class="video-container">
+    <!-- svelte-ignore a11y-media-has-caption -->
+    <video 
+        preload="metadata" 
+        src="{video}" 
+        id="video-test" 
+        controls
+        autoplay
+        class="vid"
+        bind:this={vidElement}
+    ></video>
+</div>
+```
