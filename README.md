@@ -15,6 +15,7 @@ Display ASS/SSA subtitles on html5 videos
 </div>
 
 ## Table of Contents
+
 - [ass-html5](#ass-html5)
   - [Table of Contents](#table-of-contents)
   - [Installation](#installation)
@@ -46,25 +47,25 @@ pnpm add ass-html5
 
     const controls = [
         'rewind',
-        'play', 
-        'fast-forward', 
-        'progress', 
+        'play',
+        'fast-forward',
+        'progress',
         'current-time',
-        'duration', 
+        'duration',
         'mute',
         'volume',
         'settings',
-        'airplay', 
-        'fullscreen', 
+        'airplay',
+        'fullscreen',
     ]
 
     let vidElement: HTMLVideoElement
-    
+
     onMount(() => {
         const player = new Plyr(vidElement, {
             controls
         })
-        
+
         ass.init()
 
     })
@@ -73,10 +74,10 @@ pnpm add ass-html5
 
 <div class="video-container">
     <!-- svelte-ignore a11y-media-has-caption -->
-    <video 
-        preload="metadata" 
-        src="{video}" 
-        id="video-test" 
+    <video
+        preload="metadata"
+        src="{video}"
+        id="video-test"
         controls
         autoplay
         class="vid"

@@ -201,25 +201,35 @@ export class Renderer {
 			}
 
 			if (!alreadyDrawn) {
-				this.drawText(text, textAlign, textBaseline, marginL, marginV, marginR, textsInline, index, false)
+				this.drawText(
+					text,
+					textAlign,
+					textBaseline,
+					marginL,
+					marginV,
+					marginR,
+					textsInline,
+					index,
+					false
+				)
 			}
 
 			this.previousTextWidth += this.ctx.measureText(text).width
 			// if text ends with a \N, we need to reset the baseline
 			if (text.endsWith('\\N')) {
-                console.debug("This text end with a '\\n' ===>", text)
+				console.debug("This text end with a '\\n' ===>", text)
 				this.startBaseline = 0
 				this.previousTextWidth = 0
 				this.previousTextPos.x = 0
 				this.previousTextPos.y += fontDescriptor.fontsize
 			} else if (index === textsInline.length - 1) {
-                this.previousTextPos.x += this.ctx.measureText(text).width
-                console.debug("This is the last text ===>", text)
-                this.startBaseline = 0
+				this.previousTextPos.x += this.ctx.measureText(text).width
+				console.debug('This is the last text ===>', text)
+				this.startBaseline = 0
 				this.previousTextWidth = 0
 				this.previousTextPos.x = 0
-                this.previousTextPos.y = 0
-            }
+				this.previousTextPos.y = 0
+			}
 			if (textsInline.length > 1 && index === 0) {
 				this.startBaseline = this.ctx.measureText(text).actualBoundingBoxAscent
 				// console.debug("startBaseline", startBaseline)
@@ -390,7 +400,7 @@ export class Renderer {
 		marginR: number,
 		parsedBatch: string[],
 		parsedBatchIdx: number,
-        debugLines: boolean = false
+		debugLines: boolean = false
 	) {
 		let lines = text.split('\\N')
 		let lineHeights = lines.map(
@@ -465,18 +475,18 @@ export class Renderer {
 			if (this.ctx.lineWidth > 0) {
 				this.ctx.strokeText(line, x, y)
 			}
-            if (debugLines) {
-                let previousLineWidth = this.ctx.lineWidth
-                let previousStrokeStyle = this.ctx.strokeStyle
-                this.ctx.strokeStyle = 'red'
-                this.ctx.lineWidth = 2
-                let xpos = x
-                let ypos = y
-                ypos -= lineHeights[index] as number
-                this.ctx.strokeRect(xpos, ypos, lineWidth, lineHeights[index] as number)
-                this.ctx.lineWidth = previousLineWidth
-                this.ctx.strokeStyle = previousStrokeStyle
-            }
+			if (debugLines) {
+				let previousLineWidth = this.ctx.lineWidth
+				let previousStrokeStyle = this.ctx.strokeStyle
+				this.ctx.strokeStyle = 'red'
+				this.ctx.lineWidth = 2
+				let xpos = x
+				let ypos = y
+				ypos -= lineHeights[index] as number
+				this.ctx.strokeRect(xpos, ypos, lineWidth, lineHeights[index] as number)
+				this.ctx.lineWidth = previousLineWidth
+				this.ctx.strokeStyle = previousStrokeStyle
+			}
 			this.ctx.fillText(line, x, y)
 			y += lineHeight
 		})
@@ -489,10 +499,10 @@ export class Renderer {
 		position: [number, number],
 		textAlign: CanvasTextAlign,
 		textBaseline: CanvasTextBaseline,
-        debugLines: boolean = false
+		debugLines: boolean = false
 	) {
 		let lines = text.split('\\N')
-        console.debug("lines", lines, text)
+		console.debug('lines', lines, text)
 		let lineHeights = lines.map(
 			(line) =>
 				this.ctx.measureText(line).actualBoundingBoxAscent +
@@ -519,9 +529,9 @@ export class Renderer {
 				break
 		}
 
-        if (this.previousTextPos.y > 0) {
-            y += this.previousTextPos.y
-        }
+		if (this.previousTextPos.y > 0) {
+			y += this.previousTextPos.y
+		}
 
 		lines.forEach((line) => {
 			let lineWidth = this.ctx.measureText(line).width
@@ -541,9 +551,9 @@ export class Renderer {
 					break
 			}
 
-            if (this.previousTextPos.x > 0) {
-                x = this.previousTextPos.x
-            }
+			if (this.previousTextPos.x > 0) {
+				x = this.previousTextPos.x
+			}
 
 			const lineBaseline = this.ctx.measureText(line).actualBoundingBoxAscent
 			if (this.ctx.lineWidth > 0) {
@@ -559,18 +569,18 @@ export class Renderer {
 			} else {
 				this.ctx.fillText(line, x, y)
 			}
-            if (debugLines) {
-                let previousLineWidth = this.ctx.lineWidth
-                let previousStrokeStyle = this.ctx.strokeStyle
-                this.ctx.strokeStyle = 'red'
-                this.ctx.lineWidth = 2
-                let xpos = x
-                let ypos = y
-                ypos -= lineBaseline
-                this.ctx.strokeRect(xpos, ypos, lineWidth, lineHeights[0] as number)
-                this.ctx.lineWidth = previousLineWidth
-                this.ctx.strokeStyle = previousStrokeStyle
-            }
+			if (debugLines) {
+				let previousLineWidth = this.ctx.lineWidth
+				let previousStrokeStyle = this.ctx.strokeStyle
+				this.ctx.strokeStyle = 'red'
+				this.ctx.lineWidth = 2
+				let xpos = x
+				let ypos = y
+				ypos -= lineBaseline
+				this.ctx.strokeRect(xpos, ypos, lineWidth, lineHeights[0] as number)
+				this.ctx.lineWidth = previousLineWidth
+				this.ctx.strokeStyle = previousStrokeStyle
+			}
 			// TODO: add line spacing
 			y += lineHeight + this.ctx.lineWidth
 		})

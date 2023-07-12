@@ -5,9 +5,11 @@
 	"main": "dist/index.js",
 	"module": "dist/index.mjs",
 	"types": "dist/index.d.ts",
+	"browser": "dist/ass.min.js",
 	"scripts": {
-		"build": "tsup",
-		"dev": "tsup --watch",
+		"build": "tsup src/index.ts --format esm,cjs",
+		"build:minify": "tsup src/index.ts --format iife",
+		"dev": "tsup src/index.ts --format esm,cjs --watch",
 		"release": "pnpm run build && changeset publish",
 		"lint": "tsc",
 		"format": "prettier --write ."
@@ -31,6 +33,7 @@
 	"homepage": "https://github.com/luxluth/ass-html5#readme",
 	"devDependencies": {
 		"@changesets/cli": "^2.26.2",
+		"@types/node": "^20.4.1",
 		"ass-compiler": "^0.1.8",
 		"prettier": "^3.0.0",
 		"terser": "^5.18.2",
