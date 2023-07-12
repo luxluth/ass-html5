@@ -33,8 +33,8 @@ pnpm add ass-html5
 
 ```svelte
 <script lang="ts">
-    import video from '$lib/assets/JJK0201.mp4'
-    import cc from '$lib/assets/JJK0201.ass?raw'
+    import video from '$lib/assets/video.mp4'
+    import cc from '$lib/assets/cc.ass?raw'
     import ASS from 'ass-html5'
     import { onMount } from 'svelte';
     import Plyr from 'plyr'
