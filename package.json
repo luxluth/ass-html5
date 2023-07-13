@@ -7,7 +7,7 @@
 	"types": "dist/index.d.ts",
 	"browser": "dist/ass.min.js",
 	"scripts": {
-		"build": "pnpm run build:normal &&pnpm run build:minify",
+		"build": "pnpm run build:normal && pnpm run build:minify",
 		"build:normal": "tsup src/index.ts --format esm,cjs",
 		"build:minify": "tsup src/index.ts --format iife",
 		"dev": "tsup src/index.ts --format esm,cjs --watch",

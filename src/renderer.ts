@@ -1,6 +1,7 @@
-import type { ParsedASS, ParsedASSEventText } from 'ass-compiler'
+import type { ParsedASS, ParsedASSEventText, ParsedASSEventTextParsed } from 'ass-compiler'
 import { SingleStyle, FontDescriptor, Tag, ASSAnimation, Shift, Tweaks } from './types'
 import { ruleOfThree, convertAegisubToRGBA, insertTags } from './utils'
+import { parse } from 'path'
 
 export class Renderer {
 	parsedAss: ParsedASS
@@ -10,6 +11,8 @@ export class Renderer {
 	playerResX: number
 	playerResY: number
 	styles: SingleStyle[]
+	textAlign: CanvasTextAlign = "start"
+	textBaseline: CanvasTextBaseline = "alphabetic"
 
 	previousTextWidth = 0
 	previousTextPos = { x: 0, y: 0 }
@@ -72,169 +75,62 @@ export class Renderer {
 		const textsInline = Text.parsed.map((textEvent) => textEvent.text)
 		// console.debug(textsInline.join(''))
 		let pos = [0, 0] as [number, number]
-		// console.debug(textsInline)
-		let communTags: Tag = {}
-		Text.parsed.forEach((textEvent, index) => {
-			const text = textEvent.text as string
-			const tags = textEvent.tags as Tag[]
-			// console.debug(textsInline[index], index)
-			communTags = insertTags(textEvent.tags, communTags)
-			// console.debug(communTags)
 
-			let fontDescriptor = this.getFontDescriptor(style) // FontDescriptor
-			let c1 = convertAegisubToRGBA(style.PrimaryColour, communTags) // primary color
-			// let c2 = convertAegisubToRGBA(style.SecondaryColour, tags) // secondary color
-			let c3 = convertAegisubToRGBA(style.OutlineColour, communTags) // outline color
-			let c4 = convertAegisubToRGBA(style.BackColour, communTags) // shadow color
-			let marginL =
-				(ruleOfThree(this.playerResX, this.canvas.width) * parseFloat(style.MarginL)) / 100 +
-				(ruleOfThree(this.playerResX, this.canvas.width) * shift.marginL) / 100
-			let marginV =
-				(ruleOfThree(this.playerResY, this.canvas.height) * parseFloat(style.MarginV)) / 100 +
-				(ruleOfThree(this.playerResY, this.canvas.height) * shift.marginV) / 100
-			let marginR =
-				(ruleOfThree(this.playerResX, this.canvas.width) * parseFloat(style.MarginR)) / 100 +
-				(ruleOfThree(this.playerResX, this.canvas.width) * shift.marginR) / 100
-			// console.debug(marginL, marginV, marginR)
+		let fontDescriptor = this.getFontDescriptor(style) // FontDescriptor
+		let c1 = convertAegisubToRGBA(style.PrimaryColour) // primary color
+		// let c2 = convertAegisubToRGBA(style.SecondaryColour, tags) // secondary color
+		let c3 = convertAegisubToRGBA(style.OutlineColour) // outline color
+		let c4 = convertAegisubToRGBA(style.BackColour) // shadow color
+		let marginL =
+			(ruleOfThree(this.playerResX, this.canvas.width) * parseFloat(style.MarginL)) / 100 +
+			(ruleOfThree(this.playerResX, this.canvas.width) * shift.marginL) / 100
+		let marginV =
+			(ruleOfThree(this.playerResY, this.canvas.height) * parseFloat(style.MarginV)) / 100 +
+			(ruleOfThree(this.playerResY, this.canvas.height) * shift.marginV) / 100
+		let marginR =
+			(ruleOfThree(this.playerResX, this.canvas.width) * parseFloat(style.MarginR)) / 100 +
+			(ruleOfThree(this.playerResX, this.canvas.width) * shift.marginR) / 100
+		// console.debug(marginL, marginV, marginR)
 
-			this.ctx.font = ` ${fontDescriptor.bold ? 'bold' : ''} ${
-				fontDescriptor.italic ? 'italic' : ''
-			}  ${fontDescriptor.fontsize}px ${fontDescriptor.fontname}`
-			// console.debug(this.ctx.font)
-			let textAlign = this.getAlignment(parseInt(style.Alignment)) as CanvasTextAlign
-			let textBaseline = this.getBaseLine(parseInt(style.Alignment)) as CanvasTextBaseline
-			this.ctx.fillStyle = c1
-			this.ctx.strokeStyle = c3
-			this.ctx.lineWidth =
-				((ruleOfThree(this.playerResX, this.canvas.width) * parseFloat(style.Outline)) / 100) * 2
-			// console.debug(this.ctx.lineWidth, style.Outline)
-			this.ctx.lineJoin = 'round'
-			this.ctx.lineCap = 'round'
-			this.ctx.miterLimit = 2
-			this.ctx.shadowColor = c4
-			this.ctx.shadowBlur =
-				(ruleOfThree(this.playerResX, this.canvas.width) * parseFloat(style.Shadow)) / 100
-			this.ctx.shadowOffsetX =
-				(ruleOfThree(this.playerResX, this.canvas.width) * parseFloat(style.Shadow)) / 100
-			this.ctx.shadowOffsetY =
-				(ruleOfThree(this.playerResY, this.canvas.height) * parseFloat(style.Shadow)) / 100
+		this.ctx.font = ` ${fontDescriptor.bold ? 'bold' : ''} ${
+			fontDescriptor.italic ? 'italic' : ''
+		}  ${fontDescriptor.fontsize}px ${fontDescriptor.fontname}`
+		// console.debug(this.ctx.font)
+		this.textAlign = this.getAlignment(parseInt(style.Alignment)) as CanvasTextAlign
+		this.textBaseline = this.getBaseLine(parseInt(style.Alignment)) as CanvasTextBaseline
+		this.ctx.fillStyle = c1
+		this.ctx.strokeStyle = c3
+		this.ctx.lineWidth =
+			((ruleOfThree(this.playerResX, this.canvas.width) * parseFloat(style.Outline)) / 100) * 2
+		// console.debug(this.ctx.lineWidth, style.Outline)
+		this.ctx.lineJoin = 'round'
+		this.ctx.lineCap = 'round'
+		this.ctx.miterLimit = 2
+		this.ctx.shadowColor = c4
+		this.ctx.shadowBlur =
+			(ruleOfThree(this.playerResX, this.canvas.width) * parseFloat(style.Shadow)) / 100
+		this.ctx.shadowOffsetX =
+			(ruleOfThree(this.playerResX, this.canvas.width) * parseFloat(style.Shadow)) / 100
+		this.ctx.shadowOffsetY =
+			(ruleOfThree(this.playerResY, this.canvas.height) * parseFloat(style.Shadow)) / 100
 
-			let alreadyDrawn = false
-			let tweaks: Tweaks
-			if (index === 0) {
-				tweaks = this.teawksDrawSettings(tags, fontDescriptor)
-				// console.debug("tweaks", tweaks.position, this.ctx.measureText(textsInline[0] as string).width)
-			} else {
-				// compute the width of the previous text to shift the x position
-				// E.g : Hello World
-				//       ^^^^^^
-				//       |_____| this is the width of "Hello "
-				//             |__________ this is the new x position
-				if (typeof communTags.pos !== 'undefined') {
-					pos = [this.previousTextWidth, 0]
-					// console.debug("pos", pos.toString())
-					tweaks = this.teawksDrawSettings(tags, fontDescriptor, true, communTags, pos)
-				} else {
-					tweaks = this.teawksDrawSettings(tags, fontDescriptor, true, communTags)
-				}
-			}
-			if (tweaks.tweaked) {
-				// console.debug("tweaks", tweaks)
+		this.drawTextV2(
+			Text.parsed, 
+			marginL, 
+			marginV, 
+			marginR,
+			fontDescriptor,
+			true,
+		)
+	
+	}
 
-				if (typeof tweaks.primaryColor !== 'undefined') {
-					this.ctx.fillStyle = tweaks.primaryColor
-				}
-				if (typeof tweaks.secondaryColor !== 'undefined') {
-					this.ctx.strokeStyle = tweaks.secondaryColor
-				}
-				if (typeof tweaks.outlineColor !== 'undefined') {
-					this.ctx.strokeStyle = tweaks.outlineColor
-				}
-				if (typeof tweaks.shadowColor !== 'undefined') {
-					this.ctx.shadowColor = tweaks.shadowColor
-				}
-				if (typeof tweaks.scaleX !== 'undefined') {
-				}
-				if (typeof tweaks.scaleY !== 'undefined') {
-				}
-				if (typeof tweaks.spacing !== 'undefined') {
-				}
-				if (typeof tweaks.angle !== 'undefined') {
-				}
-				if (typeof tweaks.borderStyle !== 'undefined') {
-				}
-				if (typeof tweaks.outline !== 'undefined') {
-					// console.debug("tweaks.outline", tweaks.outline)
-					if (tweaks.outline === 0) {
-						this.ctx.strokeStyle = 'rgba(0,0,0,0)'
-					} else {
-						this.ctx.lineWidth =
-							((ruleOfThree(this.playerResX, this.canvas.width) * tweaks.outline) / 100) * 2
-					}
-				}
-				if (typeof tweaks.shadow !== 'undefined') {
-					this.ctx.shadowBlur =
-						(ruleOfThree(this.playerResX, this.canvas.width) * tweaks.shadow) / 100
-					this.ctx.shadowOffsetX =
-						(ruleOfThree(this.playerResX, this.canvas.width) * tweaks.shadow) / 100
-					this.ctx.shadowOffsetY =
-						(ruleOfThree(this.playerResY, this.canvas.height) * tweaks.shadow) / 100
-				}
-				if (typeof tweaks.fontDescriptor !== 'undefined') {
-					this.ctx.font = ` ${tweaks.fontDescriptor.bold ? 'bold' : ''} ${
-						tweaks.fontDescriptor.italic ? 'italic' : ''
-					}  ${tweaks.fontDescriptor.fontsize}px ${tweaks.fontDescriptor.fontname}`
-				}
-				if (typeof tweaks.alignment !== 'undefined') {
-					textAlign = this.getAlignment(tweaks.alignment) as CanvasTextAlign
-					textBaseline = this.getBaseLine(tweaks.alignment as number) as CanvasTextBaseline
-				}
-
-				if (tweaks.animations.length > 0) {
-					// console.debug("tweaks.animations", tweaks.animations)
-				}
-
-				if (typeof tweaks.position !== 'undefined') {
-					this.drawTextAtPosition(text, tweaks.position, textAlign, textBaseline, false)
-					alreadyDrawn = true
-				}
-			}
-
-			if (!alreadyDrawn) {
-				this.drawText(
-					text,
-					textAlign,
-					textBaseline,
-					marginL,
-					marginV,
-					marginR,
-					textsInline,
-					index,
-					false
-				)
-			}
-
-			this.previousTextWidth += this.ctx.measureText(text).width
-			// if text ends with a \N, we need to reset the baseline
-			if (text.endsWith('\\N')) {
-				console.debug("This text end with a '\\n' ===>", text)
-				this.startBaseline = 0
-				this.previousTextWidth = 0
-				this.previousTextPos.x = 0
-				this.previousTextPos.y += fontDescriptor.fontsize
-			} else if (index === textsInline.length - 1) {
-				this.previousTextPos.x += this.ctx.measureText(text).width
-				console.debug('This is the last text ===>', text)
-				this.startBaseline = 0
-				this.previousTextWidth = 0
-				this.previousTextPos.x = 0
-				this.previousTextPos.y = 0
-			}
-			if (textsInline.length > 1 && index === 0) {
-				this.startBaseline = this.ctx.measureText(text).actualBoundingBoxAscent
-				// console.debug("startBaseline", startBaseline)
-			}
+	flatTags(tags: Tag[]) {
+		let flatTags: Tag = {}
+		tags.forEach((tag) => {
+			flatTags = { ...flatTags, ...tag }
 		})
+		return flatTags
 	}
 
 	teawksDrawSettings(
@@ -250,9 +146,7 @@ export class Renderer {
 		if (tagsParsed) {
 			tagsCombined = tagsParsedAll as Tag
 		} else {
-			tags.forEach((tag) => {
-				tagsCombined = { ...tagsCombined, ...tag }
-			})
+			tagsCombined = this.flatTags(tags)
 		}
 		// console.debug("tagsCombined", tagsCombined)
 		const primaryColor =
@@ -391,27 +285,67 @@ export class Renderer {
 		} as Tweaks
 	}
 
-	drawText(
-		text: string,
-		textAlign: CanvasTextAlign,
-		textBaseline: CanvasTextBaseline,
+	makeLines(strArr: string[]) {
+		/*
+		`[ "On a notre nouvelle reine\\Ndes ", "scream queens", "." ]` -> `["On a notre nouvelle reine", "des scream queens."]`
+		`[ "Bunch of ", "losers", "." ]` -> `["Bunch of losers."]`
+		`[ "Bunch of ", "losers", "\\Nand ", "nerds", "." ]` ->  `["Bunch of losers", "and nerds."]`
+		*/
+		let result = [];
+		let line = "";
+		for (let i = 0; i < strArr.length; i++) {
+			line += strArr[i];
+			if (strArr[i]?.includes("\\N")) {
+				let split = strArr[i]?.split("\\N") as string[];
+				line = line.replace("\\N" + split[1], "");
+				result.push(line);
+				line = split[1] as string;
+			}
+		}
+		result.push(line);
+		return result;
+	}
+
+	drawTextV2(
+		parsed: ParsedASSEventTextParsed[],
 		marginL: number,
 		marginV: number,
 		marginR: number,
-		parsedBatch: string[],
-		parsedBatchIdx: number,
+		fontDescriptor: FontDescriptor,
 		debugLines: boolean = false
 	) {
-		let lines = text.split('\\N')
-		let lineHeights = lines.map(
-			(line) =>
-				this.ctx.measureText(line).actualBoundingBoxAscent +
-				this.ctx.measureText(line).actualBoundingBoxDescent
+		// This is an attempt to fix the issue with the text being drawn at the wrong position
+		// And maybe also making tweaks easier to implement
+		// I take the parsed text and draw it line by line, keeping track of the position of the last word
+		// If the next word is a line break, I use the position of the last word to calculate the position of the line break
+		// This is not perfect, but it's better than before
+		let parses = parsed.map((line) => line.text)
+		let tweaks = this.teawksDrawSettings(parsed[0]?.tags ?? [], fontDescriptor)
+		let checkpos = this.applyTweaks(tweaks)
+		if (checkpos.positionChanged) {
+			this.drawTextAtPositionV2(
+				parsed,
+				checkpos.position as [number, number],
+				fontDescriptor,
+				false,
+			)
+			return
+		}
+		let lineHeights = parses.map(
+			(parses) =>
+				this.ctx.measureText(parses).actualBoundingBoxAscent +
+				this.ctx.measureText(parses).actualBoundingBoxDescent
 		)
 		let lineHeight = Math.max(...lineHeights)
-		let totalHeight = lineHeight * lines.length
+		let totalHeight = lineHeight * parses.length
+		let previousTextWidth = 0
+		let previousTextPos = { x: 0, y: 0 }
+		let currentLine = 0
+		
+		let lines = this.makeLines(parses)
+
 		let y = 0
-		switch (textBaseline) {
+		switch (this.textBaseline) {
 			case 'top':
 				y = marginV + lineHeight
 				// if (lines.length > 1) { y -= totalHeight / lines.length; }
@@ -421,172 +355,295 @@ export class Renderer {
 				break
 			case 'bottom':
 				y = this.canvas.height - marginV
-				if (lines.length === 1) {
+				if (parses.length === 1) {
 					y -= lineHeight
-				} else {
-					y -= totalHeight / lines.length
 				}
 				break
 			default:
 				y = marginV + lineHeight
 				break
 		}
-
-		if (this.previousTextPos.y > 0) {
-			y = this.previousTextPos.y
-		}
-		lines.forEach((line, index) => {
-			let lineWidth = this.ctx.measureText(line).width
+		// console.debug('parses', parses)
+		// console.debug('lines', lines)
+		parses.forEach((parse, index) => {
+			let tag = this.flatTags(parsed[index]?.tags ?? [])
+			// console.debug('tag', tag)
+			let tweaks = this.teawksDrawSettings(parsed[index]?.tags ?? [], fontDescriptor)
+			this.applyTweaks(tweaks)
+			let lineWidth = this.ctx.measureText(lines[currentLine] as string).width
 			let x = 0
-			switch (textAlign) {
+			switch (this.textAlign) {
 				case 'left':
-					x = marginL
+					x = marginL + previousTextWidth
 					break
 				case 'center':
-					x = (this.canvas.width - lineWidth) / 2
+					x = (this.canvas.width - lineWidth) / 2 + previousTextWidth
 					break
 				case 'right':
-					x = this.canvas.width - marginR - lineWidth
+					x = this.canvas.width - marginR - lineWidth + previousTextWidth
 					break
 				default:
-					x = marginL
+					x = marginL + previousTextWidth
 					break
 			}
-			if (this.previousTextPos.x > 0) {
-				x = this.previousTextPos.x
-			}
-			// need to reserve space for the following words or not
-			if (parsedBatchIdx < parsedBatch.length - 1 && index === lines.length - 1) {
-				let nextWordsWidth = 0
-				for (let i = parsedBatchIdx + 1; i < parsedBatch.length; i++) {
-					if (parsedBatch[i] === '\\N') {
-						break
-					}
-					nextWordsWidth += this.ctx.measureText(parsedBatch[i] as string).width
+			let parsedBatch = parsed[index]?.text.split(' ') ?? []
+			// if in the parsed batch there is a word that is an empty string, remove it
+			parsedBatch = parsedBatch.filter((word) => word !== '')
+			let parsedBatchWithLineBreaks: string[] = []
+			for (let i = 0; i < parsedBatch.length; i++) {
+				let split = parsedBatch[i]?.split('\\N') ?? []
+				if (split?.length === 1) {
+					parsedBatchWithLineBreaks.push(parsedBatch[i] as string)
+				} else {
+					split.forEach((word, idx) => {
+						parsedBatchWithLineBreaks.push(word)
+						if (idx < split.length - 1) {
+							parsedBatchWithLineBreaks.push('\\N')
+						}
+					})
 				}
-				// console.debug("next word", parsedBatch[parsedBatchIdx + 1], nextWordsWidth)
-				x -= nextWordsWidth / 2
-				let currentWordsWidth = this.ctx.measureText(line).width
-				// console.debug("current word", `"${line}"`)
-				this.previousTextWidth += currentWordsWidth
-				this.previousTextPos.x = x + currentWordsWidth
-				this.previousTextPos.y = y
 			}
-			if (this.ctx.lineWidth > 0) {
-				this.ctx.strokeText(line, x, y)
-			}
-			if (debugLines) {
-				let previousLineWidth = this.ctx.lineWidth
-				let previousStrokeStyle = this.ctx.strokeStyle
-				this.ctx.strokeStyle = 'red'
-				this.ctx.lineWidth = 2
-				let xpos = x
-				let ypos = y
-				ypos -= lineHeights[index] as number
-				this.ctx.strokeRect(xpos, ypos, lineWidth, lineHeights[index] as number)
-				this.ctx.lineWidth = previousLineWidth
-				this.ctx.strokeStyle = previousStrokeStyle
-			}
-			this.ctx.fillText(line, x, y)
-			y += lineHeight
-		})
+			parsedBatch = parsedBatchWithLineBreaks
+			// console.debug("parsedBatch", parsedBatch)
+			let currentWordsWidth = 0
+			
+			parsedBatch.forEach((word, index) => {
+				let wordWidth = this.ctx.measureText(word).width
+				if (word === '\\N') {
+					currentLine++
+					y += lineHeight
+					previousTextWidth = 0
+					previousTextPos = { x: 0, y: 0 }
+					currentWordsWidth = 0
+					lineWidth = this.ctx.measureText(lines[currentLine] as string).width
+					switch (this.textAlign) {
+						case 'left':
+							x = marginL
+							break
+						case 'center':
+							x = (this.canvas.width - lineWidth) / 2
+							break
+						case 'right':
+							x = this.canvas.width - marginR - lineWidth
+							break
+						default:
+							x = marginL
+					}
+				} else {
+					if (index === 0) {
+						previousTextPos = { x, y }
+					}
 
-		this.ctx.lineWidth = 0
+					if (this.ctx.lineWidth > 0) {
+						this.ctx.strokeText(word, x + currentWordsWidth, y)
+					}
+
+					this.ctx.fillText(word, x + currentWordsWidth, y)
+					currentWordsWidth += wordWidth + this.ctx.measureText(' ').width
+					previousTextWidth += wordWidth + this.ctx.measureText(' ').width
+				}
+			})
+		})
 	}
 
-	drawTextAtPosition(
-		text: string,
+	drawTextAtPositionV2(
+		parsed: ParsedASSEventTextParsed[],
 		position: [number, number],
-		textAlign: CanvasTextAlign,
-		textBaseline: CanvasTextBaseline,
+		fontDescriptor: FontDescriptor,
 		debugLines: boolean = false
 	) {
-		let lines = text.split('\\N')
-		console.debug('lines', lines, text)
-		let lineHeights = lines.map(
+		let tweaks = this.teawksDrawSettings(parsed[0]?.tags ?? [], fontDescriptor)
+		this.applyTweaks(tweaks)
+		let parses = parsed.map((line) => line.text)
+		let lineHeights = parses.map(
 			(line) =>
 				this.ctx.measureText(line).actualBoundingBoxAscent +
 				this.ctx.measureText(line).actualBoundingBoxDescent
 		)
 		let lineHeight = Math.max(...lineHeights)
-		let totalHeight = lineHeight * lines.length
-		let y = 0
-		switch (textBaseline) {
+		let totalHeight = lineHeight * parses.length
+		let y = position[1]
+		switch (this.textBaseline) {
 			case 'top':
-				y = position[1] + lineHeight
-				if (lines.length > 1) {
-					y -= totalHeight / lines.length
+				y += lineHeight
+				if (parses.length > 1) {
+					y -= totalHeight / parses.length
 				}
 				break
 			case 'middle':
-				y = position[1] - totalHeight / 2 + lineHeight
+				y += lineHeight / 2
+				if (parses.length > 1) {
+					y -= totalHeight / parses.length / 2
+				}
 				break
 			case 'bottom':
-				y = position[1] - lineHeight
+				y -= lineHeight
 				break
 			default:
-				y = position[1] + lineHeight
+				y += lineHeight
+				if (parses.length > 1) {
+					y -= totalHeight / parses.length
+				}
 				break
 		}
-
-		if (this.previousTextPos.y > 0) {
-			y += this.previousTextPos.y
-		}
-
-		lines.forEach((line) => {
-			let lineWidth = this.ctx.measureText(line).width
+		let previousTextWidth = 0
+		let previousTextPos = { x: 0, y: 0 }
+		let currentLine = 0
+		let lines = this.makeLines(parses)
+		
+		parses.forEach((parse, index) => {
+			let tag = this.flatTags(parsed[index]?.tags ?? [])
+			// console.debug('tag', tag)
+			let tweaks = this.teawksDrawSettings(parsed[index]?.tags ?? [], fontDescriptor)
+			this.applyTweaks(tweaks)
+			let lineWidth = this.ctx.measureText(lines[currentLine] as string).width
 			let x = 0
-			switch (textAlign) {
+			switch (this.textAlign) {
 				case 'left':
-					x = position[0]
+					x = position[0] + previousTextWidth
 					break
 				case 'center':
-					x = position[0] - lineWidth / 2
+					x = position[0] - lineWidth / 2 + previousTextWidth
 					break
 				case 'right':
-					x = position[0] - lineWidth
+					x = position[0] - lineWidth + previousTextWidth
 					break
 				default:
-					x = position[0]
+					x = position[0] + previousTextWidth
 					break
 			}
 
-			if (this.previousTextPos.x > 0) {
-				x = this.previousTextPos.x
-			}
-
-			const lineBaseline = this.ctx.measureText(line).actualBoundingBoxAscent
-			if (this.ctx.lineWidth > 0) {
-				// console.debug("strokeText", lineWidth);
-				if (this.startBaseline > 0) {
-					this.ctx.strokeText(line, x, y + (this.startBaseline - lineBaseline))
+			let parsedBatch = parsed[index]?.text.split(' ') ?? []
+			// if in the parsed batch there is a word that is an empty string, it will change to a space
+			// because of the split, so I need to change it back
+			for (let i = 0; i < parsedBatch.length; i++) {if (parsedBatch[i] === '') { parsedBatch[i] = ' ' }}
+			// [ "Sûrement", "à", "cause", "des", "nombreux", "accidents\\Nde", "l’année", "précédente." ]
+			// [ "Sûrement", "à", "cause", "des", "nombreux", "accidents", "\\N" "de", "l’année", "précédente." ]
+			// The problem is that the line break is not a word, so it's not in the parsed batch
+			// I go through the parsed batch and create a new one with the line breaks
+			let parsedBatchWithLineBreaks: string[] = []
+			for (let i = 0; i < parsedBatch.length; i++) {
+				let split = parsedBatch[i]?.split('\\N') ?? []
+				if (split?.length === 1) {
+					parsedBatchWithLineBreaks.push(parsedBatch[i] as string)
 				} else {
-					this.ctx.strokeText(line, x, y)
+					split.forEach((word, idx) => {
+						parsedBatchWithLineBreaks.push(word)
+						if (idx < split.length - 1) {
+							parsedBatchWithLineBreaks.push('\\N')
+						}
+					})
 				}
 			}
-			if (this.startBaseline > 0) {
-				this.ctx.fillText(line, x, y + (this.startBaseline - lineBaseline))
-			} else {
-				this.ctx.fillText(line, x, y)
-			}
-			if (debugLines) {
-				let previousLineWidth = this.ctx.lineWidth
-				let previousStrokeStyle = this.ctx.strokeStyle
-				this.ctx.strokeStyle = 'red'
-				this.ctx.lineWidth = 2
-				let xpos = x
-				let ypos = y
-				ypos -= lineBaseline
-				this.ctx.strokeRect(xpos, ypos, lineWidth, lineHeights[0] as number)
-				this.ctx.lineWidth = previousLineWidth
-				this.ctx.strokeStyle = previousStrokeStyle
-			}
-			// TODO: add line spacing
-			y += lineHeight + this.ctx.lineWidth
+			parsedBatch = parsedBatchWithLineBreaks
+			// console.debug("parsedBatch", parsedBatch)
+			let currentWordsWidth = 0
+
+			parsedBatch.forEach((word, index) => {
+				let wordWidth = this.ctx.measureText(word).width
+				if (word === '\\N') {
+					currentLine++
+					y += lineHeight
+					previousTextWidth = 0
+					previousTextPos = { x: 0, y: 0 }
+					currentWordsWidth = 0
+					lineWidth = this.ctx.measureText(lines[currentLine] as string).width
+					console.debug('line', lines[currentLine])
+					switch (this.textAlign) {
+						case 'left':
+							x = position[0]
+							break
+						case 'center':
+							x = position[0] - lineWidth / 2
+							break
+						case 'right':
+							x = position[0] - lineWidth
+							break
+						default:
+							x = position[0]
+					}
+				} else {
+					if (index === 0) {
+						previousTextPos = { x, y }
+					}
+
+					if (this.ctx.lineWidth > 0) {
+						this.ctx.strokeText(word, x + currentWordsWidth, y)
+					}
+
+					this.ctx.fillText(word, x + currentWordsWidth, y)
+					currentWordsWidth += wordWidth + this.ctx.measureText(' ').width
+					previousTextWidth += wordWidth + this.ctx.measureText(' ').width
+				}
+			})
 		})
 
-		this.ctx.lineWidth = 0
 	}
+
+	applyTweaks(tweaks: Tweaks) {
+		if (!tweaks.tweaked) {
+			console.debug('no tweaks')
+			return {
+				positionChanged: false,
+				position: [0, 0],
+			}
+		} else {
+			// console.debug('tweaks', tweaks)
+			if (typeof tweaks.primaryColor === 'string') {
+				this.ctx.fillStyle = tweaks.primaryColor
+			}
+			if (typeof tweaks.secondaryColor === 'string') {
+				this.ctx.strokeStyle = tweaks.secondaryColor
+			}
+			if (typeof tweaks.outlineColor === 'string') {
+				this.ctx.strokeStyle = tweaks.outlineColor
+			}
+			if (typeof tweaks.shadowColor === 'string') {
+				this.ctx.shadowColor = tweaks.shadowColor
+			}
+			if (typeof tweaks.outline === 'number') {
+				if (tweaks.outline > 0) {
+					this.ctx.lineWidth = 
+						((ruleOfThree(this.playerResX, this.canvas.width) * tweaks.outline) / 100) * 2
+				} else {
+					this.ctx.strokeStyle = 'transparent'
+				}
+			}
+			if (typeof tweaks.shadow === 'number') {
+				if (tweaks.shadow > 0) {
+					this.ctx.shadowBlur = 
+						(ruleOfThree(this.playerResX, this.canvas.width) * tweaks.shadow) / 100
+				} else {
+					this.ctx.shadowBlur = 0
+				}
+
+				this.ctx.shadowOffsetX =
+					(ruleOfThree(this.playerResX, this.canvas.width) * tweaks.shadow) / 100
+				this.ctx.shadowOffsetY =
+					(ruleOfThree(this.playerResX, this.canvas.width) * tweaks.shadow) / 100
+			}
+			if (typeof tweaks.fontDescriptor !== 'undefined') {
+				this.ctx.font = ` ${tweaks.fontDescriptor.bold ? 'bold' : ''} ${
+					tweaks.fontDescriptor.italic ? 'italic' : ''
+				}  ${tweaks.fontDescriptor.fontsize}px ${tweaks.fontDescriptor.fontname}`
+			}
+			if (typeof tweaks.alignment !== 'undefined') {
+				this.textAlign = this.getAlignment(tweaks.alignment) as CanvasTextAlign
+				this.textBaseline = this.getBaseLine(tweaks.alignment as number) as CanvasTextBaseline
+			}
+			if (typeof tweaks.position !== 'undefined') {
+				return {
+					positionChanged: true,
+					position: tweaks.position
+				}
+			}
+		}
+
+		return {
+			positionChanged: false,
+			position: [0, 0],
+		}
+	}		
 
 	getAlignment(alignment: number) {
 		// 1 = (bottom) left
