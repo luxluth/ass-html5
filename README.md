@@ -40,7 +40,7 @@ pnpm add ass-html5
 
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/ass-html5/dist/ass.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/ass-html5@0.2.5/dist/ass.min.js"></script>
 ```
 
 ```html
