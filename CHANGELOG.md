@@ -1,5 +1,11 @@
 # ass-html5
 
+## 0.2.5
+
+### Patch Changes
+
+- 5e1cb30: v0.2.5
+
 ## 0.2.4
 
 ### Patch Changes
