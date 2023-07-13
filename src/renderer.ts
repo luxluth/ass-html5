@@ -548,7 +548,7 @@ export class Renderer {
 					previousTextPos = { x: 0, y: 0 }
 					currentWordsWidth = 0
 					lineWidth = this.ctx.measureText(lines[currentLine] as string).width
-					console.debug('line', lines[currentLine])
+					// console.debug('line', lines[currentLine])
 					switch (this.textAlign) {
 						case 'left':
 							x = position[0]
@@ -582,7 +582,7 @@ export class Renderer {
 
 	applyTweaks(tweaks: Tweaks) {
 		if (!tweaks.tweaked) {
-			console.debug('no tweaks')
+			// console.debug('no tweaks')
 			return {
 				positionChanged: false,
 				position: [0, 0],
