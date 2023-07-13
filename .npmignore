@@ -8,3 +8,4 @@ src
 .prettierignore
 .prettierrc
 README.md
+rollup.config.js

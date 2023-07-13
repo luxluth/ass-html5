@@ -1,16 +1,17 @@
 {
 	"name": "ass-html5",
-	"version": "0.2.4",
+	"version": "0.2.3",
 	"description": "Display ASS/SSA subtitles on html5 videos",
-	"main": "dist/index.js",
-	"module": "dist/index.mjs",
+	"main": "dist/index.cjs",
+	"module": "dist/index.js",
 	"types": "dist/index.d.ts",
 	"browser": "dist/ass.min.js",
+	"type": "module",
 	"scripts": {
 		"build": "pnpm run build:normal && pnpm run build:minify",
-		"build:normal": "tsup src/index.ts --format esm,cjs",
-		"build:minify": "tsup src/index.ts --format iife",
-		"dev": "tsup src/index.ts --format esm,cjs --watch",
+		"build:normal": "tsup",
+		"build:minify": "rollup -c",
+		"dev": "tsup --watch",
 		"release": "pnpm run build && changeset publish",
 		"lint": "tsc",
 		"format": "prettier --write ."
@@ -34,10 +35,16 @@
 	"homepage": "https://github.com/luxluth/ass-html5#readme",
 	"devDependencies": {
 		"@changesets/cli": "^2.26.2",
+		"@rollup/plugin-commonjs": "^25.0.2",
+		"@rollup/plugin-node-resolve": "^15.1.0",
+		"@rollup/plugin-terser": "^0.4.3",
+		"@rollup/plugin-typescript": "^11.1.2",
 		"@types/node": "^20.4.1",
 		"ass-compiler": "^0.1.8",
 		"prettier": "^3.0.0",
+		"rollup": "^3.26.2",
 		"terser": "^5.18.2",
+		"tslib": "^2.6.0",
 		"tsup": "^7.1.0",
 		"typescript": "^5.1.6"
 	}

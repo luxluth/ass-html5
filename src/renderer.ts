@@ -1,7 +1,6 @@
 import type { ParsedASS, ParsedASSEventText, ParsedASSEventTextParsed } from 'ass-compiler'
 import { SingleStyle, FontDescriptor, Tag, ASSAnimation, Shift, Tweaks } from './types'
 import { ruleOfThree, convertAegisubToRGBA, insertTags } from './utils'
-import { parse } from 'path'
 
 export class Renderer {
 	parsedAss: ParsedASS
@@ -11,8 +10,8 @@ export class Renderer {
 	playerResX: number
 	playerResY: number
 	styles: SingleStyle[]
-	textAlign: CanvasTextAlign = "start"
-	textBaseline: CanvasTextBaseline = "alphabetic"
+	textAlign: CanvasTextAlign = 'start'
+	textBaseline: CanvasTextBaseline = 'alphabetic'
 
 	previousTextWidth = 0
 	previousTextPos = { x: 0, y: 0 }
@@ -114,15 +113,7 @@ export class Renderer {
 		this.ctx.shadowOffsetY =
 			(ruleOfThree(this.playerResY, this.canvas.height) * parseFloat(style.Shadow)) / 100
 
-		this.drawTextV2(
-			Text.parsed, 
-			marginL, 
-			marginV, 
-			marginR,
-			fontDescriptor,
-			true,
-		)
-	
+		this.drawTextV2(Text.parsed, marginL, marginV, marginR, fontDescriptor, true)
 	}
 
 	flatTags(tags: Tag[]) {
@@ -291,19 +282,19 @@ export class Renderer {
 		`[ "Bunch of ", "losers", "." ]` -> `["Bunch of losers."]`
 		`[ "Bunch of ", "losers", "\\Nand ", "nerds", "." ]` ->  `["Bunch of losers", "and nerds."]`
 		*/
-		let result = [];
-		let line = "";
+		let result = []
+		let line = ''
 		for (let i = 0; i < strArr.length; i++) {
-			line += strArr[i];
-			if (strArr[i]?.includes("\\N")) {
-				let split = strArr[i]?.split("\\N") as string[];
-				line = line.replace("\\N" + split[1], "");
-				result.push(line);
-				line = split[1] as string;
+			line += strArr[i]
+			if (strArr[i]?.includes('\\N')) {
+				let split = strArr[i]?.split('\\N') as string[]
+				line = line.replace('\\N' + split[1], '')
+				result.push(line)
+				line = split[1] as string
 			}
 		}
-		result.push(line);
-		return result;
+		result.push(line)
+		return result
 	}
 
 	drawTextV2(
@@ -327,7 +318,7 @@ export class Renderer {
 				parsed,
 				checkpos.position as [number, number],
 				fontDescriptor,
-				false,
+				false
 			)
 			return
 		}
@@ -341,7 +332,7 @@ export class Renderer {
 		let previousTextWidth = 0
 		let previousTextPos = { x: 0, y: 0 }
 		let currentLine = 0
-		
+
 		let lines = this.makeLines(parses)
 
 		let y = 0
@@ -406,7 +397,7 @@ export class Renderer {
 			parsedBatch = parsedBatchWithLineBreaks
 			// console.debug("parsedBatch", parsedBatch)
 			let currentWordsWidth = 0
-			
+
 			parsedBatch.forEach((word, index) => {
 				let wordWidth = this.ctx.measureText(word).width
 				if (word === '\\N') {
@@ -490,7 +481,7 @@ export class Renderer {
 		let previousTextPos = { x: 0, y: 0 }
 		let currentLine = 0
 		let lines = this.makeLines(parses)
-		
+
 		parses.forEach((parse, index) => {
 			let tag = this.flatTags(parsed[index]?.tags ?? [])
 			// console.debug('tag', tag)
@@ -516,7 +507,11 @@ export class Renderer {
 			let parsedBatch = parsed[index]?.text.split(' ') ?? []
 			// if in the parsed batch there is a word that is an empty string, it will change to a space
 			// because of the split, so I need to change it back
-			for (let i = 0; i < parsedBatch.length; i++) {if (parsedBatch[i] === '') { parsedBatch[i] = ' ' }}
+			for (let i = 0; i < parsedBatch.length; i++) {
+				if (parsedBatch[i] === '') {
+					parsedBatch[i] = ' '
+				}
+			}
 			// [ "Sûrement", "à", "cause", "des", "nombreux", "accidents\\Nde", "l’année", "précédente." ]
 			// [ "Sûrement", "à", "cause", "des", "nombreux", "accidents", "\\N" "de", "l’année", "précédente." ]
 			// The problem is that the line break is not a word, so it's not in the parsed batch
@@ -577,7 +572,6 @@ export class Renderer {
 				}
 			})
 		})
-
 	}
 
 	applyTweaks(tweaks: Tweaks) {
@@ -585,7 +579,7 @@ export class Renderer {
 			// console.debug('no tweaks')
 			return {
 				positionChanged: false,
-				position: [0, 0],
+				position: [0, 0]
 			}
 		} else {
 			// console.debug('tweaks', tweaks)
@@ -603,7 +597,7 @@ export class Renderer {
 			}
 			if (typeof tweaks.outline === 'number') {
 				if (tweaks.outline > 0) {
-					this.ctx.lineWidth = 
+					this.ctx.lineWidth =
 						((ruleOfThree(this.playerResX, this.canvas.width) * tweaks.outline) / 100) * 2
 				} else {
 					this.ctx.strokeStyle = 'transparent'
@@ -611,7 +605,7 @@ export class Renderer {
 			}
 			if (typeof tweaks.shadow === 'number') {
 				if (tweaks.shadow > 0) {
-					this.ctx.shadowBlur = 
+					this.ctx.shadowBlur =
 						(ruleOfThree(this.playerResX, this.canvas.width) * tweaks.shadow) / 100
 				} else {
 					this.ctx.shadowBlur = 0
@@ -641,9 +635,9 @@ export class Renderer {
 
 		return {
 			positionChanged: false,
-			position: [0, 0],
+			position: [0, 0]
 		}
-	}		
+	}
 
 	getAlignment(alignment: number) {
 		// 1 = (bottom) left

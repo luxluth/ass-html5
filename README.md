@@ -19,8 +19,9 @@ Display ASS/SSA subtitles on html5 videos
 - [ass-html5](#ass-html5)
   - [Table of Contents](#table-of-contents)
   - [Installation](#installation)
-  - [Example](#example)
-    - [svelte and plry](#svelte-and-plry)
+  - [Usage](#usage)
+    - [Simple HTML](#simple-html)
+    - [Svelte and Plry](#svelte-and-plry)
 
 ## Installation
 
@@ -28,9 +29,40 @@ Display ASS/SSA subtitles on html5 videos
 pnpm add ass-html5
 ```
 
-## Example
+## Usage
 
-### [svelte](https://svelte.dev/) and [plry](https://github.com/sampotts/plyr)
+### Simple HTML
+
+> Note that with the simple `video` tag element, on fullscreen mode, the position of the video is absoluty on top of any element.
+> No other element can go on top of it.
+> 
+> It's therefore recommanded to use a third party player rather than the native one. You can see an example with [plry](https://github.com/sampotts/plyr) [here](#svelte-and-plry).
+
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/ass-html5/dist/ass.min.js"></script>
+```
+
+```html
+<video src="/assets/video.mp4" id="video" controls></video>
+```
+
+```html
+<script>
+    document.addEventListener('DOMContentLoaded', async () => {
+        let res = await fetch('/assets/video.ass')
+        let assSubs = await res.text()
+
+        const ass = new ASS({
+            assText: assSubs,
+            video: document.getElementById("video") 
+        })
+        ass.init()
+    })
+</script>
+```
+
+### [Svelte](https://github.com/sveltejs/svelte) and [Plry](https://github.com/sampotts/plyr)
 
 ```svelte
 <script lang="ts">
