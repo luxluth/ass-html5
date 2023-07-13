@@ -4,6 +4,12 @@
 
 ### Patch Changes
 
+- 6dfddb2: Build for Web
+
+## 0.2.4
+
+### Patch Changes
+
 - a2719bb: Bug fixes in styled multilines (New way to draw text)
 
 ## 0.2.3
