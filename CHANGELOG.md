@@ -1,5 +1,11 @@
 # ass-html5
 
+## 0.2.6
+
+### Patch Changes
+
+- ea26665: Fix empty lines drawing
+
 ## 0.2.5
 
 ### Patch Changes

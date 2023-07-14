@@ -1,6 +1,6 @@
 {
 	"name": "ass-html5",
-	"version": "0.2.5",
+	"version": "0.2.6",
 	"description": "Display ASS/SSA subtitles on html5 videos",
 	"main": "dist/index.cjs",
 	"module": "dist/index.js",
