@@ -20,12 +20,81 @@ export function convertAegisubToRGBA(aegisubColor: string, tags?: Tag, defaultAl
 }
 
 export function changeAlpha(color: string, alpha: number) {
-	return color.replace(/rgba\((\d+), (\d+), (\d+), (\d+)\)/, `rgba($1, $2, $3, ${alpha})`)
+	if (color.startsWith('rgba')) {
+		return color.replace(/rgba\((\d+), (\d+), (\d+), (\d+)\)/, `rgba($1, $2, $3, ${alpha})`)
+	} else {
+		// hexToRgba
+		const rgba = hexToRgba(color)
+		return rgba.replace(/rgba\((\d+), (\d+), (\d+), (\d+)\)/, `rgba($1, $2, $3, ${alpha})`)
+	}
 }
 
 export function getAlphaFromColor(color: string) {
-	const alpha = color.replace(/rgba\((\d+), (\d+), (\d+), (\d+)\)/, '$4')
-	return parseFloat(alpha)
+	if (color.startsWith('rgba')) {
+		const alpha = color.replace(/rgba\((\d+), (\d+), (\d+), (\d+)\)/, '$4')
+		// console.debug(color, "getAlphaFromColor", "rgba")
+		return parseFloat(alpha)
+	} else {
+		// hexToRgba
+		const rgba = hexToRgba(color)
+		// console.debug(rgba, "getAlphaFromColor", "hex")
+		return parseFloat(rgba.replace(/rgba\((\d+), (\d+), (\d+), (\d+)\)/, '$4'))
+	}
+}
+
+export function rgbaToHex(rgba: string) {
+  const components = rgba.match(/\d+/g) as string[]; // Extract numeric values from RGBA string
+  let red = parseInt(components[0] as string);
+  let green = parseInt(components[1] as string);
+  let blue = parseInt(components[2] as string);
+  let alpha = parseFloat(components[3] as string);
+
+  let redHex = red.toString(16).padStart(2, '0');
+  let greenHex = green.toString(16).padStart(2, '0');
+  let blueHex = blue.toString(16).padStart(2, '0');
+
+  let rgbHex = '#' + redHex + greenHex + blueHex;
+
+  if (alpha !== 1) {
+    let alphaHex = Math.round(alpha * 255).toString(16).padStart(2, '0');
+    return rgbHex + alphaHex;
+  }
+
+  return rgbHex;
+}
+
+
+export function hexToRgba(hex: string) {
+  const hexValue = hex.replace('#', ''); // Remove '#' if present
+  const isShortHex = (hexValue.length === 3 || hexValue.length === 4);
+
+  let redHex, greenHex, blueHex, alphaHex;
+  if (isShortHex) {
+    redHex = (hexValue[0] as string) + (hexValue[0] as string);
+    greenHex = (hexValue[1] as string) + (hexValue[1] as string);
+    blueHex = (hexValue[2] as string) + (hexValue[2] as string);
+    if (hexValue.length === 4) {
+      alphaHex = (hexValue[3] as string) + (hexValue[3] as string);
+    } else {
+      alphaHex = 'FF'; // Default alpha value if not provided
+    }
+  } else {
+    redHex = hexValue.substring(0, 2);
+    greenHex = hexValue.substring(2, 4);
+    blueHex = hexValue.substring(4, 6);
+    if (hexValue.length === 8) {
+      alphaHex = hexValue.substring(6, 8);
+    } else {
+      alphaHex = 'FF'; // Default alpha value if not provided
+    }
+  }
+
+  const red = parseInt(redHex, 16);
+  const green = parseInt(greenHex, 16);
+  const blue = parseInt(blueHex, 16);
+  const alpha = parseInt(alphaHex, 16) / 255;
+
+  return 'rgba(' + red + ', ' + green + ', ' + blue + ', ' + alpha + ')';
 }
 
 export function insertTags(tags: Tag[], tag: Tag) {

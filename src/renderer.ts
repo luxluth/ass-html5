@@ -54,6 +54,13 @@ export class Renderer {
 		this.video.addEventListener('timeupdate', () => {
 			this.diplay(this.video.currentTime)
 		})
+
+		this.video.addEventListener('pause', () => {
+			this.animator.removeAllAnimations()
+		})
+		this.video.addEventListener('seeked', () => {
+			this.animator.removeAllAnimations()
+		})
 	}
 
 	destroy() {
@@ -73,7 +80,6 @@ export class Renderer {
 
 		// Clear the canvas
 		this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
-
 		overlappingDialoguesEvents.forEach((event) => {
 			// console.debug(event)
 			const { Style, Text, MarginL, MarginR, MarginV, Start, End } = event
@@ -85,8 +91,9 @@ export class Renderer {
 			this.showText(Text, style, { marginL: MarginL, marginR: MarginR, marginV: MarginV })
 		})
 	}
-
+	
 	showText(Text: ParsedASSEventText, style: SingleStyle, shift: Shift) {
+		this.ctx.globalAlpha = 1
 		this.currentHash = hashString(JSON.stringify(Text))
 		// console.debug("hash", JSON.stringify(this.currentHash))
 		let fontDescriptor = this.getFontDescriptor(style) // FontDescriptor
@@ -203,7 +210,7 @@ export class Renderer {
 
 		// Animation
 		let animations: ASSAnimation.Animation[] = []
-		const MoveAnimation = typeof tagsCombined.move !== 'undefined' ? tagsCombined.move : undefined
+		const MoveAnimation = typeof tagsCombined.move !== 'undefined' ? this.upsacaleMove(tagsCombined.move) : undefined
 		const simpleFadeAnimation =
 			typeof tagsCombined.fad !== 'undefined' ? tagsCombined.fad : undefined
 		const complexFadeAnimation =
@@ -290,6 +297,21 @@ export class Renderer {
 		} as Tweaks
 	}
 
+	upsacaleMove(moveAnimation: [number, number, number, number] | [number, number, number, number, number, number]): [number, number, number, number] | [number, number, number, number, number, number] {
+		// if (this.playerResX === this.canvas.width && this.playerResY === this.canvas.height) return moveAnimation
+		const [startX, startY, endX, endY, t1, t2] = moveAnimation
+		const newStartX = ruleOfThree(this.playerResX, this.canvas.width) * startX / 100
+		const newStartY = ruleOfThree(this.playerResY, this.canvas.height) * startY	/ 100
+		const newEndX = ruleOfThree(this.playerResX, this.canvas.width) * endX / 100
+		const newEndY = ruleOfThree(this.playerResY, this.canvas.height) * endY / 100
+
+		if (typeof t1 === 'undefined') {
+			return [newStartX, newStartY, newEndX, newEndY]
+		} else {
+			return [newStartX, newStartY, newEndX, newEndY, (t1 as number), (t2 as number)]
+		}
+	}
+
 	makeLines(strArr: string[]) {
 		/*
 		`[ "On a notre nouvelle reine\\Ndes ", "scream queens", "." ]` -> `["On a notre nouvelle reine", "des scream queens."]`
@@ -345,14 +367,14 @@ export class Renderer {
 		let parses = parsed.map((line) => line.text)
 		let tweaks = this.teawksDrawSettings(parsed[0]?.tags ?? [], fontDescriptor)
 		this.applyTweaks(tweaks)
-		// if (this.tweaksAppliedResult.animation.length > 0) {
-		// 	this.animator.requestAnimation(
-		// 		this.tweaksAppliedResult.animation,
-		// 		this.currentHash,
-		// 		this.timeRange,
-		// 		tweaks
-		// 	)
-		// }
+		if (this.tweaksAppliedResult.animation.length > 0) {
+			this.animator.requestAnimation(
+				this.tweaksAppliedResult.animation,
+				this.currentHash,
+				this.timeRange,
+				tweaks
+			)
+		}
 		if (this.tweaksAppliedResult.positionChanged) {
 			this.drawTextAtPositionV2(
 				parsed,
@@ -398,8 +420,9 @@ export class Renderer {
 		parses.forEach((parse, index) => {
 			let tag = this.flatTags(parsed[index]?.tags ?? [])
 			// console.debug('tag', tag)
-			let tweaks = this.teawksDrawSettings(parsed[index]?.tags ?? [], fontDescriptor)
-			this.applyTweaks(tweaks)
+			// FIXME: tweaks interop the animation
+			// let tweaks = this.teawksDrawSettings(parsed[index]?.tags ?? [], fontDescriptor)
+			// this.applyTweaks(tweaks)
 			let lineWidth = this.ctx.measureText(lines[currentLine] as string).width
 			let x = 0
 			switch (this.textAlign) {
@@ -616,14 +639,14 @@ export class Renderer {
 	}
 
 	applyTweaks(tweaks: Tweaks) {
-		let animation: ASSAnimation.Animation[] = []
+		let animations: ASSAnimation.Animation[] = []
 		let positionChanged = false
 		if (!tweaks.tweaked) {
 			// console.debug('no tweaks')
 			this.tweaksAppliedResult = {
 				positionChanged: false,
 				position: [0, 0],
-				animation: animation,
+				animation: animations,
 			}
 		} else {
 			// console.debug('tweaks', tweaks)
@@ -631,9 +654,9 @@ export class Renderer {
 				this.ctx.fillStyle = tweaks.primaryColor
 			}
 			
-			if (typeof tweaks.secondaryColor === 'string') {
-				this.ctx.strokeStyle = tweaks.secondaryColor
-			}
+			// if (typeof tweaks.secondaryColor === 'string') {
+			// 	this.ctx.strokeStyle = tweaks.secondaryColor
+			// }
 			
 			if (typeof tweaks.outlineColor === 'string') {
 				this.ctx.strokeStyle = tweaks.outlineColor
@@ -678,24 +701,37 @@ export class Renderer {
 			}
 
 			if (tweaks.animations.length > 0) {
-				animation = tweaks.animations
-				// console.log('animation', animation)
+				animations = tweaks.animations
+				animations.forEach((animation) => {
+					if (animation.name == "move") {
+						let x = animation.values[0]
+						let y = animation.values[1]
+						this.tweaksAppliedResult = {
+							positionChanged: true,
+							position: [x, y],
+							animation: animations,
+						}
+						positionChanged = true
+						console.debug('position', `${this.tweaksAppliedResult.position}`)
+					}
+				})
 			}
 
 			if (typeof tweaks.position !== 'undefined') {
 				this.tweaksAppliedResult = {
 					positionChanged: true,
 					position: tweaks.position,
-					animation: animation,
+					animation: animations,
 				}
 				positionChanged = true
+				console.debug('position', `${this.tweaksAppliedResult.position}`)
 			}
 		}
 		if (!positionChanged) {
 			this.tweaksAppliedResult = {
 				positionChanged: false,
 				position: [0, 0],
-				animation: animation,
+				animation: animations,
 			}
 		}
 	}
