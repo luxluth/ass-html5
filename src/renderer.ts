@@ -281,6 +281,9 @@ export class Renderer {
 		`[ "On a notre nouvelle reine\\Ndes ", "scream queens", "." ]` -> `["On a notre nouvelle reine", "des scream queens."]`
 		`[ "Bunch of ", "losers", "." ]` -> `["Bunch of losers."]`
 		`[ "Bunch of ", "losers", "\\Nand ", "nerds", "." ]` ->  `["Bunch of losers", "and nerds."]`
+		A special case is when after the first parse we have a line that ends with \N, in that case we remove the \N and add an empty string to the result array
+		[ "ÉPISODE", "25", "\\N", "\\N", "TRÉSOR", "CACHÉ" ] -> [ "ÉPISODE 25\\N", "TRÉSOR CACHÉ" ] -> [ "ÉPISODE 25", "", "TRÉSOR CACHÉ" ]
+		(empty line is added to the result array)
 		*/
 		let result = []
 		let line = ''
@@ -294,7 +297,21 @@ export class Renderer {
 			}
 		}
 		result.push(line)
-		return result
+
+		let newRes = [] as string[]
+		for (let i = 0; i < result.length; i++) {
+			if (result[i]?.endsWith('\\N')) {
+				let count = (result[i]?.match(/\\N/g) || []).length
+				newRes.push(result[i]?.replace('\\N', '') as string)
+				for (let j = 0; j < count; j++) {
+					newRes.push('')
+				}
+			} else {
+				newRes.push(result[i] as string)
+			}
+		}
+		
+		return newRes
 	}
 
 	drawTextV2(
@@ -305,6 +322,7 @@ export class Renderer {
 		fontDescriptor: FontDescriptor,
 		debugLines: boolean = false
 	) {
+		// console.debug('drawTextV2', parsed)
 		// This is an attempt to fix the issue with the text being drawn at the wrong position
 		// And maybe also making tweaks easier to implement
 		// I take the parsed text and draw it line by line, keeping track of the position of the last word
@@ -334,7 +352,7 @@ export class Renderer {
 		let currentLine = 0
 
 		let lines = this.makeLines(parses)
-
+		// console.debug('lines', lines)
 		let y = 0
 		switch (this.textBaseline) {
 			case 'top':
@@ -394,6 +412,8 @@ export class Renderer {
 					})
 				}
 			}
+			// remove empty strings
+			parsedBatchWithLineBreaks = parsedBatchWithLineBreaks.filter((word) => word !== '')
 			parsedBatch = parsedBatchWithLineBreaks
 			// console.debug("parsedBatch", parsedBatch)
 			let currentWordsWidth = 0
