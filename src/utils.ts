@@ -33,10 +33,6 @@ export function insertTags(tags: Tag[], tag: Tag) {
 		// if the tag is already present, it will be overwritten
 		tag = { ...tag, ...singleTag }
 	})
-	// console.debug('insertTags -------------------')
-	// console.debug(`Tags: ${JSON.stringify(tags)}`);
-	// console.debug(`Result: ${JSON.stringify(tag)}`)
-	// console.debug('-------------------');
 	return tag
 }
 
@@ -65,6 +61,27 @@ export function genRandomString(ln: number) {
 	return randomString
 }
 
+export function randomId(parts: number, separator='-', prefix='', ln= 10) {
+	const partsArray = []
+	for (let i = 0; i < parts; i++) {
+		partsArray.push(genRandomString(ln))
+	}
+	return prefix + partsArray.join(separator)
+}
+
+export function hashString(str: string) {
+	let hash = 0
+	if (str.length == 0) {
+		return hash
+	}
+	for (let i = 0; i < str.length; i++) {
+		const char = str.charCodeAt(i)
+		hash = (hash << 5) - hash + char
+		hash = hash & hash // Convert to 32bit integer
+	}
+	return hash
+}
+
 export function newCanvas(
 	top: number,
 	left: number,
@@ -74,7 +91,7 @@ export function newCanvas(
 	zIndex?: number
 ) {
 	const canvas = document.createElement('canvas')
-	canvas.id = 'ASSRendererCanvas-' + genRandomString(10)
+	canvas.id = randomId(2, '-', 'ASSRendererCanvas-', 5)
 	canvas.style.position = 'absolute'
 	canvas.style.width = width + 'px'
 	canvas.style.height = height + 'px'

@@ -1,21 +1,35 @@
 import type { ParsedASS, ParsedASSEventText, ParsedASSEventTextParsed } from 'ass-compiler'
-import { SingleStyle, FontDescriptor, Tag, ASSAnimation, Shift, Tweaks } from './types'
-import { ruleOfThree, convertAegisubToRGBA, insertTags } from './utils'
+import { SingleStyle, FontDescriptor, Tag, ASSAnimation, Shift, Tweaks, TimeRange } from './types'
+import { ruleOfThree, convertAegisubToRGBA, hashString } from './utils'
+import { Animate } from './animate'
 
 export class Renderer {
 	parsedAss: ParsedASS
 	canvas: HTMLCanvasElement
 	ctx: CanvasRenderingContext2D
 	video: HTMLVideoElement
+	animator: Animate
 	playerResX: number
 	playerResY: number
 	styles: SingleStyle[]
+
 	textAlign: CanvasTextAlign = 'start'
 	textBaseline: CanvasTextBaseline = 'alphabetic'
+	tweaksAppliedResult = {
+		positionChanged: false,
+		position: [0, 0],
+		animation: [] as ASSAnimation.Animation[],	
+	}
 
 	previousTextWidth = 0
 	previousTextPos = { x: 0, y: 0 }
 	startBaseline = 0
+	timeRange = {
+		start: 0,
+		end: 0
+	} as TimeRange
+	currentHash  = 0
+
 	constructor(parsedASS: ParsedASS, canvas: HTMLCanvasElement, video: HTMLVideoElement) {
 		this.parsedAss = parsedASS
 		this.playerResX = parseFloat(this.parsedAss.info.PlayResX)
@@ -27,6 +41,7 @@ export class Renderer {
 		if (this.ctx === null) {
 			throw new Error('Unable to initilize the Canvas 2D context')
 		}
+		this.animator = new Animate(this)
 		// let data = [
 		//     {parsedAss : this.parsedAss},
 		//     {canvas : this.canvas},
@@ -61,20 +76,19 @@ export class Renderer {
 
 		overlappingDialoguesEvents.forEach((event) => {
 			// console.debug(event)
-			const { Style, Text, MarginL, MarginR, MarginV } = event
+			const { Style, Text, MarginL, MarginR, MarginV, Start, End } = event
 			const style = this.getStyle(Style)
 			if (style === undefined) {
 				return
 			}
+			this.timeRange = { start: Start, end: End }
 			this.showText(Text, style, { marginL: MarginL, marginR: MarginR, marginV: MarginV })
 		})
 	}
 
 	showText(Text: ParsedASSEventText, style: SingleStyle, shift: Shift) {
-		const textsInline = Text.parsed.map((textEvent) => textEvent.text)
-		// console.debug(textsInline.join(''))
-		let pos = [0, 0] as [number, number]
-
+		this.currentHash = hashString(JSON.stringify(Text))
+		// console.debug("hash", JSON.stringify(this.currentHash))
 		let fontDescriptor = this.getFontDescriptor(style) // FontDescriptor
 		let c1 = convertAegisubToRGBA(style.PrimaryColour) // primary color
 		// let c2 = convertAegisubToRGBA(style.SecondaryColour, tags) // secondary color
@@ -204,7 +218,7 @@ export class Renderer {
 				  } as ASSAnimation.Fade)
 				: typeof complexFadeAnimation !== 'undefined'
 				? ({
-						name: 'fad',
+						name: 'fade',
 						values: complexFadeAnimation
 				  } as ASSAnimation.Fade)
 				: undefined
@@ -279,8 +293,8 @@ export class Renderer {
 	makeLines(strArr: string[]) {
 		/*
 		`[ "On a notre nouvelle reine\\Ndes ", "scream queens", "." ]` -> `["On a notre nouvelle reine", "des scream queens."]`
-		`[ "Bunch of ", "losers", "." ]` -> `["Bunch of losers."]`
-		`[ "Bunch of ", "losers", "\\Nand ", "nerds", "." ]` ->  `["Bunch of losers", "and nerds."]`
+		`[ "Bunch of ", "winners", "." ]` -> `["Bunch of winners."]`
+		`[ "Bunch of ", "coders", "\\Nand ", "nerds", "." ]` ->  `["Bunch of coders", "and nerds."]`
 		A special case is when after the first parse we have a line that ends with \N, in that case we remove the \N and add an empty string to the result array
 		[ "ÉPISODE", "25", "\\N", "\\N", "TRÉSOR", "CACHÉ" ] -> [ "ÉPISODE 25\\N", "TRÉSOR CACHÉ" ] -> [ "ÉPISODE 25", "", "TRÉSOR CACHÉ" ]
 		(empty line is added to the result array)
@@ -330,11 +344,18 @@ export class Renderer {
 		// This is not perfect, but it's better than before
 		let parses = parsed.map((line) => line.text)
 		let tweaks = this.teawksDrawSettings(parsed[0]?.tags ?? [], fontDescriptor)
-		let checkpos = this.applyTweaks(tweaks)
-		if (checkpos.positionChanged) {
+		this.applyTweaks(tweaks)
+		// if (this.tweaksAppliedResult.animation.length > 0) {
+		// 	this.animator.requestAnimation(
+		// 		this.tweaksAppliedResult.animation,
+		// 		this.currentHash,
+		// 		this.timeRange,
+		// 		tweaks
+		// 	)
+		// }
+		if (this.tweaksAppliedResult.positionChanged) {
 			this.drawTextAtPositionV2(
 				parsed,
-				checkpos.position as [number, number],
 				fontDescriptor,
 				false
 			)
@@ -459,12 +480,11 @@ export class Renderer {
 
 	drawTextAtPositionV2(
 		parsed: ParsedASSEventTextParsed[],
-		position: [number, number],
 		fontDescriptor: FontDescriptor,
 		debugLines: boolean = false
 	) {
-		let tweaks = this.teawksDrawSettings(parsed[0]?.tags ?? [], fontDescriptor)
-		this.applyTweaks(tweaks)
+		// let tweaks = this.teawksDrawSettings(parsed[0]?.tags ?? [], fontDescriptor)
+		// this.applyTweaks(tweaks)
 		let parses = parsed.map((line) => line.text)
 		let lineHeights = parses.map(
 			(line) =>
@@ -473,7 +493,7 @@ export class Renderer {
 		)
 		let lineHeight = Math.max(...lineHeights)
 		let totalHeight = lineHeight * parses.length
-		let y = position[1]
+		let y = this.tweaksAppliedResult.position[1] as number
 		switch (this.textBaseline) {
 			case 'top':
 				y += lineHeight
@@ -508,19 +528,19 @@ export class Renderer {
 			let tweaks = this.teawksDrawSettings(parsed[index]?.tags ?? [], fontDescriptor)
 			this.applyTweaks(tweaks)
 			let lineWidth = this.ctx.measureText(lines[currentLine] as string).width
-			let x = 0
+			let x = this.tweaksAppliedResult.position[0] as number
 			switch (this.textAlign) {
 				case 'left':
-					x = position[0] + previousTextWidth
+					x += previousTextWidth
 					break
 				case 'center':
-					x = position[0] - lineWidth / 2 + previousTextWidth
+					x -= lineWidth / 2 + previousTextWidth
 					break
 				case 'right':
-					x = position[0] - lineWidth + previousTextWidth
+					x -= lineWidth + previousTextWidth
 					break
 				default:
-					x = position[0] + previousTextWidth
+					x += previousTextWidth
 					break
 			}
 
@@ -564,18 +584,19 @@ export class Renderer {
 					currentWordsWidth = 0
 					lineWidth = this.ctx.measureText(lines[currentLine] as string).width
 					// console.debug('line', lines[currentLine])
+					let xpos = this.tweaksAppliedResult.position[0] as number
 					switch (this.textAlign) {
 						case 'left':
-							x = position[0]
+							x = xpos
 							break
 						case 'center':
-							x = position[0] - lineWidth / 2
+							x = xpos - lineWidth / 2
 							break
 						case 'right':
-							x = position[0] - lineWidth
+							x = xpos - lineWidth
 							break
 						default:
-							x = position[0]
+							x = xpos
 					}
 				} else {
 					if (index === 0) {
@@ -595,26 +616,33 @@ export class Renderer {
 	}
 
 	applyTweaks(tweaks: Tweaks) {
+		let animation: ASSAnimation.Animation[] = []
+		let positionChanged = false
 		if (!tweaks.tweaked) {
 			// console.debug('no tweaks')
-			return {
+			this.tweaksAppliedResult = {
 				positionChanged: false,
-				position: [0, 0]
+				position: [0, 0],
+				animation: animation,
 			}
 		} else {
 			// console.debug('tweaks', tweaks)
 			if (typeof tweaks.primaryColor === 'string') {
 				this.ctx.fillStyle = tweaks.primaryColor
 			}
+			
 			if (typeof tweaks.secondaryColor === 'string') {
 				this.ctx.strokeStyle = tweaks.secondaryColor
 			}
+			
 			if (typeof tweaks.outlineColor === 'string') {
 				this.ctx.strokeStyle = tweaks.outlineColor
 			}
+			
 			if (typeof tweaks.shadowColor === 'string') {
 				this.ctx.shadowColor = tweaks.shadowColor
 			}
+			
 			if (typeof tweaks.outline === 'number') {
 				if (tweaks.outline > 0) {
 					this.ctx.lineWidth =
@@ -623,6 +651,7 @@ export class Renderer {
 					this.ctx.strokeStyle = 'transparent'
 				}
 			}
+			
 			if (typeof tweaks.shadow === 'number') {
 				if (tweaks.shadow > 0) {
 					this.ctx.shadowBlur =
@@ -636,26 +665,38 @@ export class Renderer {
 				this.ctx.shadowOffsetY =
 					(ruleOfThree(this.playerResX, this.canvas.width) * tweaks.shadow) / 100
 			}
+			
 			if (typeof tweaks.fontDescriptor !== 'undefined') {
 				this.ctx.font = ` ${tweaks.fontDescriptor.bold ? 'bold' : ''} ${
 					tweaks.fontDescriptor.italic ? 'italic' : ''
 				}  ${tweaks.fontDescriptor.fontsize}px ${tweaks.fontDescriptor.fontname}`
 			}
+
 			if (typeof tweaks.alignment !== 'undefined') {
 				this.textAlign = this.getAlignment(tweaks.alignment) as CanvasTextAlign
 				this.textBaseline = this.getBaseLine(tweaks.alignment as number) as CanvasTextBaseline
 			}
+
+			if (tweaks.animations.length > 0) {
+				animation = tweaks.animations
+				// console.log('animation', animation)
+			}
+
 			if (typeof tweaks.position !== 'undefined') {
-				return {
+				this.tweaksAppliedResult = {
 					positionChanged: true,
-					position: tweaks.position
+					position: tweaks.position,
+					animation: animation,
 				}
+				positionChanged = true
 			}
 		}
-
-		return {
-			positionChanged: false,
-			position: [0, 0]
+		if (!positionChanged) {
+			this.tweaksAppliedResult = {
+				positionChanged: false,
+				position: [0, 0],
+				animation: animation,
+			}
 		}
 	}
 
