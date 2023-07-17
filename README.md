@@ -154,7 +154,7 @@ In the `script` tag :
         
         var player = videojs('my-video');
         
-        player.ready(function () {
+        player.ready(() => {
             // Get the video element from the player
             var videoElement = player.el().getElementsByTagName("video")[0];
             const ass = new ASS({
