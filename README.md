@@ -22,6 +22,7 @@ Display ASS/SSA subtitles on html5 videos
   - [Usage](#usage)
     - [Simple HTML](#simple-html)
     - [Svelte and Plry](#svelte-and-plry)
+    - [videojs](#videojs)
 
 ## Installation
 
@@ -116,4 +117,53 @@ pnpm add ass-html5
         bind:this={vidElement}
     ></video>
 </div>
+```
+
+### [videojs](https://github.com/videojs/video.js)
+
+In the `head` : 
+```html
+<script src="https://cdn.jsdelivr.net/npm/ass-html5@0.2.5/dist/ass.min.js" defer></script>
+<script src="https://vjs.zencdn.net/8.3.0/video.min.js" defer></script>
+<link href="https://vjs.zencdn.net/8.3.0/video-js.css" rel="stylesheet" />
+```
+
+In the `body` :
+
+```html
+<video
+    id="my-video"
+    class="video-js"
+    controls
+    preload="auto"
+    width="1280"
+    height="720"
+    data-setup="{}"
+>
+    <source src="assets/video.mp4" type="video/mp4">
+</video>
+
+```
+
+In the `script` tag : 
+```html
+<script>
+    document.addEventListener('DOMContentLoaded', async () => {
+        let res = await fetch('/assets/video.ass')
+        let assSubs = await res.text()
+        
+        var player = videojs('my-video');
+        
+        player.ready(function () {
+            // Get the video element from the player
+            var videoElement = player.el().getElementsByTagName("video")[0];
+            const ass = new ASS({
+                assText: assSubs,
+                video: videoElement
+            })
+            ass.init()
+        });
+
+    })
+</script>
 ```
