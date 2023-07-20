@@ -297,7 +297,7 @@ export class Renderer {
 		} as Tweaks
 	}
 
-	upsacaleMove(moveAnimation: [number, number, number, number] | [number, number, number, number, number, number]): [number, number, number, number] | [number, number, number, number, number, number] {
+	upsacaleMove(moveAnimation: ASSAnimation.MoveValues): ASSAnimation.MoveValues {
 		// if (this.playerResX === this.canvas.width && this.playerResY === this.canvas.height) return moveAnimation
 		const [startX, startY, endX, endY, t1, t2] = moveAnimation
 		const newStartX = ruleOfThree(this.playerResX, this.canvas.width) * startX / 100
@@ -364,21 +364,25 @@ export class Renderer {
 		// I take the parsed text and draw it line by line, keeping track of the position of the last word
 		// If the next word is a line break, I use the position of the last word to calculate the position of the line break
 		// This is not perfect, but it's better than before
+		let isAnimation = false
 		let parses = parsed.map((line) => line.text)
 		let tweaks = this.teawksDrawSettings(parsed[0]?.tags ?? [], fontDescriptor)
-		this.applyTweaks(tweaks)
-		if (this.tweaksAppliedResult.animation.length > 0) {
-			this.animator.requestAnimation(
+		/* if (this.tweaksAppliedResult.animation.length > 0) {
+			tweaks = this.animator.requestAnimation(
 				this.tweaksAppliedResult.animation,
 				this.currentHash,
 				this.timeRange,
 				tweaks
 			)
-		}
+			isAnimation = true
+		} */
+		this.applyTweaks(tweaks)
 		if (this.tweaksAppliedResult.positionChanged) {
 			this.drawTextAtPositionV2(
 				parsed,
 				fontDescriptor,
+				isAnimation,
+				tweaks,
 				false
 			)
 			return
@@ -417,12 +421,12 @@ export class Renderer {
 		}
 		// console.debug('parses', parses)
 		// console.debug('lines', lines)
-		parses.forEach((parse, index) => {
+		parses.forEach((_, index) => {
 			let tag = this.flatTags(parsed[index]?.tags ?? [])
 			// console.debug('tag', tag)
 			// FIXME: tweaks interop the animation
-			// let tweaks = this.teawksDrawSettings(parsed[index]?.tags ?? [], fontDescriptor)
-			// this.applyTweaks(tweaks)
+			let tweaks = this.teawksDrawSettings(parsed[index]?.tags ?? [], fontDescriptor)
+			this.applyTweaks(tweaks)
 			let lineWidth = this.ctx.measureText(lines[currentLine] as string).width
 			let x = 0
 			switch (this.textAlign) {
@@ -504,10 +508,10 @@ export class Renderer {
 	drawTextAtPositionV2(
 		parsed: ParsedASSEventTextParsed[],
 		fontDescriptor: FontDescriptor,
+		isAnimation: boolean,
+		appliedTweaks: Tweaks,
 		debugLines: boolean = false
 	) {
-		// let tweaks = this.teawksDrawSettings(parsed[0]?.tags ?? [], fontDescriptor)
-		// this.applyTweaks(tweaks)
 		let parses = parsed.map((line) => line.text)
 		let lineHeights = parses.map(
 			(line) =>
@@ -545,10 +549,14 @@ export class Renderer {
 		let currentLine = 0
 		let lines = this.makeLines(parses)
 
-		parses.forEach((parse, index) => {
-			let tag = this.flatTags(parsed[index]?.tags ?? [])
-			// console.debug('tag', tag)
+		parses.forEach((_, index) => {
 			let tweaks = this.teawksDrawSettings(parsed[index]?.tags ?? [], fontDescriptor)
+			if (isAnimation) {
+				tweaks = {
+					...appliedTweaks,
+					...tweaks,
+				}
+			}
 			this.applyTweaks(tweaks)
 			let lineWidth = this.ctx.measureText(lines[currentLine] as string).width
 			let x = this.tweaksAppliedResult.position[0] as number
@@ -724,7 +732,7 @@ export class Renderer {
 					animation: animations,
 				}
 				positionChanged = true
-				console.debug('position', `${this.tweaksAppliedResult.position}`)
+				// console.debug('position', `${this.tweaksAppliedResult.position}`)
 			}
 		}
 		if (!positionChanged) {

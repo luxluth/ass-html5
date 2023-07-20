@@ -22,6 +22,10 @@ export class Animate {
 			this.animations.push({hash, animations, hasEnded: false, timeRange, tweaks, isPlaying: false})
 			this.animate()
 			console.debug(`Requested animation ${hash} for ${timeRange.start} to ${timeRange.end} seconds\n`, animations)
+			return tweaks
+		} else {
+			console.warn(`Animation ${hash} already exists`)
+			return this.animations.find(animationObject => animationObject.hash === hash)?.tweaks as Tweaks
 		}
 	}
 
@@ -36,7 +40,7 @@ export class Animate {
 			window.cancelAnimationFrame(animation.handle as number)
 		})
 		this.animations = []
-		console.debug('Removed all animations')
+        // console.debug('Removed all animations')
 	}
 
 	animate() {
@@ -70,14 +74,17 @@ export class Animate {
 				case 'move': 
 					if (typeof t1 === 'number' && typeof t2 === 'number') {
 						// \move(<x1>,<y1>,<x2>,<y2>,<t1>,<t2>)
-						const progressInAnimation = (progress - start) / (end - start)
+						// const progressInAnimation = (progress - start) / (end - start)
 						const progressInMove = (progress - t1) / (t2 - t1)
 						const x = x1 + ((x2 as number) - x1) * progressInMove
 						const y = y1 + ((y2 as number) - y1) * progressInMove
 						animationObj.tweaks.position = [x, y]	
 					} else {
 						// \move(<x1>,<y1>,<x2>,<y2>)
-						animationObj.tweaks.position = [x1, y1]
+						const progressInAnimation = (progress - start) / (end - start)
+						const x = x1 + ((x2 as number) - x1) * progressInAnimation
+						const y = y1 + ((y2 as number) - y1) * progressInAnimation
+						animationObj.tweaks.position = [x, y]
 					}
 					// move progress
 					console.debug(`move progress: ${animationObj.tweaks.position}`)

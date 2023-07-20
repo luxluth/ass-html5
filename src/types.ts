@@ -69,13 +69,15 @@ export declare namespace ASSAnimation {
 		 */
 		values: [number, number] | [number, number, number, number, number, number]
 	}
+
+    export type MoveValues = [number, number, number, number] | [number, number, number, number, number, number]
 	export type Move = {
 		name: 'move'
 		/**
 		 * The values of the move animation
 		 * `\move(<x1>,<y1>,<x2>,<y2>)` or `\move(<x1>,<y1>,<x2>,<y2>,<t1>,<t2>)`
 		 */
-		values: [number, number, number, number] | [number, number, number, number, number, number]
+		values: MoveValues
 	}
 
 	export type Org = {
@@ -92,19 +94,19 @@ export declare namespace ASSAnimation {
 
 export type Tweaks = {
 	tweaked: boolean
-	primaryColor: string | undefined
-	secondaryColor: string | undefined
-	outlineColor: string | undefined
-	shadowColor: string | undefined
-	scaleX: number | undefined
-	scaleY: number | undefined
-	spacing: number | undefined
-	angle: number | undefined
-	borderStyle: number | undefined
-	outline: number | undefined
-	shadow: number | undefined
-	alignment: number | undefined
-	position: [number, number] | undefined
+	primaryColor?: string
+	secondaryColor?: string
+	outlineColor?: string
+	shadowColor?: string
+	scaleX?: number
+	scaleY?: number
+	spacing?: number
+	angle?: number
+	borderStyle?: number // 1: outline, 3: opaque box ?
+	outline?: number
+	shadow?: number
+	alignment?: number
+	position?: [number, number]
 	fontDescriptor: FontDescriptor
 	custompositioning: boolean
 	animations: ASSAnimation.Animation[]
