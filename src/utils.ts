@@ -183,3 +183,70 @@ export function newCanvas(
 	}
 	return canvas
 }
+
+export function makeLines(strArr: string[]) {
+	/*
+	`[ "On a notre nouvelle reine\\Ndes ", "scream queens", "." ]` -> `["On a notre nouvelle reine", "des scream queens."]`
+	`[ "Bunch of ", "winners", "." ]` -> `["Bunch of winners."]`
+	`[ "Bunch of ", "coders", "\\Nand ", "nerds", "." ]` ->  `["Bunch of coders", "and nerds."]`
+	A special case is when after the first parse we have a line that ends with \N, in that case we remove the \N and add an empty string to the result array
+	[ "ÉPISODE", "25", "\\N", "\\N", "TRÉSOR", "CACHÉ" ] -> [ "ÉPISODE 25\\N", "TRÉSOR CACHÉ" ] -> [ "ÉPISODE 25", "", "TRÉSOR CACHÉ" ]
+	(empty line is added to the result array)
+	*/
+	let result = []
+	let line = ''
+	for (let i = 0; i < strArr.length; i++) {
+		line += strArr[i]
+		if (strArr[i]?.includes('\\N')) {
+			let split = strArr[i]?.split('\\N') as string[]
+			line = line.replace('\\N' + split[1], '')
+			result.push(line)
+			line = split[1] as string
+		}
+	}
+	result.push(line)
+
+	let newRes = [] as string[]
+	for (let i = 0; i < result.length; i++) {
+		if (result[i]?.endsWith('\\N')) {
+			let count = (result[i]?.match(/\\N/g) || []).length
+			newRes.push(result[i]?.replace('\\N', '') as string)
+			for (let j = 0; j < count; j++) {
+				newRes.push('')
+			}
+		} else {
+			newRes.push(result[i] as string)
+		}
+	}
+	
+	return newRes
+}
+
+export function splitTextOnTheNextCharacter(text: string) {
+	// Hello world -> [ "Hello ", "world" ]
+	// Hello world! -> [ "Hello ", "world!" ]
+
+	let result = [] as string[]
+	let line = ''
+	let spaceEncountered = false
+    let wordEncountered = false
+	for (let i = 0; i < text.length; i++) {
+        if (text[i] === ' ') {
+            spaceEncountered = true
+            wordEncountered = false
+		} else {
+            wordEncountered = true
+        }
+		if (spaceEncountered && wordEncountered) {
+			result.push(line)
+			line = ''
+			spaceEncountered = false
+		}
+        line += text[i]
+	}
+
+    if (line.length > 0) {
+        result.push(line)
+    }
+    return result
+}

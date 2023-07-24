@@ -1,6 +1,6 @@
 import type { ParsedASS, ParsedASSEventText, ParsedASSEventTextParsed } from 'ass-compiler'
 import { SingleStyle, FontDescriptor, Tag, ASSAnimation, Shift, Tweaks, TimeRange } from './types'
-import { ruleOfThree, convertAegisubToRGBA, hashString } from './utils'
+import { ruleOfThree, convertAegisubToRGBA, hashString, makeLines, splitTextOnTheNextCharacter } from './utils'
 import { Animate } from './animate'
 
 export class Renderer {
@@ -177,10 +177,38 @@ export class Renderer {
 			typeof tagsCombined.c4 !== 'undefined'
 				? convertAegisubToRGBA('00' + tagsCombined.c4, tagsCombined)
 				: undefined
-		const bold = typeof tagsCombined.b !== 'undefined' ? true : undefined
-		const italic = typeof tagsCombined.i !== 'undefined' ? true : undefined
-		const underline = typeof tagsCombined.u !== 'undefined' ? true : undefined
-		const strikeOut = typeof tagsCombined.s !== 'undefined' ? true : undefined
+		let bold = false
+		if (typeof tagsCombined.b !== 'undefined') {
+			if (tagsCombined.b === 1) {
+				bold = true
+			} else if (tagsCombined.b === 0) {
+				bold = false
+			}
+		}
+		let italic = false
+		if (typeof tagsCombined.i !== 'undefined') {
+			if (tagsCombined.i === 1) {
+				italic = true
+			} else if (tagsCombined.i === 0) {
+				italic = false
+			}
+		}
+		let underline = false
+		if (typeof tagsCombined.u !== 'undefined') {
+			if (tagsCombined.u === 1) {
+				underline = true
+			} else if (tagsCombined.u === 0) {
+				underline = false
+			}
+		}
+		let strikeOut = false
+		if (typeof tagsCombined.s !== 'undefined') {
+			if (tagsCombined.s === 1) {
+				strikeOut = true
+			} else if (tagsCombined.s === 0) {
+				strikeOut = false
+			}
+		}
 		const scaleX = typeof tagsCombined.xbord !== 'undefined' ? tagsCombined.xbord : undefined
 		const scaleY = typeof tagsCombined.ybord !== 'undefined' ? tagsCombined.ybord : undefined
 		const spacing = typeof tagsCombined.xshad !== 'undefined' ? tagsCombined.xshad : undefined
@@ -312,44 +340,6 @@ export class Renderer {
 		}
 	}
 
-	makeLines(strArr: string[]) {
-		/*
-		`[ "On a notre nouvelle reine\\Ndes ", "scream queens", "." ]` -> `["On a notre nouvelle reine", "des scream queens."]`
-		`[ "Bunch of ", "winners", "." ]` -> `["Bunch of winners."]`
-		`[ "Bunch of ", "coders", "\\Nand ", "nerds", "." ]` ->  `["Bunch of coders", "and nerds."]`
-		A special case is when after the first parse we have a line that ends with \N, in that case we remove the \N and add an empty string to the result array
-		[ "ÉPISODE", "25", "\\N", "\\N", "TRÉSOR", "CACHÉ" ] -> [ "ÉPISODE 25\\N", "TRÉSOR CACHÉ" ] -> [ "ÉPISODE 25", "", "TRÉSOR CACHÉ" ]
-		(empty line is added to the result array)
-		*/
-		let result = []
-		let line = ''
-		for (let i = 0; i < strArr.length; i++) {
-			line += strArr[i]
-			if (strArr[i]?.includes('\\N')) {
-				let split = strArr[i]?.split('\\N') as string[]
-				line = line.replace('\\N' + split[1], '')
-				result.push(line)
-				line = split[1] as string
-			}
-		}
-		result.push(line)
-
-		let newRes = [] as string[]
-		for (let i = 0; i < result.length; i++) {
-			if (result[i]?.endsWith('\\N')) {
-				let count = (result[i]?.match(/\\N/g) || []).length
-				newRes.push(result[i]?.replace('\\N', '') as string)
-				for (let j = 0; j < count; j++) {
-					newRes.push('')
-				}
-			} else {
-				newRes.push(result[i] as string)
-			}
-		}
-		
-		return newRes
-	}
-
 	drawTextV2(
 		parsed: ParsedASSEventTextParsed[],
 		marginL: number,
@@ -365,7 +355,6 @@ export class Renderer {
 		// If the next word is a line break, I use the position of the last word to calculate the position of the line break
 		// This is not perfect, but it's better than before
 		let isAnimation = false
-		let parses = parsed.map((line) => line.text)
 		let tweaks = this.teawksDrawSettings(parsed[0]?.tags ?? [], fontDescriptor)
 		/* if (this.tweaksAppliedResult.animation.length > 0) {
 			tweaks = this.animator.requestAnimation(
@@ -383,42 +372,41 @@ export class Renderer {
 				fontDescriptor,
 				isAnimation,
 				tweaks,
-				false
+				true
 			)
 			return
 		}
-		let lineHeights = parses.map(
-			(parses) =>
-				this.ctx.measureText(parses).actualBoundingBoxAscent +
-				this.ctx.measureText(parses).actualBoundingBoxDescent
+		let parses = parsed.map((line) => line.text)
+		let lines = makeLines(parses)
+		let lineHeights = lines.map(
+			(line) =>
+				this.ctx.measureText(line).actualBoundingBoxAscent +
+				this.ctx.measureText(line).actualBoundingBoxDescent
 		)
+		// console.debug('lineHeights', lineHeights)
 		let lineHeight = Math.max(...lineHeights)
-		let totalHeight = lineHeight * parses.length
+		let totalHeight = lineHeight * lines.length
+		// console.debug('totalHeight', totalHeight)
 		let previousTextWidth = 0
-		let previousTextPos = { x: 0, y: 0 }
 		let currentLine = 0
 
-		let lines = this.makeLines(parses)
 		// console.debug('lines', lines)
 		let y = 0
 		switch (this.textBaseline) {
 			case 'top':
-				y = marginV + lineHeight
-				// if (lines.length > 1) { y -= totalHeight / lines.length; }
+				y = marginV + (lines.length > 1 ? totalHeight / lines.length : lineHeight)
 				break
 			case 'middle':
 				y = (this.canvas.height - totalHeight) / 2 + lineHeight
 				break
 			case 'bottom':
-				y = this.canvas.height - marginV
-				if (parses.length === 1) {
-					y -= lineHeight
-				}
+				y = this.canvas.height - marginV - (lines.length > 1 ? totalHeight / lines.length : 0)
 				break
 			default:
 				y = marginV + lineHeight
 				break
 		}
+		// console.debug('start-y', y)
 		// console.debug('parses', parses)
 		// console.debug('lines', lines)
 		parses.forEach((_, index) => {
@@ -443,7 +431,7 @@ export class Renderer {
 					x = marginL + previousTextWidth
 					break
 			}
-			let parsedBatch = parsed[index]?.text.split(' ') ?? []
+			let parsedBatch = splitTextOnTheNextCharacter(parsed[index]?.text ?? '')
 			// if in the parsed batch there is a word that is an empty string, remove it
 			parsedBatch = parsedBatch.filter((word) => word !== '')
 			let parsedBatchWithLineBreaks: string[] = []
@@ -466,13 +454,17 @@ export class Renderer {
 			// console.debug("parsedBatch", parsedBatch)
 			let currentWordsWidth = 0
 
-			parsedBatch.forEach((word, index) => {
+			parsedBatch.forEach((word, _) => {
 				let wordWidth = this.ctx.measureText(word).width
+				// console.debug('word', `"${word}"`)
+				// console.debug('wordWidth', wordWidth)
+				// console.debug('line', `"${lines[currentLine]}"`)
 				if (word === '\\N') {
+					// console.debug('y', y)
 					currentLine++
 					y += lineHeight
+					// console.debug('next-y', y)
 					previousTextWidth = 0
-					previousTextPos = { x: 0, y: 0 }
 					currentWordsWidth = 0
 					lineWidth = this.ctx.measureText(lines[currentLine] as string).width
 					switch (this.textAlign) {
@@ -489,17 +481,14 @@ export class Renderer {
 							x = marginL
 					}
 				} else {
-					if (index === 0) {
-						previousTextPos = { x, y }
-					}
 
 					if (this.ctx.lineWidth > 0) {
 						this.ctx.strokeText(word, x + currentWordsWidth, y)
 					}
 
 					this.ctx.fillText(word, x + currentWordsWidth, y)
-					currentWordsWidth += wordWidth + this.ctx.measureText(' ').width
-					previousTextWidth += wordWidth + this.ctx.measureText(' ').width
+					currentWordsWidth += wordWidth
+					previousTextWidth += wordWidth
 				}
 			})
 		})
@@ -513,80 +502,62 @@ export class Renderer {
 		debugLines: boolean = false
 	) {
 		let parses = parsed.map((line) => line.text)
-		let lineHeights = parses.map(
+		let lines = makeLines(parses)
+		console.debug('lines', lines)
+		let lineHeights = lines.map(
 			(line) =>
 				this.ctx.measureText(line).actualBoundingBoxAscent +
 				this.ctx.measureText(line).actualBoundingBoxDescent
 		)
 		let lineHeight = Math.max(...lineHeights)
-		let totalHeight = lineHeight * parses.length
+		let previousTextWidth = 0
+		let currentLine = 0
+		
 		let y = this.tweaksAppliedResult.position[1] as number
+		
 		switch (this.textBaseline) {
 			case 'top':
 				y += lineHeight
-				if (parses.length > 1) {
-					y -= totalHeight / parses.length
-				}
 				break
 			case 'middle':
 				y += lineHeight / 2
-				if (parses.length > 1) {
-					y -= totalHeight / parses.length / 2
-				}
 				break
 			case 'bottom':
 				y -= lineHeight
 				break
 			default:
 				y += lineHeight
-				if (parses.length > 1) {
-					y -= totalHeight / parses.length
-				}
 				break
 		}
-		let previousTextWidth = 0
-		let previousTextPos = { x: 0, y: 0 }
-		let currentLine = 0
-		let lines = this.makeLines(parses)
-
+		
 		parses.forEach((_, index) => {
+			console.log("index", parsed[index])
+			let x = this.tweaksAppliedResult.position[0] as number
+			let tag = this.flatTags(parsed[index]?.tags ?? [])
 			let tweaks = this.teawksDrawSettings(parsed[index]?.tags ?? [], fontDescriptor)
-			if (isAnimation) {
-				tweaks = {
-					...appliedTweaks,
-					...tweaks,
-				}
-			}
 			this.applyTweaks(tweaks)
 			let lineWidth = this.ctx.measureText(lines[currentLine] as string).width
-			let x = this.tweaksAppliedResult.position[0] as number
 			switch (this.textAlign) {
 				case 'left':
 					x += previousTextWidth
+					console.debug("left")
 					break
 				case 'center':
-					x -= lineWidth / 2 + previousTextWidth
+					x -= (lineWidth / 2) + previousTextWidth
+					console.debug("center")
 					break
 				case 'right':
 					x -= lineWidth + previousTextWidth
+					console.debug("right")
 					break
 				default:
 					x += previousTextWidth
+					console.debug("default textAlign")
 					break
 			}
 
-			let parsedBatch = parsed[index]?.text.split(' ') ?? []
-			// if in the parsed batch there is a word that is an empty string, it will change to a space
-			// because of the split, so I need to change it back
-			for (let i = 0; i < parsedBatch.length; i++) {
-				if (parsedBatch[i] === '') {
-					parsedBatch[i] = ' '
-				}
-			}
-			// [ "Sûrement", "à", "cause", "des", "nombreux", "accidents\\Nde", "l’année", "précédente." ]
-			// [ "Sûrement", "à", "cause", "des", "nombreux", "accidents", "\\N" "de", "l’année", "précédente." ]
-			// The problem is that the line break is not a word, so it's not in the parsed batch
-			// I go through the parsed batch and create a new one with the line breaks
+			let parsedBatch = splitTextOnTheNextCharacter(parsed[index]?.text ?? '')
+			parsedBatch = parsedBatch.filter((word) => word !== '')
 			let parsedBatchWithLineBreaks: string[] = []
 			for (let i = 0; i < parsedBatch.length; i++) {
 				let split = parsedBatch[i]?.split('\\N') ?? []
@@ -601,27 +572,28 @@ export class Renderer {
 					})
 				}
 			}
+			// remove empty strings
+			parsedBatchWithLineBreaks = parsedBatchWithLineBreaks.filter((word) => word !== '')
 			parsedBatch = parsedBatchWithLineBreaks
-			// console.debug("parsedBatch", parsedBatch)
-			let currentWordsWidth = 0
+			let currentWordsWidth = 0			
 
-			parsedBatch.forEach((word, index) => {
+
+			const xpos = this.tweaksAppliedResult.position[0] as number
+			parsedBatch.forEach((word, _) => {
+				// console.debug('word', `"${word}"`)
 				let wordWidth = this.ctx.measureText(word).width
 				if (word === '\\N') {
 					currentLine++
 					y += lineHeight
 					previousTextWidth = 0
-					previousTextPos = { x: 0, y: 0 }
 					currentWordsWidth = 0
 					lineWidth = this.ctx.measureText(lines[currentLine] as string).width
-					// console.debug('line', lines[currentLine])
-					let xpos = this.tweaksAppliedResult.position[0] as number
 					switch (this.textAlign) {
 						case 'left':
 							x = xpos
 							break
 						case 'center':
-							x = xpos - lineWidth / 2
+							x = (xpos - lineWidth) / 2
 							break
 						case 'right':
 							x = xpos - lineWidth
@@ -630,17 +602,30 @@ export class Renderer {
 							x = xpos
 					}
 				} else {
-					if (index === 0) {
-						previousTextPos = { x, y }
-					}
-
+					console.log("word", `"${word}"`, "x", x + currentWordsWidth, "y", y, "wordsWidth", currentWordsWidth)
 					if (this.ctx.lineWidth > 0) {
 						this.ctx.strokeText(word, x + currentWordsWidth, y)
 					}
-
 					this.ctx.fillText(word, x + currentWordsWidth, y)
-					currentWordsWidth += wordWidth + this.ctx.measureText(' ').width
-					previousTextWidth += wordWidth + this.ctx.measureText(' ').width
+					currentWordsWidth += wordWidth
+					previousTextWidth += wordWidth
+					if (debugLines) {
+						let lastglobalAlpha = this.ctx.globalAlpha
+						this.ctx.globalAlpha = 1
+						let lastlineWidth = this.ctx.lineWidth
+						this.ctx.lineWidth = 1
+						let laststrokeStyle = this.ctx.strokeStyle
+						this.ctx.strokeStyle = 'red'
+						this.ctx.strokeRect(
+							x + currentWordsWidth - wordWidth,
+							y - lineHeight,
+							wordWidth,
+							lineHeight
+						)
+						this.ctx.lineWidth = lastlineWidth
+						this.ctx.strokeStyle = laststrokeStyle
+						this.ctx.globalAlpha = lastglobalAlpha
+					}
 				}
 			})
 		})
@@ -720,7 +705,7 @@ export class Renderer {
 							animation: animations,
 						}
 						positionChanged = true
-						console.debug('position', `${this.tweaksAppliedResult.position}`)
+						// console.debug('position', `${this.tweaksAppliedResult.position}`)
 					}
 				})
 			}
