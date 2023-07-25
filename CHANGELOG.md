@@ -1,5 +1,11 @@
 # ass-html5
 
+## 0.2.7
+
+### Patch Changes
+
+- 53bbd52: Fix inline texts, correct tweaks tags application to font descriptor + Drawing text at a custom position improved
+
 ## 0.2.6
 
 ### Patch Changes
