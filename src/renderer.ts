@@ -134,7 +134,7 @@ export class Renderer {
 		this.ctx.shadowOffsetY =
 			(ruleOfThree(this.playerResY, this.canvas.height) * parseFloat(style.Shadow)) / 100
 
-		this.drawTextV2(Text.parsed, marginL, marginV, marginR, fontDescriptor, true)
+		this.drawTextV2(Text.parsed, marginL, marginV, marginR, fontDescriptor)
 	}
 
 	flatTags(tags: Tag[]) {
@@ -177,36 +177,32 @@ export class Renderer {
 			typeof tagsCombined.c4 !== 'undefined'
 				? convertAegisubToRGBA('00' + tagsCombined.c4, tagsCombined)
 				: undefined
-		let bold = false
 		if (typeof tagsCombined.b !== 'undefined') {
 			if (tagsCombined.b === 1) {
-				bold = true
+				fontDescriptor.bold = true
 			} else if (tagsCombined.b === 0) {
-				bold = false
+				fontDescriptor.bold = false
 			}
 		}
-		let italic = false
 		if (typeof tagsCombined.i !== 'undefined') {
 			if (tagsCombined.i === 1) {
-				italic = true
+				fontDescriptor.italic = true
 			} else if (tagsCombined.i === 0) {
-				italic = false
+				fontDescriptor.italic = false
 			}
 		}
-		let underline = false
 		if (typeof tagsCombined.u !== 'undefined') {
 			if (tagsCombined.u === 1) {
-				underline = true
+				fontDescriptor.underline = true
 			} else if (tagsCombined.u === 0) {
-				underline = false
+				fontDescriptor.underline = false
 			}
 		}
-		let strikeOut = false
 		if (typeof tagsCombined.s !== 'undefined') {
 			if (tagsCombined.s === 1) {
-				strikeOut = true
+				fontDescriptor.strikeout = true
 			} else if (tagsCombined.s === 0) {
-				strikeOut = false
+				fontDescriptor.strikeout = false
 			}
 		}
 		const scaleX = typeof tagsCombined.xbord !== 'undefined' ? tagsCombined.xbord : undefined
@@ -289,18 +285,6 @@ export class Renderer {
 		if (typeof fontname !== 'undefined') {
 			fontDescriptor.fontname = fontname
 		}
-		if (typeof bold !== 'undefined') {
-			fontDescriptor.bold = bold
-		}
-		if (typeof italic !== 'undefined') {
-			fontDescriptor.italic = italic
-		}
-		if (typeof underline !== 'undefined') {
-			fontDescriptor.underline = underline
-		}
-		if (typeof strikeOut !== 'undefined') {
-			fontDescriptor.strikeout = strikeOut
-		}
 
 		// console.debug("new Font", `${fontDescriptor.bold ? "bold" : ""} ${fontDescriptor.italic ? "italic" : ""}  ${fontDescriptor.fontsize}px ${fontDescriptor.fontname}`)
 
@@ -369,10 +353,10 @@ export class Renderer {
 		if (this.tweaksAppliedResult.positionChanged) {
 			this.drawTextAtPositionV2(
 				parsed,
+				[...this.tweaksAppliedResult.position] as [number, number],
 				fontDescriptor,
 				isAnimation,
 				tweaks,
-				true
 			)
 			return
 		}
@@ -496,6 +480,7 @@ export class Renderer {
 
 	drawTextAtPositionV2(
 		parsed: ParsedASSEventTextParsed[],
+		position: [number, number],
 		fontDescriptor: FontDescriptor,
 		isAnimation: boolean,
 		appliedTweaks: Tweaks,
@@ -503,7 +488,7 @@ export class Renderer {
 	) {
 		let parses = parsed.map((line) => line.text)
 		let lines = makeLines(parses)
-		console.debug('lines', lines)
+		// console.debug('lines', lines)
 		let lineHeights = lines.map(
 			(line) =>
 				this.ctx.measureText(line).actualBoundingBoxAscent +
@@ -513,7 +498,7 @@ export class Renderer {
 		let previousTextWidth = 0
 		let currentLine = 0
 		
-		let y = this.tweaksAppliedResult.position[1] as number
+		let y = position[1] as number
 		
 		switch (this.textBaseline) {
 			case 'top':
@@ -531,28 +516,29 @@ export class Renderer {
 		}
 		
 		parses.forEach((_, index) => {
-			console.log("index", parsed[index])
-			let x = this.tweaksAppliedResult.position[0] as number
+			// console.debug("previousTextWidth", previousTextWidth)
+			// console.debug("index", parsed[index])
+			let x = position[0] as number
 			let tag = this.flatTags(parsed[index]?.tags ?? [])
 			let tweaks = this.teawksDrawSettings(parsed[index]?.tags ?? [], fontDescriptor)
 			this.applyTweaks(tweaks)
 			let lineWidth = this.ctx.measureText(lines[currentLine] as string).width
 			switch (this.textAlign) {
 				case 'left':
+					// console.debug("left", x, previousTextWidth)
 					x += previousTextWidth
-					console.debug("left")
 					break
 				case 'center':
-					x -= (lineWidth / 2) + previousTextWidth
-					console.debug("center")
+					x += previousTextWidth - lineWidth / 2
+					// console.debug("center")
 					break
 				case 'right':
 					x -= lineWidth + previousTextWidth
-					console.debug("right")
+					// console.debug("right")
 					break
 				default:
 					x += previousTextWidth
-					console.debug("default textAlign")
+					// console.debug("default textAlign")
 					break
 			}
 
@@ -578,7 +564,7 @@ export class Renderer {
 			let currentWordsWidth = 0			
 
 
-			const xpos = this.tweaksAppliedResult.position[0] as number
+			const xpos = position[0] as number
 			parsedBatch.forEach((word, _) => {
 				// console.debug('word', `"${word}"`)
 				let wordWidth = this.ctx.measureText(word).width
@@ -593,7 +579,7 @@ export class Renderer {
 							x = xpos
 							break
 						case 'center':
-							x = (xpos - lineWidth) / 2
+							x = xpos - lineWidth / 2
 							break
 						case 'right':
 							x = xpos - lineWidth
@@ -602,7 +588,7 @@ export class Renderer {
 							x = xpos
 					}
 				} else {
-					console.log("word", `"${word}"`, "x", x + currentWordsWidth, "y", y, "wordsWidth", currentWordsWidth)
+					// console.debug("word", `"${word}"`, "x", x + currentWordsWidth, "y", y, "wordsWidth", currentWordsWidth)
 					if (this.ctx.lineWidth > 0) {
 						this.ctx.strokeText(word, x + currentWordsWidth, y)
 					}
