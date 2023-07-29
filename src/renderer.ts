@@ -134,7 +134,7 @@ export class Renderer {
 		this.ctx.shadowOffsetY =
 			(ruleOfThree(this.playerResY, this.canvas.height) * parseFloat(style.Shadow)) / 100
 
-		this.drawTextV2(Text.parsed, marginL, marginV, marginR, fontDescriptor)
+		this.drawTextV2(Text.parsed, marginL, marginV, marginR, fontDescriptor, this.currentHash)
 	}
 
 	flatTags(tags: Tag[]) {
@@ -330,6 +330,7 @@ export class Renderer {
 		marginV: number,
 		marginR: number,
 		fontDescriptor: FontDescriptor,
+		currentHash: number,
 		debugLines: boolean = false
 	) {
 		// console.debug('drawTextV2', parsed)
@@ -338,17 +339,9 @@ export class Renderer {
 		// I take the parsed text and draw it line by line, keeping track of the position of the last word
 		// If the next word is a line break, I use the position of the last word to calculate the position of the line break
 		// This is not perfect, but it's better than before
-		let isAnimation = false
 		let tweaks = this.teawksDrawSettings(parsed[0]?.tags ?? [], fontDescriptor)
-		/* if (this.tweaksAppliedResult.animation.length > 0) {
-			tweaks = this.animator.requestAnimation(
-				this.tweaksAppliedResult.animation,
-				this.currentHash,
-				this.timeRange,
-				tweaks
-			)
-			isAnimation = true
-		} */
+		let isAnimation = this.tweaksAppliedResult.animation.length > 0
+
 		this.applyTweaks(tweaks)
 		if (this.tweaksAppliedResult.positionChanged) {
 			this.drawTextAtPositionV2(
@@ -394,6 +387,8 @@ export class Renderer {
 		// console.debug('parses', parses)
 		// console.debug('lines', lines)
 		parses.forEach((_, index) => {
+			// console.debug('text', txt)
+			this.isOverflown(lines)
 			let tag = this.flatTags(parsed[index]?.tags ?? [])
 			// console.debug('tag', tag)
 			// FIXME: tweaks interop the animation
@@ -476,6 +471,15 @@ export class Renderer {
 				}
 			})
 		})
+	}
+
+	isOverflown(text: string[]) {
+		text.forEach((line) => {
+			if (this.ctx.measureText(line).width > this.canvas.width) {
+				return true
+			}
+		})
+		return false
 	}
 
 	drawTextAtPositionV2(

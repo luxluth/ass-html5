@@ -1,6 +1,6 @@
 import { parse } from 'ass-compiler'
 import { Renderer } from './renderer'
-import { ASSOptions } from './types'
+import { ASSOptions as Options, Font } from './types'
 import { newCanvas } from './utils'
 
 export default class ASS {
@@ -9,9 +9,12 @@ export default class ASS {
 	videoElement: HTMLVideoElement | null = null
 	canvas: HTMLCanvasElement | null = null
 	renderer: Renderer | null = null
-	constructor(options: ASSOptions) {
+	private fonts?: Font[]
+
+	constructor(options: Options) {
 		this.assText = options.assText
 		this.video = options.video
+		this.fonts = options.fonts
 	}
 
 	init() {
@@ -22,6 +25,10 @@ export default class ASS {
 			}
 		} else {
 			this.videoElement = this.video
+		}
+
+		if (typeof this.fonts !== 'undefined') {
+			this.loadFonts(this.fonts)
 		}
 
 		this.setCanvasSize()
@@ -92,4 +99,18 @@ export default class ASS {
 			this.canvas.height = height
 		}
 	}
+
+	private loadFonts(fonts: Font[]) {
+		for (const font of fonts) {
+			const fontFace = new FontFace(font.family, `url(${font.url})`, font.descriptors)
+			fontFace.load().then((loadedFace) => {
+				if (!document.fonts.check(loadedFace.family)) {
+					console.warn(`Unable to load font ${font.family}`)
+				} else {
+					console.info(`Loaded font ${font.family}`)
+				}
+			})
+		}
+	}
+
 }
