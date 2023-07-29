@@ -20,6 +20,7 @@ Display ASS/SSA subtitles on html5 videos
   - [Table of Contents](#table-of-contents)
   - [Installation](#installation)
   - [Usage](#usage)
+    - [Options](#options)
     - [Simple HTML](#simple-html)
     - [Svelte and Plry](#svelte-and-plry)
     - [videojs](#videojs)
@@ -32,9 +33,19 @@ pnpm add ass-html5
 
 ## Usage
 
+### Options
+
+| option | description | required | type | default |
+|:------:|:-----------:|:--------:|:----:|:-------:|
+|    assText   |      The ass text string      |     ✅     |    `string`    | `undefined` |
+|  video  |  The video to display the subtile on. Can be either an `HTMLVideoElement` or `string` (html query selector )  |     ✅     |    `HTMLVideoElement` / `string`    | `undefined` |
+|    fonts    |  Custom fonts to load  |     🚫     |    [`Fonts[]`](src/types.ts#L30)   | `undefined` |
+
+
 ### Simple HTML
 
-> Note that with the simple `video` tag element, on fullscreen mode, the position of the video is absoluty on top of any element.
+> [!NOTE]
+> The simple `video` tag element, on fullscreen mode, the position of the video is absoluty on top of any element.
 > No other element can go on top of it.
 > 
 > It's therefore recommanded to use a third party player rather than the native one. You can see an example with [plry](https://github.com/sampotts/plyr) [here](#svelte-and-plry).
@@ -123,7 +134,7 @@ pnpm add ass-html5
 
 In the `head` : 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/ass-html5@0.2.5/dist/ass.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/ass-html5@0.3.0/dist/ass.min.js" defer></script>
 <script src="https://vjs.zencdn.net/8.3.0/video.min.js" defer></script>
 <link href="https://vjs.zencdn.net/8.3.0/video-js.css" rel="stylesheet" />
 ```
