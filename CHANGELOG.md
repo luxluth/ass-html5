@@ -1,5 +1,11 @@
 # ass-html5
 
+## 0.3.0
+
+### Minor Changes
+
+- 65d5e18: Adding custom fonts + Some bugs fixes
+
 ## 0.2.7
 
 ### Patch Changes
