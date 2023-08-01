@@ -1,5 +1,11 @@
 # ass-html5
 
+## 0.3.1
+
+### Patch Changes
+
+- 6ee8ac2: Lower the target es
+
 ## 0.3.0
 
 ### Minor Changes
