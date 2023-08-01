@@ -9,9 +9,9 @@
 	"type": "module",
 	"scripts": {
 		"build": "pnpm run build:normal && pnpm run build:minify",
-		"build:normal": "tsup",
+		"build:normal": "tsup --dts",
 		"build:minify": "rollup -c",
-		"dev": "tsup --watch",
+        "dev": "tsup --watch",
 		"release": "pnpm run build && changeset publish",
 		"lint": "tsc",
 		"format": "prettier --write ."

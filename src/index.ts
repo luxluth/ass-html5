@@ -44,6 +44,7 @@ export default class ASS {
 		window.addEventListener('resize', () => {
 			this.setCanvasSize()
 			this.renderer?.redraw()
+			// console.debug('resize')
 		})
 
 		this.renderer.render()

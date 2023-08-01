@@ -3,9 +3,9 @@ import { defineConfig } from 'tsup'
 export default defineConfig({
 	entry: ['src/index.ts'],
 	clean: false,
-	dts: true,
+	dts: false,
 	platform: 'browser',
-	target: 'esnext',
+	target: 'es2015',
 	noExternal: ['ass-compiler'],
 	name: 'ASS',
 	globalName: 'ass',
