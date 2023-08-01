@@ -1,5 +1,11 @@
 # ass-html5
 
+## 0.3.2
+
+### Patch Changes
+
+- 6278551: Uptade Modules to `mjs`, Fix import issues with cjs
+
 ## 0.3.1
 
 ### Patch Changes
