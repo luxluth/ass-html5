@@ -324,6 +324,33 @@ export class Renderer {
 		}
 	}
 
+	getPath(pathArray: string[][]) {
+		let pathString = ''
+		for (const segment of pathArray) {
+			const command = segment[0];
+			const d = command + segment.slice(1).join(' ')
+			pathString += d + ' '
+		}
+		console.log('pathString', pathString)
+		const path = new Path2D(pathString)
+		return path
+	}
+
+	drawDrawing(
+		pathArray: string[][],
+		parsed: ParsedASSEventTextParsed
+	) {
+		const path = this.getPath(pathArray)
+		console.debug('drawDrawing', path)
+		path.moveTo(
+			this.tweaksAppliedResult.position[0] as number,
+			this.tweaksAppliedResult.position[1] as number
+		)
+		console.debug('drawDrawing - path ', path)
+		this.ctx.stroke(path)
+		this.ctx.fill(path)
+	}
+
 	drawTextV2(
 		parsed: ParsedASSEventTextParsed[],
 		marginL: number,
@@ -394,6 +421,10 @@ export class Renderer {
 			// FIXME: tweaks interop the animation
 			let tweaks = this.teawksDrawSettings(parsed[index]?.tags ?? [], fontDescriptor)
 			this.applyTweaks(tweaks)
+			if ((parsed[index]?.drawing as string[][]).length > 0) {
+				// console.debug('drawing', parsed[index]?.drawing)
+				this.drawDrawing(parsed[index]?.drawing as string[][], parsed[index] as ParsedASSEventTextParsed)
+			}
 			let lineWidth = this.ctx.measureText(lines[currentLine] as string).width
 			let x = 0
 			switch (this.textAlign) {
@@ -460,7 +491,6 @@ export class Renderer {
 							x = marginL
 					}
 				} else {
-
 					if (this.ctx.lineWidth > 0) {
 						this.ctx.strokeText(word, x + currentWordsWidth, y)
 					}
@@ -526,6 +556,11 @@ export class Renderer {
 			let tag = this.flatTags(parsed[index]?.tags ?? [])
 			let tweaks = this.teawksDrawSettings(parsed[index]?.tags ?? [], fontDescriptor)
 			this.applyTweaks(tweaks)
+
+			if ((parsed[index]?.drawing as string[][]).length > 0) {
+				// console.debug('drawing', parsed[index]?.drawing)
+				this.drawDrawing(parsed[index]?.drawing as string[][], parsed[index] as ParsedASSEventTextParsed)
+			}
 			let lineWidth = this.ctx.measureText(lines[currentLine] as string).width
 			switch (this.textAlign) {
 				case 'left':

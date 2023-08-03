@@ -1,4 +1,4 @@
-import { parse } from 'ass-compiler'
+import { parse, compile } from 'ass-compiler'
 import { Renderer } from './renderer'
 import { ASSOptions as Options, Font } from './types'
 import { newCanvas } from './utils'
@@ -15,6 +15,7 @@ export default class ASS {
 		this.assText = options.assText
 		this.video = options.video
 		this.fonts = options.fonts
+		console.debug(compile(options.assText, {}))
 	}
 
 	init() {
