@@ -1,5 +1,5 @@
+import type { CompiledASSStyle, Dialogue } from 'ass-compiler'
 import type { ParsedTag } from 'ass-compiler/types/tags'
-
 
 export type FontStyle = {
     /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/ascentOverride) */
@@ -150,4 +150,9 @@ export type Tweaks = {
 	fontDescriptor: FontDescriptor
 	custompositioning: boolean
 	animations: ASSAnimation.Animation[]
+}
+
+export type Override = {
+	dialogue: Dialogue;
+	style: CompiledASSStyle;
 }

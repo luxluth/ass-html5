@@ -1,65 +1,37 @@
-import type { ParsedASS, ParsedASSEventText, ParsedASSEventTextParsed } from 'ass-compiler'
-import { SingleStyle, FontDescriptor, Tag, ASSAnimation, Shift, Tweaks, TimeRange } from './types'
-import { ruleOfThree, convertAegisubToRGBA, hashString, makeLines, splitTextOnTheNextCharacter } from './utils'
-import { Animate } from './animate'
-
+import type { CompiledASS, CompiledASSStyle, Dialogue } from 'ass-compiler'
+import { Override } from './types'
 export class Renderer {
-	parsedAss: ParsedASS
+	compiledASS: CompiledASS
 	canvas: HTMLCanvasElement
 	ctx: CanvasRenderingContext2D
 	video: HTMLVideoElement
-	animator: Animate
 	playerResX: number
 	playerResY: number
-	styles: SingleStyle[]
 
 	textAlign: CanvasTextAlign = 'start'
 	textBaseline: CanvasTextBaseline = 'alphabetic'
-	tweaksAppliedResult = {
-		positionChanged: false,
-		position: [0, 0],
-		animation: [] as ASSAnimation.Animation[],	
-	}
 
-	previousTextWidth = 0
-	previousTextPos = { x: 0, y: 0 }
-	startBaseline = 0
-	timeRange = {
-		start: 0,
-		end: 0
-	} as TimeRange
-	currentHash  = 0
-
-	constructor(parsedASS: ParsedASS, canvas: HTMLCanvasElement, video: HTMLVideoElement) {
-		this.parsedAss = parsedASS
-		this.playerResX = parseFloat(this.parsedAss.info.PlayResX)
-		this.playerResY = parseFloat(this.parsedAss.info.PlayResY)
-		this.styles = parsedASS.styles.style as SingleStyle[]
+	constructor(parsedASS: CompiledASS, canvas: HTMLCanvasElement, video: HTMLVideoElement) {
+		this.compiledASS = parsedASS
+		this.playerResX = this.compiledASS.width
+		this.playerResY = this.compiledASS.height
 		this.canvas = canvas
 		this.video = video
 		this.ctx = canvas.getContext('2d') as CanvasRenderingContext2D
 		if (this.ctx === null) {
 			throw new Error('Unable to initilize the Canvas 2D context')
 		}
-		this.animator = new Animate(this)
-		// let data = [
-		//     {parsedAss : this.parsedAss},
-		//     {canvas : this.canvas},
-		//     {ctx : this.ctx}
-		// ]
-		// console.debug(data)
+		let data = [
+		    {compiledASS : this.compiledASS},
+		    {canvas : this.canvas},
+		    {ctx : this.ctx}
+		]
+		console.debug(data)
 	}
 
 	render() {
 		this.video.addEventListener('timeupdate', () => {
 			this.diplay(this.video.currentTime)
-		})
-
-		this.video.addEventListener('pause', () => {
-			this.animator.removeAllAnimations()
-		})
-		this.video.addEventListener('seeked', () => {
-			this.animator.removeAllAnimations()
 		})
 	}
 
@@ -74,21 +46,32 @@ export class Renderer {
 	}
 
 	diplay(time: number) {
-		const overlappingDialoguesEvents = this.parsedAss.events.dialogue.filter(
-			(event) => event.Start <= time && event.End >= time
-		)
-
-		// Clear the canvas
 		this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
-		overlappingDialoguesEvents.forEach((event) => {
-			// console.debug(event)
-			const { Style, Text, MarginL, MarginR, MarginV, Start, End } = event
-			this.timeRange = { start: Start, end: End }
-			// this.showText(Text, style, { marginL: MarginL, marginR: MarginR, marginV: MarginV })
+
+		const { dialogues, styles } = this.compiledASS
+		const dialoguesToDisplay = this.getOverrideStyle(time, dialogues)
+		const overrides = dialoguesToDisplay.map((dialogue) => {
+			return {
+				dialogue: dialogue,
+				style: styles[dialogue.style] as CompiledASSStyle,
+			}
+		}) as Override[]
+		console.debug(overrides)
+	}
+
+	getOverrideStyle(time: number, dialogues: Dialogue[]) {
+		return dialogues.filter((dialogue) => {
+			return dialogue.start <= time && dialogue.end >= time
 		})
 	}
 	
-	showText() {
+	showText(overrides: Override[]) {
+		overrides.forEach((override) => {
+			const { dialogue, style } = override
+			const { margin, alignment, layer, slices, effect, pos, org, fade, move, clip } = dialogue
+			const { fn, fs, c1, a1, c2, a2, c3, a3, c4, a4, b, i, u, s, fscx, 
+					fscy, fsp, frz, xbord, ybord, xshad, yshad, fe, q } = style.tag
+		})
 	}
 
 	getAlignment(alignment: number) {
