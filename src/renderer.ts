@@ -307,7 +307,6 @@ export class Renderer {
 	}
 
 	applyOverrideTag(tag: CompiledTag, font: FontDescriptor) {
-		this.ctx.filter = 'none'
 		// const {
 		// 	xbord, // x border
 		// 	ybord, // y border
@@ -358,7 +357,7 @@ export class Renderer {
 		if (tag.xbord !== undefined) { this.ctx.lineWidth = this.upscale(tag.xbord, this.playerResX, this.canvas.width) }
 		if (tag.ybord !== undefined) { this.ctx.lineWidth = this.upscale(tag.ybord, this.playerResY, this.canvas.height) }
 		if (tag.frz !== undefined) { this.ctx.rotate(tag.frz) }
-		// if (tag.blur !== undefined) { this.ctx.filter = `blur(${this.upscale(tag.blur, this.playerResY, this.canvas.height)}px)` }
+		if (tag.blur !== undefined) { this.ctx.shadowBlur = this.upscale(tag.blur, this.playerResY, this.canvas.height) }
 
 		this.ctx.font = this.fontDecriptorString(font)
 		return font

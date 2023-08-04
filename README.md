@@ -4,6 +4,8 @@
 
 Display ASS/SSA subtitles on html5 videos
 
+**ass-html5** uses the [ass-compiler](https://github.com/weizhenye/ass-compiler/) from weizhenye.
+
 ![CI workflow](https://github.com/luxluth/ass-html5/actions/workflows/main.yml/badge.svg)
 ![Publish workflow](https://github.com/luxluth/ass-html5/actions/workflows/publish.yml/badge.svg)
 ![License](https://img.shields.io/github/license/luxluth/ass-html5?color=blue)
