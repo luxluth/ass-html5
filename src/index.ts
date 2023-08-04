@@ -113,5 +113,4 @@ export default class ASS {
 			})
 		}
 	}
-
 }

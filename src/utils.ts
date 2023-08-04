@@ -43,58 +43,59 @@ export function getAlphaFromColor(color: string) {
 }
 
 export function rgbaToHex(rgba: string) {
-  const components = rgba.match(/\d+/g) as string[]; // Extract numeric values from RGBA string
-  let red = parseInt(components[0] as string);
-  let green = parseInt(components[1] as string);
-  let blue = parseInt(components[2] as string);
-  let alpha = parseFloat(components[3] as string);
+	const components = rgba.match(/\d+/g) as string[] // Extract numeric values from RGBA string
+	let red = parseInt(components[0] as string)
+	let green = parseInt(components[1] as string)
+	let blue = parseInt(components[2] as string)
+	let alpha = parseFloat(components[3] as string)
 
-  let redHex = red.toString(16).padStart(2, '0');
-  let greenHex = green.toString(16).padStart(2, '0');
-  let blueHex = blue.toString(16).padStart(2, '0');
+	let redHex = red.toString(16).padStart(2, '0')
+	let greenHex = green.toString(16).padStart(2, '0')
+	let blueHex = blue.toString(16).padStart(2, '0')
 
-  let rgbHex = '#' + redHex + greenHex + blueHex;
+	let rgbHex = '#' + redHex + greenHex + blueHex
 
-  if (alpha !== 1) {
-    let alphaHex = Math.round(alpha * 255).toString(16).padStart(2, '0');
-    return rgbHex + alphaHex;
-  }
+	if (alpha !== 1) {
+		let alphaHex = Math.round(alpha * 255)
+			.toString(16)
+			.padStart(2, '0')
+		return rgbHex + alphaHex
+	}
 
-  return rgbHex;
+	return rgbHex
 }
 
-
 export function hexToRgba(hex: string) {
-  const hexValue = hex.replace('#', ''); // Remove '#' if present
-  const isShortHex = (hexValue.length === 3 || hexValue.length === 4);
+	const hexValue = hex.replace('#', '') // Remove '#' if present
+	const isShortHex = hexValue.length === 3 || hexValue.length === 4
 
-  let redHex, greenHex, blueHex, alphaHex;
-  if (isShortHex) {
-    redHex = (hexValue[0] as string) + (hexValue[0] as string);
-    greenHex = (hexValue[1] as string) + (hexValue[1] as string);
-    blueHex = (hexValue[2] as string) + (hexValue[2] as string);
-    if (hexValue.length === 4) {
-      alphaHex = (hexValue[3] as string) + (hexValue[3] as string);
-    } else {
-      alphaHex = 'FF'; // Default alpha value if not provided
-    }
-  } else {
-    redHex = hexValue.substring(0, 2);
-    greenHex = hexValue.substring(2, 4);
-    blueHex = hexValue.substring(4, 6);
-    if (hexValue.length === 8) {
-      alphaHex = hexValue.substring(6, 8);
-    } else {
-      alphaHex = 'FF'; // Default alpha value if not provided
-    }
-  }
+	let redHex, greenHex, blueHex, alphaHex
+	if (isShortHex) {
+		redHex = (hexValue[0] as string) + (hexValue[0] as string)
+		greenHex = (hexValue[1] as string) + (hexValue[1] as string)
+		blueHex = (hexValue[2] as string) + (hexValue[2] as string)
+		if (hexValue.length === 4) {
+			alphaHex = (hexValue[3] as string) + (hexValue[3] as string)
+		} else {
+			alphaHex = 'FF' // Default alpha value if not provided
+		}
+	} else {
+		redHex = hexValue.substring(0, 2)
+		greenHex = hexValue.substring(2, 4)
+		blueHex = hexValue.substring(4, 6)
+		if (hexValue.length === 8) {
+			alphaHex = hexValue.substring(6, 8)
+		} else {
+			alphaHex = 'FF' // Default alpha value if not provided
+		}
+	}
 
-  const red = parseInt(redHex, 16);
-  const green = parseInt(greenHex, 16);
-  const blue = parseInt(blueHex, 16);
-  const alpha = parseInt(alphaHex, 16) / 255;
+	const red = parseInt(redHex, 16)
+	const green = parseInt(greenHex, 16)
+	const blue = parseInt(blueHex, 16)
+	const alpha = parseInt(alphaHex, 16) / 255
 
-  return 'rgba(' + red + ', ' + green + ', ' + blue + ', ' + alpha + ')';
+	return 'rgba(' + red + ', ' + green + ', ' + blue + ', ' + alpha + ')'
 }
 
 export function insertTags(tags: Tag[], tag: Tag) {
@@ -130,7 +131,7 @@ export function genRandomString(ln: number) {
 	return randomString
 }
 
-export function randomId(parts: number, separator='-', prefix='', ln= 10) {
+export function randomId(parts: number, separator = '-', prefix = '', ln = 10) {
 	const partsArray = []
 	for (let i = 0; i < parts; i++) {
 		partsArray.push(genRandomString(ln))
@@ -218,7 +219,7 @@ export function makeLines(strArr: string[]) {
 			newRes.push(result[i] as string)
 		}
 	}
-	
+
 	return newRes
 }
 
@@ -229,24 +230,57 @@ export function splitTextOnTheNextCharacter(text: string) {
 	let result = [] as string[]
 	let line = ''
 	let spaceEncountered = false
-    let wordEncountered = false
+	let wordEncountered = false
 	for (let i = 0; i < text.length; i++) {
-        if (text[i] === ' ') {
-            spaceEncountered = true
-            wordEncountered = false
+		if (text[i] === ' ') {
+			spaceEncountered = true
+			wordEncountered = false
 		} else {
-            wordEncountered = true
-        }
+			wordEncountered = true
+		}
 		if (spaceEncountered && wordEncountered) {
 			result.push(line)
 			line = ''
 			spaceEncountered = false
 		}
-        line += text[i]
+		line += text[i]
 	}
 
-    if (line.length > 0) {
-        result.push(line)
-    }
-    return result
+	if (line.length > 0) {
+		result.push(line)
+	}
+	return result
+}
+
+export function separateNewLine(words: string[]) {
+	// ["Hello ", "world!\Ntoday ", "is ", "a ", "good ", "day."] -> ["Hello ", "world!", "\N", "today ", "is ", "a ", "good ", "day."]
+	words = words.filter((word) => word !== '')
+	let wordsWithLineBreaks: string[] = []
+	for (let i = 0; i < words.length; i++) {
+		let split = words[i]?.split('\\N') ?? []
+		if (split?.length === 1) {
+			wordsWithLineBreaks.push(words[i] as string)
+		} else {
+			split.forEach((word, idx) => {
+				wordsWithLineBreaks.push(word)
+				if (idx < split.length - 1) {
+					wordsWithLineBreaks.push('\\N')
+				}
+			})
+		}
+	}
+
+	return wordsWithLineBreaks
+}
+
+
+export function blendAlpha(color: string, alpha: number) {
+	color = color.replace('#', '')
+	// color = FFFFFF
+	// alpha = 0.5
+	// return rgba(255, 255, 255, 0.5)
+	const red = parseInt(color.substring(0, 2), 16)
+	const green = parseInt(color.substring(2, 4), 16)
+	const blue = parseInt(color.substring(4, 6), 16)
+	return `rgba(${red}, ${green}, ${blue}, ${alpha == 0 ? 1: alpha})`
 }

@@ -2,34 +2,34 @@ import type { CompiledASSStyle, Dialogue } from 'ass-compiler'
 import type { ParsedTag } from 'ass-compiler/types/tags'
 
 export type FontStyle = {
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/ascentOverride) */
-    ascentOverride: string;
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/descentOverride) */
-    descentOverride: string;
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/display) */
-    display: FontDisplay;
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/family) */
-    family: string;
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/featureSettings) */
-    featureSettings: string;
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/lineGapOverride) */
-    lineGapOverride: string;
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/stretch) */
-    stretch: string;
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/style) */
-    style: string;
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/unicodeRange) */
-    unicodeRange: string;
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/variant) */
-    variant: string;
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/weight) */
-    weight: string;
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/load) */
+	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/ascentOverride) */
+	ascentOverride: string
+	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/descentOverride) */
+	descentOverride: string
+	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/display) */
+	display: FontDisplay
+	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/family) */
+	family: string
+	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/featureSettings) */
+	featureSettings: string
+	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/lineGapOverride) */
+	lineGapOverride: string
+	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/stretch) */
+	stretch: string
+	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/style) */
+	style: string
+	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/unicodeRange) */
+	unicodeRange: string
+	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/variant) */
+	variant: string
+	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/weight) */
+	weight: string
+	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/load) */
 }
 
 export type Font = {
-	family: string,
-	url: string,
+	family: string
+	url: string
 	descriptors?: Partial<FontStyle>
 }
 
@@ -38,7 +38,7 @@ export type ASSOptions = {
 	 * The ass text string
 	 */
 	assText: string
-	
+
 	/**
 	 * The video to display the subtile on.
 	 * Can be either an `HTMLVideoElement` or `string` (html query selector )
@@ -51,7 +51,6 @@ export type ASSOptions = {
 	fonts?: Font[]
 }
 
-
 export type Shift = {
 	marginL: number
 	marginR: number
@@ -59,7 +58,7 @@ export type Shift = {
 }
 
 export type TimeRange = {
-	start: number,
+	start: number
 	end: number
 }
 
@@ -110,7 +109,9 @@ export declare namespace ASSAnimation {
 		values: [number, number] | [number, number, number, number, number, number]
 	}
 
-    export type MoveValues = [number, number, number, number] | [number, number, number, number, number, number]
+	export type MoveValues =
+		| [number, number, number, number]
+		| [number, number, number, number, number, number]
 	export type Move = {
 		name: 'move'
 		/**
@@ -153,6 +154,6 @@ export type Tweaks = {
 }
 
 export type Override = {
-	dialogue: Dialogue;
-	style: CompiledASSStyle;
+	dialogue: Dialogue
+	style: CompiledASSStyle
 }

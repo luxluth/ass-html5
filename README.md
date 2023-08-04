@@ -35,21 +35,19 @@ pnpm add ass-html5
 
 ### Options
 
-| option | description | required | type | default |
-|:------:|:-----------:|:--------:|:----:|:-------:|
-|    assText   |      The ass text string      |     ✅     |    `string`    | `undefined` |
-|  video  |  The video to display the subtile on. Can be either an `HTMLVideoElement` or `string` (html query selector )  |     ✅     |    `HTMLVideoElement` / `string`    | `undefined` |
-|    fonts    |  Custom fonts to load  |     🚫     |    [`Fonts[]`](src/types.ts#L30)   | `undefined` |
-
+| option  |                                                 description                                                 | required |             type              |   default   |
+| :-----: | :---------------------------------------------------------------------------------------------------------: | :------: | :---------------------------: | :---------: |
+| assText |                                             The ass text string                                             |    ✅    |           `string`            | `undefined` |
+|  video  | The video to display the subtile on. Can be either an `HTMLVideoElement` or `string` (html query selector ) |    ✅    | `HTMLVideoElement` / `string` | `undefined` |
+|  fonts  |                                            Custom fonts to load                                             |    🚫    | [`Fonts[]`](src/types.ts#L30) | `undefined` |
 
 ### Simple HTML
 
 > [!NOTE]
 > The simple `video` tag element, on fullscreen mode, the position of the video is absoluty on top of any element.
 > No other element can go on top of it.
-> 
+>
 > It's therefore recommanded to use a third party player rather than the native one. You can see an example with [plry](https://github.com/sampotts/plyr) [here](#svelte-and-plry).
-
 
 ```html
 <script src="https://cdn.jsdelivr.net/npm/ass-html5@0.2.5/dist/ass.min.js"></script>
@@ -61,16 +59,16 @@ pnpm add ass-html5
 
 ```html
 <script>
-    document.addEventListener('DOMContentLoaded', async () => {
-        let res = await fetch('/assets/video.ass')
-        let assSubs = await res.text()
+	document.addEventListener('DOMContentLoaded', async () => {
+		let res = await fetch('/assets/video.ass')
+		let assSubs = await res.text()
 
-        const ass = new ASS({
-            assText: assSubs,
-            video: document.getElementById("video") 
-        })
-        ass.init()
-    })
+		const ass = new ASS({
+			assText: assSubs,
+			video: document.getElementById('video')
+		})
+		ass.init()
+	})
 </script>
 ```
 
@@ -132,7 +130,8 @@ pnpm add ass-html5
 
 ### [videojs](https://github.com/videojs/video.js)
 
-In the `head` : 
+In the `head` :
+
 ```html
 <script src="https://cdn.jsdelivr.net/npm/ass-html5@0.3.0/dist/ass.min.js" defer></script>
 <script src="https://vjs.zencdn.net/8.3.0/video.min.js" defer></script>
@@ -143,38 +142,37 @@ In the `body` :
 
 ```html
 <video
-    id="my-video"
-    class="video-js"
-    controls
-    preload="auto"
-    width="1280"
-    height="720"
-    data-setup="{}"
+	id="my-video"
+	class="video-js"
+	controls
+	preload="auto"
+	width="1280"
+	height="720"
+	data-setup="{}"
 >
-    <source src="assets/video.mp4" type="video/mp4">
+	<source src="assets/video.mp4" type="video/mp4" />
 </video>
-
 ```
 
-In the `script` tag : 
+In the `script` tag :
+
 ```html
 <script>
-    document.addEventListener('DOMContentLoaded', async () => {
-        let res = await fetch('/assets/video.ass')
-        let assSubs = await res.text()
-        
-        var player = videojs('my-video');
-        
-        player.ready(() => {
-            // Get the video element from the player
-            var videoElement = player.el().getElementsByTagName("video")[0];
-            const ass = new ASS({
-                assText: assSubs,
-                video: videoElement
-            })
-            ass.init()
-        });
+	document.addEventListener('DOMContentLoaded', async () => {
+		let res = await fetch('/assets/video.ass')
+		let assSubs = await res.text()
 
-    })
+		var player = videojs('my-video')
+
+		player.ready(() => {
+			// Get the video element from the player
+			var videoElement = player.el().getElementsByTagName('video')[0]
+			const ass = new ASS({
+				assText: assSubs,
+				video: videoElement
+			})
+			ass.init()
+		})
+	})
 </script>
 ```
