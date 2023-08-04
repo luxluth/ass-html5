@@ -76,8 +76,15 @@ export class Renderer {
 	}
 
 	drawText(dialogue: Dialogue, styles: { [styleName: string]: CompiledASSStyle }) {
-		const { slices, pos } = dialogue
+		const { slices, pos, move } = dialogue
 		if (typeof pos !== 'undefined') {
+			this.drawTextAtPosition(dialogue, styles, pos)
+			return
+		} else if (typeof move !== 'undefined') {
+			let pos = {
+				x: move.x1,
+				y: move.y1
+			}
 			this.drawTextAtPosition(dialogue, styles, pos)
 			return
 		}
@@ -101,9 +108,6 @@ export class Renderer {
 			let previousTextWidth = 0
 			let currentLine = 0
 			let y = 0
-			// if (pos) {
-			// 	y = pos.y
-			// }
 
 			switch (this.textBaseline) {
 				case 'top':

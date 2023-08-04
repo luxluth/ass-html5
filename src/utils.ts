@@ -4,19 +4,17 @@ import type { Tag } from './types'
  * @param aegisubColor The color in Aegisub format
  * @returns The color in RGBA format
  */
-export function convertAegisubToRGBA(aegisubColor: string, tags?: Tag, defaultAlpha = 1) {
+export function convertAegisubColorToRGB(aegisubColor: string) {
 	const colorValue = aegisubColor.replace(/&H|&/g, '')
 
 	// Extract the individual color components from the Aegisub color value
-	const alpha = tags ? getAlphaFromTag(tags) : defaultAlpha
 	const blue = parseInt(colorValue.slice(2, 4), 16)
 	const green = parseInt(colorValue.slice(4, 6), 16)
 	const red = parseInt(colorValue.slice(6, 8), 16)
 
-	// Create the RGBA string
-	const rgba = `rgba(${red}, ${green}, ${blue}, ${alpha})`
-	// console.debug(`Converted ${aegisubColor} to ${rgba}`);
-	return rgba
+	// Create the RGB
+	const rgb = `rgb(${red}, ${green}, ${blue})`
+	return rgb
 }
 
 export function changeAlpha(color: string, alpha: number) {
