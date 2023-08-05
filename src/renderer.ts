@@ -393,7 +393,7 @@ export class Renderer {
 	}
 
 	fontDecriptorString(font: FontDescriptor) {
-		return `${font.bold ? 'bold' : ''} ${font.italic ? 'italic' : ''} ${font.underline ? 'underline' : ''} ${font.strikeout ? 'strikeout' : ''} ${font.fontsize}px ${font.fontname}`
+		return `${font.bold ? 'bold' : ''} ${font.italic ? 'italic' : ''} ${font.fontsize}px ${font.fontname}`
 	}
 
 	computeStyle(name: string, styles: { [styleName: string]: CompiledASSStyle }, alignment: number) {
