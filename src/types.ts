@@ -95,6 +95,8 @@ export type FontDescriptor = {
 	italic: boolean
 	underline: boolean
 	strikeout: boolean
+    fscx: number,
+    fscy: number,
 }
 
 export type Tag = { [K in keyof ParsedTag]: ParsedTag[K] }
