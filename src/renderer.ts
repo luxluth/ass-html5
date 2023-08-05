@@ -286,82 +286,28 @@ export class Renderer {
 	}
 
     drawWord(word: string, x: number, y: number, font: FontDescriptor) {
-        if (font.fscy !== 100) {
-            this.drawVerticallyStretchedText(word, x, y, font.fscy / 100, font, this.ctx.lineWidth > 0)
+        this.ctx.save()
+        this.ctx.beginPath()
+        if (font.fscy !== 100 && font.fscx == 100) {
             console.debug("stretch-y by", font.fscy / 100)
-            return
+            this.ctx.scale(1, font.fscy / 100)
+        } else if (font.fscx !== 100 && font.fscy == 100) {
+            console.debug("stretch-x by", font.fscx / 100)
+            this.ctx.scale(font.fscx / 100, 1)
+        } else if (font.fscx !== 100 && font.fscy !== 100) {
+            console.debug("stretch-x-y", font.fscx / 100, font.fscy / 100)
+            this.ctx.scale(font.fscx / 100, font.fscy / 100)
         }
+
         if (this.ctx.lineWidth > 0) {
             this.ctx.strokeText(word, x, y)
+            this.ctx.stroke();
         }
 
-        this.ctx.fillText(word, x, y)       
-    }
-
-    cloneContextAttr(tmp: CanvasRenderingContext2D) {
-        tmp.font = this.ctx.font
- 		tmp.fillStyle = this.ctx.fillStyle
-		tmp.strokeStyle = this.ctx.strokeStyle
-		tmp.shadowOffsetX = this.ctx.shadowOffsetX
-        tmp.shadowOffsetY = this.ctx.shadowOffsetY
-		tmp.shadowBlur = this.ctx.shadowBlur
-		tmp.shadowColor = this.ctx.shadowColor
-		tmp.lineWidth = tmp.lineWidth
-		tmp.lineCap = this.ctx.lineCap
-		tmp.lineJoin = this.ctx.lineJoin
-    }
-
-    upscaleContextAttr(tmp: CanvasRenderingContext2D, font: FontDescriptor, upscaleFactor: number) {
-        const prevFontSize = font.fontsize
-        font.fontsize = prevFontSize * upscaleFactor
-        tmp.font = this.fontDecriptorString(font)
-        tmp.shadowOffsetX = tmp.shadowOffsetX * upscaleFactor
-        tmp.shadowOffsetY = tmp.shadowOffsetY * upscaleFactor
-        tmp.shadowBlur = tmp.shadowBlur * upscaleFactor
-        tmp.lineWidth = tmp.lineWidth * upscaleFactor
-        font.fontsize = prevFontSize
-    }
-
-    drawVerticallyStretchedText(text: string, x: number, y: number, stretchFactor: number, font: FontDescriptor, stroke=false, debug=false) {
-        const tempCanvas = document.createElement("canvas");
-        const tempCtx = tempCanvas.getContext("2d") as CanvasRenderingContext2D;
-        const upscaleFactor = 4;
-        this.cloneContextAttr(tempCtx);
-        this.upscaleContextAttr(tempCtx, font, upscaleFactor);
-        const textMetrics = tempCtx.measureText(text);
-        const tempCanvasWidth = textMetrics.width;
-        const tempCanvasHeight = textMetrics.actualBoundingBoxAscent + textMetrics.actualBoundingBoxDescent;
-
-        tempCanvas.width = tempCanvasWidth;
-        tempCanvas.height = tempCanvasHeight;
-
-        this.cloneContextAttr(tempCtx);
-        this.upscaleContextAttr(tempCtx, font, upscaleFactor);
-        tempCtx.textBaseline = "middle";
-
-        if (stroke) {
-            tempCtx.strokeText(text, 0, (tempCanvas.height / 2) + tempCanvasHeight * 0.1);
-        }
-        
-        tempCtx.fillText(text, 0, (tempCanvas.height / 2) + tempCanvasHeight * 0.1);
-
-        this.ctx.drawImage(
-            tempCanvas,
-            x,
-            y,
-            tempCanvasWidth / upscaleFactor,
-            (tempCanvasHeight * stretchFactor) / upscaleFactor
-        );
-        
-        if (debug) {
-            let lastStrokeStyle = this.ctx.strokeStyle
-            this.ctx.strokeStyle = "#ff0000"
-            this.ctx.strokeRect(x, y, tempCanvasWidth, tempCanvasHeight * stretchFactor)
-            this.ctx.strokeStyle = lastStrokeStyle
-        }
-
-        // console.debug("scalerfont", tempCtx.font, "scalerctx", tempCtx);
-        tempCanvas.remove();
+        this.ctx.fillText(word, x, y)
+        this.ctx.fill();
+        this.ctx.closePath();
+        this.ctx.restore();
     }
 
 	upscalePosition(pos: { x: number; y: number }) {
@@ -433,7 +379,7 @@ export class Renderer {
 		if (tag.yshad !== undefined) { this.ctx.shadowOffsetY = this.upscale(tag.yshad, this.playerResY, this.canvas.height) }
 		if (tag.xbord !== undefined) { this.ctx.lineWidth = this.upscale(tag.xbord, this.playerResX, this.canvas.width) }
 		if (tag.ybord !== undefined) { this.ctx.lineWidth = this.upscale(tag.ybord, this.playerResY, this.canvas.height) }
-		if (tag.frz !== undefined) { this.ctx.rotate(tag.frz) }
+		// if (tag.frz !== undefined) { this.ctx.rotate(tag.frz) }
         if (tag.fscx !== undefined) { font.fscx = tag.fscx }
         if (tag.fscy !== undefined) { font.fscy = tag.fscy }
 		if (tag.blur !== undefined) { this.ctx.shadowBlur = this.upscale(tag.blur, this.playerResY, this.canvas.height) }
