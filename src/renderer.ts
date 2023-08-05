@@ -286,7 +286,7 @@ export class Renderer {
 	}
 
     drawWord(word: string, x: number, y: number, font: FontDescriptor) {
-        if (font.fscy > 100 || font.fscy < 100) {
+        if (font.fscy !== 100) {
             this.drawVerticallyStretchedText(word, x, y, font.fscy / 100, font, this.ctx.lineWidth > 0)
             console.debug("stretch-y by", font.fscy / 100)
             return
