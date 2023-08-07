@@ -52,7 +52,7 @@ pnpm add ass-html5
 > It's therefore recommanded to use a third party player rather than the native one. You can see an example with [plry](https://github.com/sampotts/plyr) [here](#svelte-and-plry).
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/ass-html5@0.2.5/dist/ass.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/ass-html5@0.3.3/dist/ass.min.js"></script>
 ```
 
 ```html
@@ -69,7 +69,7 @@ pnpm add ass-html5
 			assText: assSubs,
 			video: document.getElementById('video')
 		})
-		ass.init()
+		await ass.init()
 	})
 </script>
 ```
@@ -89,29 +89,11 @@ pnpm add ass-html5
         video: "#video-test"
     })
 
-    const controls = [
-        'rewind',
-        'play',
-        'fast-forward',
-        'progress',
-        'current-time',
-        'duration',
-        'mute',
-        'volume',
-        'settings',
-        'airplay',
-        'fullscreen',
-    ]
-
     let vidElement: HTMLVideoElement
-
-    onMount(() => {
-        const player = new Plyr(vidElement, {
-            controls
-        })
-
-        ass.init()
-
+    let player: Plyr
+    onMount(async () => {
+        player = new Plyr(vidElement)
+        await ass.init()
     })
 
 </script>
@@ -135,7 +117,7 @@ pnpm add ass-html5
 In the `head` :
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/ass-html5@0.3.0/dist/ass.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/ass-html5@0.3.3/dist/ass.min.js" defer></script>
 <script src="https://vjs.zencdn.net/8.3.0/video.min.js" defer></script>
 <link href="https://vjs.zencdn.net/8.3.0/video-js.css" rel="stylesheet" />
 ```
@@ -166,14 +148,14 @@ In the `script` tag :
 
 		var player = videojs('my-video')
 
-		player.ready(() => {
+		player.ready(async () => {
 			// Get the video element from the player
 			var videoElement = player.el().getElementsByTagName('video')[0]
 			const ass = new ASS({
 				assText: assSubs,
 				video: videoElement
 			})
-			ass.init()
+			await ass.init()
 		})
 	})
 </script>

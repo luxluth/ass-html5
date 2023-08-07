@@ -60,6 +60,10 @@ export type FontDescriptor = {
 	strikeout: boolean
 	/** font transformation */
 	t: FontTransfomation
+	/** x border */
+	xbord: number
+	/** y border */
+	ybord: number
 	/** font encoding */
 	fe?: number
 }
@@ -82,7 +86,7 @@ export type FontTransfomation = {
 	/** font spacing */
 	fsp?: number,
 	/** wrap style */
-	q: 0 | 2 | 1 | 3
+	q: 0 | 2 | 1 | 3,
 }
 
 export type Tag = { [K in keyof ParsedTag]: ParsedTag[K] }

@@ -34,7 +34,7 @@ export class Renderer {
 			throw new Error('Unable to initilize the Canvas 2D context')
 		}
 		let data = [{ compiledASS: this.compiledASS }, { canvas: this.canvas }, { ctx: this.ctx }]
-		console.debug(data)
+		// console.debug(data)
 	}
 
 	render() {
@@ -232,7 +232,7 @@ export class Renderer {
 	drawTextAtPosition(
 		dialogue: Dialogue,
 		styles: Styles,
-		pos: Position
+		pos: Position,
 	) {
 		pos = this.upscalePosition(pos)
 		const { slices } = dialogue
@@ -248,12 +248,10 @@ export class Renderer {
 					this.ctx.measureText(line).actualBoundingBoxAscent +
 					this.ctx.measureText(line).actualBoundingBoxDescent
 			)
-
-			const lineHeight = Math.max(...lineHeights)
-
-
+			
 			let previousTextWidth = 0
 			let currentLine = 0
+			let lineHeight = Math.max(...lineHeights)
 			let y = pos.y
 
 			switch (this.textBaseline) {
@@ -272,10 +270,12 @@ export class Renderer {
 			}
 
 			slice.fragments.forEach((fragment) => {
+				// console.debug("frag", fragment)
 				let x = pos.x
 				this.applyOverrideTag(fragment.tag, font)
-				const words = separateNewLine(splitTextOnTheNextCharacter(fragment.text))
-				// console.debug(words)
+				let words = separateNewLine(splitTextOnTheNextCharacter(fragment.text))
+				words = words.filter((word) => word !== '')
+				// console.debug("words", words)
 
 				let lineWidth = this.ctx.measureText(lines[currentLine] as string).width
 				switch (this.textAlign) {
@@ -294,12 +294,11 @@ export class Renderer {
 				}
 
 				let currentWordsWidth = 0
-
+				let plusH = 0
 				words.forEach((word) => {
-					let wordWidth = this.ctx.measureText(word).width
 					if (word === '\\N') {
 						currentLine++
-						y += lineHeight 
+						y += lineHeight + plusH
 						previousTextWidth = 0
 						currentWordsWidth = 0
 						lineWidth = this.ctx.measureText(lines[currentLine] as string).width
@@ -317,7 +316,9 @@ export class Renderer {
 								x = pos.x
 						}
 					} else {
-                        this.drawWord(word, x + currentWordsWidth, y, font)
+						let wordWidth = this.ctx.measureText(word).width
+						// console.debug("word", `'${word}'`, wordWidth)
+						plusH = this.drawWord(word, x + currentWordsWidth, y, font)
 						currentWordsWidth += wordWidth
 						previousTextWidth += wordWidth
 					}
@@ -325,40 +326,51 @@ export class Renderer {
 			})
 		})
 	}
-
-    drawWord(word: string, x: number, y: number, font: FontDescriptor) {
-        this.ctx.save()
+	
+    drawWord(word: string, x: number, y: number, font: FontDescriptor, debug = false) {
+		let baseY = y
+		let yChanged = false
+		this.ctx.save()
         this.ctx.beginPath()
         if (font.t.fscy !== 100 && font.t.fscx == 100) {
-            console.debug("stretch-y by", font.t.fscy / 100)
+            // console.debug("stretch-y by", font.t.fscy / 100)
+			y -= this.ctx.measureText(word).actualBoundingBoxAscent * (font.t.fscy / 100 - 1)
             this.ctx.scale(1, font.t.fscy / 100)
+			yChanged = true
         } else if (font.t.fscx !== 100 && font.t.fscy == 100) {
-            console.debug("stretch-x by", font.t.fscx / 100)
+            // console.debug("stretch-x by", font.t.fscx / 100)
+			x -= this.ctx.measureText(word).width * (font.t.fscx / 100 - 1)
             this.ctx.scale(font.t.fscx / 100, 1)
         } else if (font.t.fscx !== 100 && font.t.fscy !== 100) {
-            console.debug("stretch-x-y", font.t.fscx / 100, font.t.fscy / 100)
+            // console.debug("stretch-x-y", font.t.fscx / 100, font.t.fscy / 100)
+			x -= this.ctx.measureText(word).width * (font.t.fscx / 100 - 1)
+			y -= this.ctx.measureText(word).actualBoundingBoxAscent * (font.t.fscy / 100 - 1)
             this.ctx.scale(font.t.fscx / 100, font.t.fscy / 100)
+			yChanged = true
         }
 
+		// console.debug(word, x, y, this.textAlign, this.textBaseline)
+
 		
-        if (this.ctx.lineWidth > 0) {
+        if (font.xbord !== 0 || font.ybord !== 0) {
 			this.ctx.strokeText(word, x, y)
         }
 		
         this.ctx.fillText(word, x, y)
 		
-		// if (font.t.frx !== 0 || font.t.fry !== 0) {
-		// 	console.debug('rotate', font.t.frx, font.t.fry)
-		// 	this.ctx.rotate((font.t.frx / 100) * Math.PI)
-		// } else if (font.t.frz !== 0) {
-		// 	console.debug('rotate', font.t.frz)
-		// 	this.ctx.rotate((font.t.frz / 100) * Math.PI)
-		// }
+		if (debug) {
+			// debug bounding box
+			this.ctx.strokeStyle = "red"
+			this.ctx.strokeRect(x, y - this.ctx.measureText(word).actualBoundingBoxAscent, this.ctx.measureText(word).width, this.ctx.measureText(word).actualBoundingBoxAscent + this.ctx.measureText(word).actualBoundingBoxDescent)
+		}
 		
 		this.ctx.stroke();
 		this.ctx.fill();
 		this.ctx.closePath();
         this.ctx.restore();
+
+		// return the height added by the word in more from the passed y
+		return yChanged ? y - baseY + this.ctx.measureText(word).actualBoundingBoxAscent + this.ctx.measureText(word).actualBoundingBoxDescent : 0
     }
 
 	upscalePosition(pos: Position) {
@@ -395,8 +407,14 @@ export class Renderer {
 		if (tag.a4 !== undefined) { this.ctx.shadowColor = blendAlpha(this.ctx.shadowColor as string, parseFloat(tag.a4)) }
 		if (tag.xshad !== undefined) { this.ctx.shadowOffsetX = this.upscale(tag.xshad, this.playerResX, this.canvas.width) }
 		if (tag.yshad !== undefined) { this.ctx.shadowOffsetY = this.upscale(tag.yshad, this.playerResY, this.canvas.height) }
-		if (tag.xbord !== undefined) { this.ctx.lineWidth = this.upscale(tag.xbord, this.playerResX, this.canvas.width) }
-		if (tag.ybord !== undefined) { this.ctx.lineWidth = this.upscale(tag.ybord, this.playerResY, this.canvas.height) }
+		if (tag.xbord !== undefined) { 
+			this.ctx.lineWidth = this.upscale(tag.xbord, this.playerResX, this.canvas.width)
+			font.xbord = tag.xbord 
+		}
+		if (tag.ybord !== undefined) { 
+			this.ctx.lineWidth = this.upscale(tag.ybord, this.playerResY, this.canvas.height)
+			font.ybord = tag.ybord
+		}
 		if (tag.fscx !== undefined) {font.t.fscx = tag.fscx}
 		if (tag.fscy !== undefined) {font.t.fscy = tag.fscy}
 		if (tag.frz !== undefined) {font.t.frz   = tag.frz}
@@ -406,9 +424,9 @@ export class Renderer {
 		if (tag.fay !== undefined) {font.t.fay   = tag.fay}
 		if (tag.fsp !== undefined) {font.t.fsp   = this.upscale(tag.fsp, this.playerResX, this.canvas.width)}
 		if (tag.blur !== undefined) { this.ctx.shadowBlur = this.upscale(tag.blur, this.playerResY, this.canvas.height) }
-
+		if (tag.pbo)
 		this.ctx.font = this.fontDecriptorString(font)
-		console.log(font)
+		// console.debug("font", font, this.fontDecriptorString(font), "->", this.ctx.font)
 		return font
 	}
 
@@ -417,7 +435,7 @@ export class Renderer {
 	}
 
 	fontDecriptorString(font: FontDescriptor) {
-		return `${font.bold ? 'bold' : ''} ${font.italic ? 'italic' : ''} ${font.fontsize}px ${font.fontname}`
+		return `${font.bold ? 'bold ' : ''}${font.italic ? 'italic ' : ''}${font.fontsize}px ${font.fontname}`
 	}
 
 	computeStyle(name: string, styles: { [styleName: string]: CompiledASSStyle }, alignment: number) {
@@ -467,6 +485,8 @@ export class Renderer {
 				fry: 0,
 				q: q
 			},
+			xbord: xbord,
+			ybord: ybord,
 			fe: fe,
 		}
 
