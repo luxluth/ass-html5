@@ -1,5 +1,13 @@
 # ass-html5
 
+## 0.3.3
+
+### Patch Changes
+
+- a45de93: - Font Vertical and Horizontal Transformation Support
+
+  - Re-writing Core Part (Simplify)
+
 ## 0.3.2
 
 ### Patch Changes
