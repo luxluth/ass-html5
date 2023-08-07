@@ -1,6 +1,6 @@
 import type { CompiledASS, CompiledASSStyle, Dialogue } from 'ass-compiler'
 import type { CompiledTag } from 'ass-compiler/types/tags'
-import type { FontDescriptor, Override } from './types'
+import type { FontDescriptor, Override, Styles, Position } from './types'
 import { 
     ruleOfThree, 
     blendAlpha, 
@@ -75,7 +75,7 @@ export class Renderer {
 		})
 	}
 
-	showText(overrides: Override[], styles: { [styleName: string]: CompiledASSStyle }) {
+	showText(overrides: Override[], styles: Styles) {
 		overrides.forEach((override) => {
 			const { dialogue } = override
 			this.computeStyle(dialogue.style, styles, dialogue.alignment)
@@ -83,7 +83,42 @@ export class Renderer {
 		})
 	}
 
-	drawText(dialogue: Dialogue, styles: { [styleName: string]: CompiledASSStyle }) {
+    flatStrArr(arr: string[]) {
+       return arr.join("\\N") 
+    }
+
+    resampleLinesOnOverflow(lines: string[]): string[] {
+        const resultLines: string[] = [];
+        const maxWidth = this.canvas.width;
+
+        for (const line of lines) {
+            const textWidth = this.ctx.measureText(line).width;
+
+            if (textWidth <= maxWidth) {
+                resultLines.push(line);
+            } else {
+                const words = splitTextOnTheNextCharacter(line)
+                let currentLine = '';
+                for (const word of words) {
+                    const testLine = currentLine ? `${currentLine}${word}` : word;
+                    const testWidth = this.ctx.measureText(testLine).width;
+                    if (testWidth <= maxWidth) {
+                        currentLine = testLine;
+                    } else {
+                        resultLines.push(currentLine);
+                        currentLine = word;
+                    }
+                }
+                if (currentLine) {
+                    resultLines.push(currentLine);
+                }
+            }
+        }
+
+        return resultLines;
+    }
+
+	drawText(dialogue: Dialogue, styles: Styles) {
 		const { slices, pos, move } = dialogue
 		if (typeof pos !== 'undefined') {
 			this.drawTextAtPosition(dialogue, styles, pos)
@@ -99,10 +134,15 @@ export class Renderer {
 		slices.forEach((slice) => {
 			const font = this.computeStyle(slice.style, styles, dialogue.alignment)
 			const lines = makeLines(slice.fragments.map((fragment) => {
-				return fragment.text
+				// return this.flatStrArr(this.resampleLinesOnOverflow([fragment.text]))
+                return fragment.text
 			}))
+
+            // console.debug(lines)
 			
-			const lineHeights = lines.map(
+            // console.debug(this.resampleLinesOnOverflow(lines))
+			
+            const lineHeights = lines.map(
 				(line) =>
 					this.ctx.measureText(line).actualBoundingBoxAscent +
 					this.ctx.measureText(line).actualBoundingBoxDescent
@@ -191,8 +231,8 @@ export class Renderer {
 
 	drawTextAtPosition(
 		dialogue: Dialogue,
-		styles: { [styleName: string]: CompiledASSStyle },
-		pos: { x: number; y: number }
+		styles: Styles,
+		pos: Position
 	) {
 		pos = this.upscalePosition(pos)
 		const { slices } = dialogue
@@ -201,6 +241,7 @@ export class Renderer {
 			const lines = makeLines(slice.fragments.map((fragment) => {
 				return fragment.text
 			}))
+
 
 			const lineHeights = lines.map(
 				(line) =>
@@ -288,29 +329,39 @@ export class Renderer {
     drawWord(word: string, x: number, y: number, font: FontDescriptor) {
         this.ctx.save()
         this.ctx.beginPath()
-        if (font.fscy !== 100 && font.fscx == 100) {
-            console.debug("stretch-y by", font.fscy / 100)
-            this.ctx.scale(1, font.fscy / 100)
-        } else if (font.fscx !== 100 && font.fscy == 100) {
-            console.debug("stretch-x by", font.fscx / 100)
-            this.ctx.scale(font.fscx / 100, 1)
-        } else if (font.fscx !== 100 && font.fscy !== 100) {
-            console.debug("stretch-x-y", font.fscx / 100, font.fscy / 100)
-            this.ctx.scale(font.fscx / 100, font.fscy / 100)
+        if (font.t.fscy !== 100 && font.t.fscx == 100) {
+            console.debug("stretch-y by", font.t.fscy / 100)
+            this.ctx.scale(1, font.t.fscy / 100)
+        } else if (font.t.fscx !== 100 && font.t.fscy == 100) {
+            console.debug("stretch-x by", font.t.fscx / 100)
+            this.ctx.scale(font.t.fscx / 100, 1)
+        } else if (font.t.fscx !== 100 && font.t.fscy !== 100) {
+            console.debug("stretch-x-y", font.t.fscx / 100, font.t.fscy / 100)
+            this.ctx.scale(font.t.fscx / 100, font.t.fscy / 100)
         }
 
+		
         if (this.ctx.lineWidth > 0) {
-            this.ctx.strokeText(word, x, y)
-            this.ctx.stroke();
+			this.ctx.strokeText(word, x, y)
         }
-
+		
         this.ctx.fillText(word, x, y)
-        this.ctx.fill();
-        this.ctx.closePath();
+		
+		// if (font.t.frx !== 0 || font.t.fry !== 0) {
+		// 	console.debug('rotate', font.t.frx, font.t.fry)
+		// 	this.ctx.rotate((font.t.frx / 100) * Math.PI)
+		// } else if (font.t.frz !== 0) {
+		// 	console.debug('rotate', font.t.frz)
+		// 	this.ctx.rotate((font.t.frz / 100) * Math.PI)
+		// }
+		
+		this.ctx.stroke();
+		this.ctx.fill();
+		this.ctx.closePath();
         this.ctx.restore();
     }
 
-	upscalePosition(pos: { x: number; y: number }) {
+	upscalePosition(pos: Position) {
 		return {
 			x: this.upscale(pos.x, this.playerResX, this.canvas.width),
 			y: this.upscale(pos.y, this.playerResY, this.canvas.height)
@@ -330,39 +381,6 @@ export class Renderer {
 	}
 
 	applyOverrideTag(tag: CompiledTag, font: FontDescriptor) {
-		// const {
-		// 	xbord, // x border
-		// 	ybord, // y border
-		// 	xshad, // x shadow
-		// 	yshad, // y shadow
-		// 	fscx, // font scale x
-		// 	fscy, // font scale y
-		// 	frz, // font rotation z
-		// 	frx, // font rotation x
-		// 	fry, // font rotation y
-		// 	fax, // font shear x
-		// 	fay, // font shear y
-		// 	fsp, // font spacing
-		// 	q, // wrap style
-		// 	blur, // blur
-		// 	be, // blur edge
-		// 	fe, // font encoding
-		// 	fn, // font name
-		// 	fs, // font size
-		// 	c1, // primary color
-		// 	a1, // primary alpha
-		// 	c2, // secondary color
-		// 	a2, // secondary alpha
-		// 	c3, // outline color
-		// 	a3, // outline alpha
-		// 	c4, // shadow color
-		// 	a4, // shadow alpha
-		// 	b,  // bold
-		// 	i,  // italic
-		// 	u,  // underline
-		// 	s,  // strikeout
-		// } = tag
-		// console.debug(tag)
 		if (tag.b !== undefined) { font.bold = tag.b === 1 }
 		if (tag.i !== undefined) { font.italic = tag.i === 1 }
 		if (tag.u !== undefined) { font.underline = tag.u === 1 }
@@ -379,12 +397,18 @@ export class Renderer {
 		if (tag.yshad !== undefined) { this.ctx.shadowOffsetY = this.upscale(tag.yshad, this.playerResY, this.canvas.height) }
 		if (tag.xbord !== undefined) { this.ctx.lineWidth = this.upscale(tag.xbord, this.playerResX, this.canvas.width) }
 		if (tag.ybord !== undefined) { this.ctx.lineWidth = this.upscale(tag.ybord, this.playerResY, this.canvas.height) }
-		// if (tag.frz !== undefined) { this.ctx.rotate(tag.frz) }
-        if (tag.fscx !== undefined) { font.fscx = tag.fscx }
-        if (tag.fscy !== undefined) { font.fscy = tag.fscy }
+		if (tag.fscx !== undefined) {font.t.fscx = tag.fscx}
+		if (tag.fscy !== undefined) {font.t.fscy = tag.fscy}
+		if (tag.frz !== undefined) {font.t.frz   = tag.frz}
+		if (tag.frx !== undefined) {font.t.frx   = tag.frx}
+		if (tag.fry !== undefined) {font.t.fry   = tag.fry}
+		if (tag.fax !== undefined) {font.t.fax   = tag.fax}
+		if (tag.fay !== undefined) {font.t.fay   = tag.fay}
+		if (tag.fsp !== undefined) {font.t.fsp   = this.upscale(tag.fsp, this.playerResX, this.canvas.width)}
 		if (tag.blur !== undefined) { this.ctx.shadowBlur = this.upscale(tag.blur, this.playerResY, this.canvas.height) }
 
 		this.ctx.font = this.fontDecriptorString(font)
+		console.log(font)
 		return font
 	}
 
@@ -404,11 +428,9 @@ export class Renderer {
 		const {
 			fn, // font name
 			fs, // font size
-			c1, // primary color
 			a1, // primary alpha
-			c2, // secondary color
-			a2, // secondary alpha
-			c3, // outline color
+			// c2, // secondary color
+			// a2, // secondary alpha
 			a3, // outline alpha
 			c4, // shadow color
 			a4, // shadow alpha
@@ -437,8 +459,15 @@ export class Renderer {
 			italic: i === 1,
 			underline: u === 1,
 			strikeout: s === 1,
-            fscx: fscx,
-            fscy: fscy,
+			t: {
+				fscx: fscx,
+				fscy: fscy,
+				frz: frz,
+				frx: 0,
+				fry: 0,
+				q: q
+			},
+			fe: fe,
 		}
 
 		this.textAlign = this.getAlignment(alignment)

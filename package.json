@@ -10,6 +10,7 @@
 		"build": "pnpm run build:normal && pnpm run build:minify",
 		"build:normal": "tsup --dts",
 		"build:minify": "rollup -c --bundleConfigAsCjs",
+		"build:simple": "tsup",
 		"dev": "tsup --watch",
 		"release": "pnpm run build && changeset publish",
 		"lint": "tsc",

@@ -51,43 +51,6 @@ export type ASSOptions = {
 	fonts?: Font[]
 }
 
-export type Shift = {
-	marginL: number
-	marginR: number
-	marginV: number
-}
-
-export type TimeRange = {
-	start: number
-	end: number
-}
-
-export type SingleStyle = {
-	Name: string
-	Fontname: string
-	Fontsize: string
-	PrimaryColour: string
-	SecondaryColour: string
-	OutlineColour: string
-	BackColour: string
-	Bold: string
-	Italic: string
-	Underline: string
-	StrikeOut: string
-	ScaleX: string
-	ScaleY: string
-	Spacing: string
-	Angle: string
-	BorderStyle: string
-	Outline: string
-	Shadow: string
-	Alignment: string
-	MarginL: string
-	MarginR: string
-	MarginV: string
-	Encoding: string
-}
-
 export type FontDescriptor = {
 	fontname: string
 	fontsize: number
@@ -95,8 +58,31 @@ export type FontDescriptor = {
 	italic: boolean
 	underline: boolean
 	strikeout: boolean
-    fscx: number,
-    fscy: number,
+	/** font transformation */
+	t: FontTransfomation
+	/** font encoding */
+	fe?: number
+}
+
+export type FontTransfomation = {
+	/** font scale x */
+	fscx: number,
+	/** font scale y */
+	fscy: number,
+	/** font rotation z*/
+	frz: number,
+	/** font rotation x*/
+	frx: number,
+	/** font rotation y*/
+	fry: number,
+	/** font shear x */
+	fax?: number,
+	/** font shear y */
+	fay?: number,
+	/** font spacing */
+	fsp?: number,
+	/** wrap style */
+	q: 0 | 2 | 1 | 3
 }
 
 export type Tag = { [K in keyof ParsedTag]: ParsedTag[K] }
@@ -158,4 +144,11 @@ export type Tweaks = {
 export type Override = {
 	dialogue: Dialogue
 	style: CompiledASSStyle
+}
+
+export type Styles = { [styleName: string]: CompiledASSStyle }
+
+export type Position = {
+	x: number
+	y: number
 }
