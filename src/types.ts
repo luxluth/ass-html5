@@ -1,35 +1,35 @@
+import type { CompiledASSStyle, Dialogue } from 'ass-compiler'
 import type { ParsedTag } from 'ass-compiler/types/tags'
 
-
 export type FontStyle = {
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/ascentOverride) */
-    ascentOverride: string;
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/descentOverride) */
-    descentOverride: string;
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/display) */
-    display: FontDisplay;
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/family) */
-    family: string;
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/featureSettings) */
-    featureSettings: string;
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/lineGapOverride) */
-    lineGapOverride: string;
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/stretch) */
-    stretch: string;
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/style) */
-    style: string;
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/unicodeRange) */
-    unicodeRange: string;
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/variant) */
-    variant: string;
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/weight) */
-    weight: string;
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/load) */
+	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/ascentOverride) */
+	ascentOverride: string
+	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/descentOverride) */
+	descentOverride: string
+	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/display) */
+	display: FontDisplay
+	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/family) */
+	family: string
+	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/featureSettings) */
+	featureSettings: string
+	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/lineGapOverride) */
+	lineGapOverride: string
+	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/stretch) */
+	stretch: string
+	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/style) */
+	style: string
+	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/unicodeRange) */
+	unicodeRange: string
+	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/variant) */
+	variant: string
+	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/weight) */
+	weight: string
+	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/load) */
 }
 
 export type Font = {
-	family: string,
-	url: string,
+	family: string
+	url: string
 	descriptors?: Partial<FontStyle>
 }
 
@@ -38,7 +38,7 @@ export type ASSOptions = {
 	 * The ass text string
 	 */
 	assText: string
-	
+
 	/**
 	 * The video to display the subtile on.
 	 * Can be either an `HTMLVideoElement` or `string` (html query selector )
@@ -51,44 +51,6 @@ export type ASSOptions = {
 	fonts?: Font[]
 }
 
-
-export type Shift = {
-	marginL: number
-	marginR: number
-	marginV: number
-}
-
-export type TimeRange = {
-	start: number,
-	end: number
-}
-
-export type SingleStyle = {
-	Name: string
-	Fontname: string
-	Fontsize: string
-	PrimaryColour: string
-	SecondaryColour: string
-	OutlineColour: string
-	BackColour: string
-	Bold: string
-	Italic: string
-	Underline: string
-	StrikeOut: string
-	ScaleX: string
-	ScaleY: string
-	Spacing: string
-	Angle: string
-	BorderStyle: string
-	Outline: string
-	Shadow: string
-	Alignment: string
-	MarginL: string
-	MarginR: string
-	MarginV: string
-	Encoding: string
-}
-
 export type FontDescriptor = {
 	fontname: string
 	fontsize: number
@@ -96,6 +58,35 @@ export type FontDescriptor = {
 	italic: boolean
 	underline: boolean
 	strikeout: boolean
+	/** font transformation */
+	t: FontTransfomation
+	/** x border */
+	xbord: number
+	/** y border */
+	ybord: number
+	/** font encoding */
+	fe?: number
+}
+
+export type FontTransfomation = {
+	/** font scale x */
+	fscx: number,
+	/** font scale y */
+	fscy: number,
+	/** font rotation z*/
+	frz: number,
+	/** font rotation x*/
+	frx: number,
+	/** font rotation y*/
+	fry: number,
+	/** font shear x */
+	fax?: number,
+	/** font shear y */
+	fay?: number,
+	/** font spacing */
+	fsp?: number,
+	/** wrap style */
+	q: 0 | 2 | 1 | 3,
 }
 
 export type Tag = { [K in keyof ParsedTag]: ParsedTag[K] }
@@ -110,7 +101,9 @@ export declare namespace ASSAnimation {
 		values: [number, number] | [number, number, number, number, number, number]
 	}
 
-    export type MoveValues = [number, number, number, number] | [number, number, number, number, number, number]
+	export type MoveValues =
+		| [number, number, number, number]
+		| [number, number, number, number, number, number]
 	export type Move = {
 		name: 'move'
 		/**
@@ -150,4 +143,16 @@ export type Tweaks = {
 	fontDescriptor: FontDescriptor
 	custompositioning: boolean
 	animations: ASSAnimation.Animation[]
+}
+
+export type Override = {
+	dialogue: Dialogue
+	style: CompiledASSStyle
+}
+
+export type Styles = { [styleName: string]: CompiledASSStyle }
+
+export type Position = {
+	x: number
+	y: number
 }

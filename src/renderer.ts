@@ -1,65 +1,45 @@
-import type { ParsedASS, ParsedASSEventText, ParsedASSEventTextParsed } from 'ass-compiler'
-import { SingleStyle, FontDescriptor, Tag, ASSAnimation, Shift, Tweaks, TimeRange } from './types'
-import { ruleOfThree, convertAegisubToRGBA, hashString, makeLines, splitTextOnTheNextCharacter } from './utils'
-import { Animate } from './animate'
+import type { CompiledASS, CompiledASSStyle, Dialogue } from 'ass-compiler'
+import type { CompiledTag } from 'ass-compiler/types/tags'
+import type { FontDescriptor, Override, Styles, Position } from './types'
+import { 
+    ruleOfThree, 
+    blendAlpha, 
+    makeLines, 
+    splitTextOnTheNextCharacter, 
+    separateNewLine,
+    convertAegisubColorToHex,
+    swapBBGGRR
+} from './utils'
 
 export class Renderer {
-	parsedAss: ParsedASS
+	compiledASS: CompiledASS
 	canvas: HTMLCanvasElement
 	ctx: CanvasRenderingContext2D
 	video: HTMLVideoElement
-	animator: Animate
 	playerResX: number
 	playerResY: number
-	styles: SingleStyle[]
 
 	textAlign: CanvasTextAlign = 'start'
 	textBaseline: CanvasTextBaseline = 'alphabetic'
-	tweaksAppliedResult = {
-		positionChanged: false,
-		position: [0, 0],
-		animation: [] as ASSAnimation.Animation[],	
-	}
+	fontSpacing = 0
 
-	previousTextWidth = 0
-	previousTextPos = { x: 0, y: 0 }
-	startBaseline = 0
-	timeRange = {
-		start: 0,
-		end: 0
-	} as TimeRange
-	currentHash  = 0
-
-	constructor(parsedASS: ParsedASS, canvas: HTMLCanvasElement, video: HTMLVideoElement) {
-		this.parsedAss = parsedASS
-		this.playerResX = parseFloat(this.parsedAss.info.PlayResX)
-		this.playerResY = parseFloat(this.parsedAss.info.PlayResY)
-		this.styles = parsedASS.styles.style as SingleStyle[]
+	constructor(parsedASS: CompiledASS, canvas: HTMLCanvasElement, video: HTMLVideoElement) {
+		this.compiledASS = parsedASS
+		this.playerResX = this.compiledASS.width
+		this.playerResY = this.compiledASS.height
 		this.canvas = canvas
 		this.video = video
 		this.ctx = canvas.getContext('2d') as CanvasRenderingContext2D
 		if (this.ctx === null) {
 			throw new Error('Unable to initilize the Canvas 2D context')
 		}
-		this.animator = new Animate(this)
-		// let data = [
-		//     {parsedAss : this.parsedAss},
-		//     {canvas : this.canvas},
-		//     {ctx : this.ctx}
-		// ]
+		let data = [{ compiledASS: this.compiledASS }, { canvas: this.canvas }, { ctx: this.ctx }]
 		// console.debug(data)
 	}
 
 	render() {
 		this.video.addEventListener('timeupdate', () => {
 			this.diplay(this.video.currentTime)
-		})
-
-		this.video.addEventListener('pause', () => {
-			this.animator.removeAllAnimations()
-		})
-		this.video.addEventListener('seeked', () => {
-			this.animator.removeAllAnimations()
 		})
 	}
 
@@ -74,684 +54,456 @@ export class Renderer {
 	}
 
 	diplay(time: number) {
-		const overlappingDialoguesEvents = this.parsedAss.events.dialogue.filter(
-			(event) => event.Start <= time && event.End >= time
-		)
-
-		// Clear the canvas
 		this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
-		overlappingDialoguesEvents.forEach((event) => {
-			// console.debug(event)
-			const { Style, Text, MarginL, MarginR, MarginV, Start, End } = event
-			const style = this.getStyle(Style)
-			if (style === undefined) {
-				return
+
+		const { dialogues, styles } = this.compiledASS
+		const dialoguesToDisplay = this.getOverrideStyle(time, dialogues)
+		const overrides = dialoguesToDisplay.map((dialogue) => {
+			return {
+				dialogue: dialogue,
+				style: styles[dialogue.style] as CompiledASSStyle
 			}
-			this.timeRange = { start: Start, end: End }
-			this.showText(Text, style, { marginL: MarginL, marginR: MarginR, marginV: MarginV })
+		}) as Override[]
+		// console.debug(overrides)
+
+		this.showText(overrides, styles)
+	}
+
+	getOverrideStyle(time: number, dialogues: Dialogue[]) {
+		return dialogues.filter((dialogue) => {
+			return dialogue.start <= time && dialogue.end >= time
+		})
+	}
+
+	showText(overrides: Override[], styles: Styles) {
+		overrides.forEach((override) => {
+			const { dialogue } = override
+			this.computeStyle(dialogue.style, styles, dialogue.alignment)
+			this.drawText(dialogue, styles)
+		})
+	}
+
+    flatStrArr(arr: string[]) {
+       return arr.join("\\N") 
+    }
+
+    resampleLinesOnOverflow(lines: string[]): string[] {
+        const resultLines: string[] = [];
+        const maxWidth = this.canvas.width;
+
+        for (const line of lines) {
+            const textWidth = this.ctx.measureText(line).width;
+
+            if (textWidth <= maxWidth) {
+                resultLines.push(line);
+            } else {
+                const words = splitTextOnTheNextCharacter(line)
+                let currentLine = '';
+                for (const word of words) {
+                    const testLine = currentLine ? `${currentLine}${word}` : word;
+                    const testWidth = this.ctx.measureText(testLine).width;
+                    if (testWidth <= maxWidth) {
+                        currentLine = testLine;
+                    } else {
+                        resultLines.push(currentLine);
+                        currentLine = word;
+                    }
+                }
+                if (currentLine) {
+                    resultLines.push(currentLine);
+                }
+            }
+        }
+
+        return resultLines;
+    }
+
+	drawText(dialogue: Dialogue, styles: Styles) {
+		const { slices, pos, move } = dialogue
+		if (typeof pos !== 'undefined') {
+			this.drawTextAtPosition(dialogue, styles, pos)
+			return
+		} else if (typeof move !== 'undefined') {
+			let pos = {
+				x: move.x1,
+				y: move.y1
+			}
+			this.drawTextAtPosition(dialogue, styles, pos)
+			return
+		}
+		slices.forEach((slice) => {
+			const font = this.computeStyle(slice.style, styles, dialogue.alignment)
+			const lines = makeLines(slice.fragments.map((fragment) => {
+				// return this.flatStrArr(this.resampleLinesOnOverflow([fragment.text]))
+                return fragment.text
+			}))
+
+            // console.debug(lines)
+			
+            // console.debug(this.resampleLinesOnOverflow(lines))
+			
+            const lineHeights = lines.map(
+				(line) =>
+					this.ctx.measureText(line).actualBoundingBoxAscent +
+					this.ctx.measureText(line).actualBoundingBoxDescent
+			)
+
+			const lineHeight = Math.max(...lineHeights)
+			const totalHeight = lineHeight * lines.length
+			
+			const margin = this.upscaleMargin(dialogue.margin)
+
+			let previousTextWidth = 0
+			let currentLine = 0
+			let y = 0
+
+			switch (this.textBaseline) {
+				case 'top':
+					y = margin.vertical + (lines.length > 1 ? totalHeight / lines.length : lineHeight)
+					break
+				case 'middle':
+					y = (this.canvas.height - totalHeight) / 2 + lineHeight
+					break
+				case 'bottom':
+					y = this.canvas.height - margin.vertical - (lines.length > 1 ? totalHeight / lines.length : 0)
+					break
+				default:
+					y = margin.vertical + lineHeight
+					break
+			}
+
+			slice.fragments.forEach((fragment) => {
+				this.applyOverrideTag(fragment.tag, font)
+				const words = separateNewLine(splitTextOnTheNextCharacter(fragment.text))
+				// console.debug(words)
+				
+				let lineWidth = this.ctx.measureText(lines[currentLine] as string).width
+				let x = 0
+				switch (this.textAlign) {
+					case 'left':
+						x = margin.left + previousTextWidth
+						break
+					case 'center':
+						x = (this.canvas.width - lineWidth) / 2 + previousTextWidth
+						break
+					case 'right':
+						x = this.canvas.width - margin.right - lineWidth + previousTextWidth
+						break
+					default:
+						x = margin.left + previousTextWidth
+						break
+				}
+
+				let currentWordsWidth = 0
+
+				words.forEach((word) => {
+					let wordWidth = this.ctx.measureText(word).width
+					if (word === '\\N') {
+						// console.debug('y', y)
+						currentLine++
+						y += lineHeight
+						// console.debug('next-y', y)
+						previousTextWidth = 0
+						currentWordsWidth = 0
+						lineWidth = this.ctx.measureText(lines[currentLine] as string).width
+						switch (this.textAlign) {
+							case 'left':
+								x = margin.left
+								break
+							case 'center':
+								x = (this.canvas.width - lineWidth) / 2
+								break
+							case 'right':
+								x = this.canvas.width - margin.right - lineWidth
+								break
+							default:
+								x = margin.left
+						}
+					} else {
+                        this.drawWord(word, x + currentWordsWidth, y, font)
+						currentWordsWidth += wordWidth
+						previousTextWidth += wordWidth
+					}
+				})
+			})
+		})
+	}
+
+	drawTextAtPosition(
+		dialogue: Dialogue,
+		styles: Styles,
+		pos: Position,
+	) {
+		pos = this.upscalePosition(pos)
+		const { slices } = dialogue
+		slices.forEach((slice) => {
+			const font = this.computeStyle(slice.style, styles, dialogue.alignment)
+			const lines = makeLines(slice.fragments.map((fragment) => {
+				return fragment.text
+			}))
+
+
+			const lineHeights = lines.map(
+				(line) =>
+					this.ctx.measureText(line).actualBoundingBoxAscent +
+					this.ctx.measureText(line).actualBoundingBoxDescent
+			)
+			
+			let previousTextWidth = 0
+			let currentLine = 0
+			let lineHeight = Math.max(...lineHeights)
+			let y = pos.y
+
+			switch (this.textBaseline) {
+				case 'top':
+					y += lineHeight
+					break
+				case 'middle':
+					y += lineHeight / 2
+					break
+				case 'bottom':
+					y -= lineHeight
+					break
+				default:
+					y += lineHeight
+					break
+			}
+
+			slice.fragments.forEach((fragment) => {
+				// console.debug("frag", fragment)
+				let x = pos.x
+				this.applyOverrideTag(fragment.tag, font)
+				let words = separateNewLine(splitTextOnTheNextCharacter(fragment.text))
+				words = words.filter((word) => word !== '')
+				// console.debug("words", words)
+
+				let lineWidth = this.ctx.measureText(lines[currentLine] as string).width
+				switch (this.textAlign) {
+					case 'left':
+						x += previousTextWidth
+						break
+					case 'center':
+						x += previousTextWidth - lineWidth / 2
+						break
+					case 'right':
+						x -= lineWidth + previousTextWidth
+						break
+					default:
+						x += previousTextWidth
+						break
+				}
+
+				let currentWordsWidth = 0
+				let plusH = 0
+				words.forEach((word) => {
+					if (word === '\\N') {
+						currentLine++
+						y += lineHeight + plusH
+						previousTextWidth = 0
+						currentWordsWidth = 0
+						lineWidth = this.ctx.measureText(lines[currentLine] as string).width
+						switch (this.textAlign) {
+							case 'left':
+								x = pos.x
+								break
+							case 'center':
+								x = pos.x - lineWidth / 2
+								break
+							case 'right':
+								x = pos.x - lineWidth
+								break
+							default:
+								x = pos.x
+						}
+					} else {
+						let wordWidth = this.ctx.measureText(word).width
+						// console.debug("word", `'${word}'`, wordWidth)
+						plusH = this.drawWord(word, x + currentWordsWidth, y, font)
+						currentWordsWidth += wordWidth
+						previousTextWidth += wordWidth
+					}
+				})
+			})
 		})
 	}
 	
-	showText(Text: ParsedASSEventText, style: SingleStyle, shift: Shift) {
-		this.ctx.globalAlpha = 1
-		this.currentHash = hashString(JSON.stringify(Text))
-		// console.debug("hash", JSON.stringify(this.currentHash))
-		let fontDescriptor = this.getFontDescriptor(style) // FontDescriptor
-		let c1 = convertAegisubToRGBA(style.PrimaryColour) // primary color
-		// let c2 = convertAegisubToRGBA(style.SecondaryColour, tags) // secondary color
-		let c3 = convertAegisubToRGBA(style.OutlineColour) // outline color
-		let c4 = convertAegisubToRGBA(style.BackColour) // shadow color
-		let marginL =
-			(ruleOfThree(this.playerResX, this.canvas.width) * parseFloat(style.MarginL)) / 100 +
-			(ruleOfThree(this.playerResX, this.canvas.width) * shift.marginL) / 100
-		let marginV =
-			(ruleOfThree(this.playerResY, this.canvas.height) * parseFloat(style.MarginV)) / 100 +
-			(ruleOfThree(this.playerResY, this.canvas.height) * shift.marginV) / 100
-		let marginR =
-			(ruleOfThree(this.playerResX, this.canvas.width) * parseFloat(style.MarginR)) / 100 +
-			(ruleOfThree(this.playerResX, this.canvas.width) * shift.marginR) / 100
-		// console.debug(marginL, marginV, marginR)
+    drawWord(word: string, x: number, y: number, font: FontDescriptor, debug = false) {
+		let baseY = y
+		let yChanged = false
+		this.ctx.save()
+        this.ctx.beginPath()
+        if (font.t.fscy !== 100 && font.t.fscx == 100) {
+            // console.debug("stretch-y by", font.t.fscy / 100)
+			y -= this.ctx.measureText(word).actualBoundingBoxAscent * (font.t.fscy / 100 - 1)
+            this.ctx.scale(1, font.t.fscy / 100)
+			yChanged = true
+        } else if (font.t.fscx !== 100 && font.t.fscy == 100) {
+            // console.debug("stretch-x by", font.t.fscx / 100)
+			x -= this.ctx.measureText(word).width * (font.t.fscx / 100 - 1)
+            this.ctx.scale(font.t.fscx / 100, 1)
+        } else if (font.t.fscx !== 100 && font.t.fscy !== 100) {
+            // console.debug("stretch-x-y", font.t.fscx / 100, font.t.fscy / 100)
+			x -= this.ctx.measureText(word).width * (font.t.fscx / 100 - 1)
+			y -= this.ctx.measureText(word).actualBoundingBoxAscent * (font.t.fscy / 100 - 1)
+            this.ctx.scale(font.t.fscx / 100, font.t.fscy / 100)
+			yChanged = true
+        }
 
-		this.ctx.font = ` ${fontDescriptor.bold ? 'bold' : ''} ${
-			fontDescriptor.italic ? 'italic' : ''
-		}  ${fontDescriptor.fontsize}px ${fontDescriptor.fontname}`
-		// console.debug(this.ctx.font)
-		this.textAlign = this.getAlignment(parseInt(style.Alignment)) as CanvasTextAlign
-		this.textBaseline = this.getBaseLine(parseInt(style.Alignment)) as CanvasTextBaseline
-		this.ctx.fillStyle = c1
-		this.ctx.strokeStyle = c3
-		this.ctx.lineWidth =
-			((ruleOfThree(this.playerResX, this.canvas.width) * parseFloat(style.Outline)) / 100) * 2
-		// console.debug(this.ctx.lineWidth, style.Outline)
-		this.ctx.lineJoin = 'round'
-		this.ctx.lineCap = 'round'
-		this.ctx.miterLimit = 2
-		this.ctx.shadowColor = c4
-		this.ctx.shadowBlur =
-			(ruleOfThree(this.playerResX, this.canvas.width) * parseFloat(style.Shadow)) / 100
-		this.ctx.shadowOffsetX =
-			(ruleOfThree(this.playerResX, this.canvas.width) * parseFloat(style.Shadow)) / 100
-		this.ctx.shadowOffsetY =
-			(ruleOfThree(this.playerResY, this.canvas.height) * parseFloat(style.Shadow)) / 100
+		// console.debug(word, x, y, this.textAlign, this.textBaseline)
 
-		this.drawTextV2(Text.parsed, marginL, marginV, marginR, fontDescriptor, this.currentHash)
-	}
-
-	flatTags(tags: Tag[]) {
-		let flatTags: Tag = {}
-		tags.forEach((tag) => {
-			flatTags = { ...flatTags, ...tag }
-		})
-		return flatTags
-	}
-
-	teawksDrawSettings(
-		tags: Tag[],
-		fontDescriptor: FontDescriptor,
-		tagsParsed: boolean = false,
-		tagsParsedAll?: Tag,
-		posShift?: [number, number]
-	) {
-		const tweaked = tags.length > 0 ? true : false
-		// put all the tags in the same object
-		let tagsCombined: Tag = {}
-		if (tagsParsed) {
-			tagsCombined = tagsParsedAll as Tag
-		} else {
-			tagsCombined = this.flatTags(tags)
+		
+        if (font.xbord !== 0 || font.ybord !== 0) {
+			this.ctx.strokeText(word, x, y)
+        }
+		
+        this.ctx.fillText(word, x, y)
+		
+		if (debug) {
+			// debug bounding box
+			this.ctx.strokeStyle = "red"
+			this.ctx.strokeRect(x, y - this.ctx.measureText(word).actualBoundingBoxAscent, this.ctx.measureText(word).width, this.ctx.measureText(word).actualBoundingBoxAscent + this.ctx.measureText(word).actualBoundingBoxDescent)
 		}
-		// console.debug("tagsCombined", tagsCombined)
-		const primaryColor =
-			typeof tagsCombined.c1 !== 'undefined'
-				? convertAegisubToRGBA('00' + tagsCombined.c1, tagsCombined)
-				: undefined
-		const secondaryColor =
-			typeof tagsCombined.c2 !== 'undefined'
-				? convertAegisubToRGBA('00' + tagsCombined.c2, tagsCombined)
-				: undefined
-		const outlineColor =
-			typeof tagsCombined.c3 !== 'undefined'
-				? convertAegisubToRGBA('00' + tagsCombined.c3, tagsCombined)
-				: undefined
-		const shadowColor =
-			typeof tagsCombined.c4 !== 'undefined'
-				? convertAegisubToRGBA('00' + tagsCombined.c4, tagsCombined)
-				: undefined
-		if (typeof tagsCombined.b !== 'undefined') {
-			if (tagsCombined.b === 1) {
-				fontDescriptor.bold = true
-			} else if (tagsCombined.b === 0) {
-				fontDescriptor.bold = false
-			}
-		}
-		if (typeof tagsCombined.i !== 'undefined') {
-			if (tagsCombined.i === 1) {
-				fontDescriptor.italic = true
-			} else if (tagsCombined.i === 0) {
-				fontDescriptor.italic = false
-			}
-		}
-		if (typeof tagsCombined.u !== 'undefined') {
-			if (tagsCombined.u === 1) {
-				fontDescriptor.underline = true
-			} else if (tagsCombined.u === 0) {
-				fontDescriptor.underline = false
-			}
-		}
-		if (typeof tagsCombined.s !== 'undefined') {
-			if (tagsCombined.s === 1) {
-				fontDescriptor.strikeout = true
-			} else if (tagsCombined.s === 0) {
-				fontDescriptor.strikeout = false
-			}
-		}
-		const scaleX = typeof tagsCombined.xbord !== 'undefined' ? tagsCombined.xbord : undefined
-		const scaleY = typeof tagsCombined.ybord !== 'undefined' ? tagsCombined.ybord : undefined
-		const spacing = typeof tagsCombined.xshad !== 'undefined' ? tagsCombined.xshad : undefined
-		const angle = typeof tagsCombined.fax !== 'undefined' ? tagsCombined.fax : undefined
-		const borderStyle = typeof tagsCombined.bord !== 'undefined' ? tagsCombined.bord : undefined
-		const outline = typeof tagsCombined.bord !== 'undefined' ? tagsCombined.bord : undefined
-		const shadow = typeof tagsCombined.shad !== 'undefined' ? tagsCombined.shad : undefined
-		// alignment is an or a
-		const alignment =
-			typeof tagsCombined.an !== 'undefined'
-				? tagsCombined.an
-				: typeof tagsCombined.a !== 'undefined'
-				? tagsCombined.a
-				: undefined
-		const position =
-			typeof tagsCombined.pos !== 'undefined'
-				? ([
-						(ruleOfThree(this.playerResX, this.canvas.width) * tagsCombined.pos[0]) / 100 +
-							(posShift ? posShift[0] : 0),
-						(ruleOfThree(this.playerResY, this.canvas.height) * tagsCombined.pos[1]) / 100 +
-							(posShift ? posShift[1] : 0)
-				  ] as [number, number])
-				: undefined
+		
+		this.ctx.stroke();
+		this.ctx.fill();
+		this.ctx.closePath();
+        this.ctx.restore();
 
-		const fontsize = tagsCombined.fs ? tagsCombined.fs : undefined
-		const fontname = tagsCombined.fn ? tagsCombined.fn : undefined
+		// return the height added by the word in more from the passed y
+		return yChanged ? y - baseY + this.ctx.measureText(word).actualBoundingBoxAscent + this.ctx.measureText(word).actualBoundingBoxDescent : 0
+    }
 
-		// Animation
-		let animations: ASSAnimation.Animation[] = []
-		const MoveAnimation = typeof tagsCombined.move !== 'undefined' ? this.upsacaleMove(tagsCombined.move) : undefined
-		const simpleFadeAnimation =
-			typeof tagsCombined.fad !== 'undefined' ? tagsCombined.fad : undefined
-		const complexFadeAnimation =
-			typeof tagsCombined.fade !== 'undefined' ? tagsCombined.fade : undefined
-		const orgAnimation = typeof tagsCombined.org !== 'undefined' ? tagsCombined.org : undefined
-
-		const fadeAnimation =
-			typeof simpleFadeAnimation !== 'undefined'
-				? ({
-						name: 'fad',
-						values: simpleFadeAnimation
-				  } as ASSAnimation.Fade)
-				: typeof complexFadeAnimation !== 'undefined'
-				? ({
-						name: 'fade',
-						values: complexFadeAnimation
-				  } as ASSAnimation.Fade)
-				: undefined
-		const moveAnimation =
-			typeof MoveAnimation !== 'undefined'
-				? ({
-						name: 'move',
-						values: MoveAnimation
-				  } as ASSAnimation.Move)
-				: undefined
-		const orgAnimationParsed =
-			typeof orgAnimation !== 'undefined'
-				? ({
-						name: 'org',
-						values: orgAnimation
-				  } as ASSAnimation.Org)
-				: undefined
-
-		if (typeof fadeAnimation !== 'undefined') {
-			animations = [...animations, fadeAnimation]
-		}
-		if (typeof moveAnimation !== 'undefined') {
-			animations = [...animations, moveAnimation]
-		}
-		if (typeof orgAnimationParsed !== 'undefined') {
-			animations = [...animations, orgAnimationParsed]
-		}
-
-		if (typeof fontsize !== 'undefined') {
-			fontDescriptor.fontsize =
-				(ruleOfThree(this.playerResY, this.canvas.height) * parseFloat(fontsize)) / 100
-		}
-		if (typeof fontname !== 'undefined') {
-			fontDescriptor.fontname = fontname
-		}
-
-		// console.debug("new Font", `${fontDescriptor.bold ? "bold" : ""} ${fontDescriptor.italic ? "italic" : ""}  ${fontDescriptor.fontsize}px ${fontDescriptor.fontname}`)
-
+	upscalePosition(pos: Position) {
 		return {
-			tweaked,
-			primaryColor,
-			secondaryColor,
-			outlineColor,
-			shadowColor,
-			scaleX,
-			scaleY,
-			spacing,
-			angle,
-			borderStyle,
-			outline,
-			shadow,
-			alignment,
-			position,
-			fontDescriptor,
-			custompositioning: typeof position !== 'undefined' ? true : false,
-			animations
-		} as Tweaks
-	}
-
-	upsacaleMove(moveAnimation: ASSAnimation.MoveValues): ASSAnimation.MoveValues {
-		// if (this.playerResX === this.canvas.width && this.playerResY === this.canvas.height) return moveAnimation
-		const [startX, startY, endX, endY, t1, t2] = moveAnimation
-		const newStartX = ruleOfThree(this.playerResX, this.canvas.width) * startX / 100
-		const newStartY = ruleOfThree(this.playerResY, this.canvas.height) * startY	/ 100
-		const newEndX = ruleOfThree(this.playerResX, this.canvas.width) * endX / 100
-		const newEndY = ruleOfThree(this.playerResY, this.canvas.height) * endY / 100
-
-		if (typeof t1 === 'undefined') {
-			return [newStartX, newStartY, newEndX, newEndY]
-		} else {
-			return [newStartX, newStartY, newEndX, newEndY, (t1 as number), (t2 as number)]
+			x: this.upscale(pos.x, this.playerResX, this.canvas.width),
+			y: this.upscale(pos.y, this.playerResY, this.canvas.height)
 		}
 	}
 
-	getPath(pathArray: string[][]) {
-		let pathString = ''
-		for (const segment of pathArray) {
-			const command = segment[0];
-			const d = command + segment.slice(1).join(' ')
-			pathString += d + ' '
+	upscaleMargin(margin: {
+		left: number;
+		right: number;
+		vertical: number;
+	}) {
+		return {
+			left: this.upscale(margin.left, this.playerResX, this.canvas.width),
+			right: this.upscale(margin.right, this.playerResX, this.canvas.width),
+			vertical: this.upscale(margin.vertical, this.playerResY, this.canvas.height)
 		}
-		console.log('pathString', pathString)
-		const path = new Path2D(pathString)
-		return path
 	}
 
-	drawDrawing(
-		pathArray: string[][],
-		parsed: ParsedASSEventTextParsed
-	) {
-		const path = this.getPath(pathArray)
-		console.debug('drawDrawing', path)
-		path.moveTo(
-			this.tweaksAppliedResult.position[0] as number,
-			this.tweaksAppliedResult.position[1] as number
-		)
-		console.debug('drawDrawing - path ', path)
-		this.ctx.stroke(path)
-		this.ctx.fill(path)
-	}
-
-	drawTextV2(
-		parsed: ParsedASSEventTextParsed[],
-		marginL: number,
-		marginV: number,
-		marginR: number,
-		fontDescriptor: FontDescriptor,
-		currentHash: number,
-		debugLines: boolean = false
-	) {
-		// console.debug('drawTextV2', parsed)
-		// This is an attempt to fix the issue with the text being drawn at the wrong position
-		// And maybe also making tweaks easier to implement
-		// I take the parsed text and draw it line by line, keeping track of the position of the last word
-		// If the next word is a line break, I use the position of the last word to calculate the position of the line break
-		// This is not perfect, but it's better than before
-		let tweaks = this.teawksDrawSettings(parsed[0]?.tags ?? [], fontDescriptor)
-		let isAnimation = this.tweaksAppliedResult.animation.length > 0
-
-		this.applyTweaks(tweaks)
-		if (this.tweaksAppliedResult.positionChanged) {
-			this.drawTextAtPositionV2(
-				parsed,
-				[...this.tweaksAppliedResult.position] as [number, number],
-				fontDescriptor,
-				isAnimation,
-				tweaks,
-			)
-			return
+	applyOverrideTag(tag: CompiledTag, font: FontDescriptor) {
+		if (tag.b !== undefined) { font.bold = tag.b === 1 }
+		if (tag.i !== undefined) { font.italic = tag.i === 1 }
+		if (tag.u !== undefined) { font.underline = tag.u === 1 }
+		if (tag.s !== undefined) { font.strikeout = tag.s === 1 }
+		if (tag.fn !== undefined) { font.fontname = tag.fn }
+		if (tag.fs !== undefined) { font.fontsize = this.upscale(tag.fs, this.playerResY, this.canvas.height) }
+		if (tag.c1 !== undefined) { this.ctx.fillStyle = swapBBGGRR(tag.c1) }
+		if (tag.a1 !== undefined ) { this.ctx.fillStyle = blendAlpha(this.ctx.fillStyle as string, parseFloat(tag.a1)) }
+		if (tag.c3 !== undefined) { this.ctx.strokeStyle = swapBBGGRR(tag.c3) }
+		if (tag.a3 !== undefined) { this.ctx.strokeStyle = blendAlpha(this.ctx.strokeStyle as string, parseFloat(tag.a3)) }
+		if (tag.c4 !== undefined) { this.ctx.shadowColor = swapBBGGRR(tag.c4) }
+		if (tag.a4 !== undefined) { this.ctx.shadowColor = blendAlpha(this.ctx.shadowColor as string, parseFloat(tag.a4)) }
+		if (tag.xshad !== undefined) { this.ctx.shadowOffsetX = this.upscale(tag.xshad, this.playerResX, this.canvas.width) }
+		if (tag.yshad !== undefined) { this.ctx.shadowOffsetY = this.upscale(tag.yshad, this.playerResY, this.canvas.height) }
+		if (tag.xbord !== undefined) { 
+			this.ctx.lineWidth = this.upscale(tag.xbord, this.playerResX, this.canvas.width)
+			font.xbord = tag.xbord 
 		}
-		let parses = parsed.map((line) => line.text)
-		let lines = makeLines(parses)
-		let lineHeights = lines.map(
-			(line) =>
-				this.ctx.measureText(line).actualBoundingBoxAscent +
-				this.ctx.measureText(line).actualBoundingBoxDescent
-		)
-		// console.debug('lineHeights', lineHeights)
-		let lineHeight = Math.max(...lineHeights)
-		let totalHeight = lineHeight * lines.length
-		// console.debug('totalHeight', totalHeight)
-		let previousTextWidth = 0
-		let currentLine = 0
-
-		// console.debug('lines', lines)
-		let y = 0
-		switch (this.textBaseline) {
-			case 'top':
-				y = marginV + (lines.length > 1 ? totalHeight / lines.length : lineHeight)
-				break
-			case 'middle':
-				y = (this.canvas.height - totalHeight) / 2 + lineHeight
-				break
-			case 'bottom':
-				y = this.canvas.height - marginV - (lines.length > 1 ? totalHeight / lines.length : 0)
-				break
-			default:
-				y = marginV + lineHeight
-				break
+		if (tag.ybord !== undefined) { 
+			this.ctx.lineWidth = this.upscale(tag.ybord, this.playerResY, this.canvas.height)
+			font.ybord = tag.ybord
 		}
-		// console.debug('start-y', y)
-		// console.debug('parses', parses)
-		// console.debug('lines', lines)
-		parses.forEach((_, index) => {
-			// console.debug('text', txt)
-			this.isOverflown(lines)
-			let tag = this.flatTags(parsed[index]?.tags ?? [])
-			// console.debug('tag', tag)
-			// FIXME: tweaks interop the animation
-			let tweaks = this.teawksDrawSettings(parsed[index]?.tags ?? [], fontDescriptor)
-			this.applyTweaks(tweaks)
-			if ((parsed[index]?.drawing as string[][]).length > 0) {
-				// console.debug('drawing', parsed[index]?.drawing)
-				this.drawDrawing(parsed[index]?.drawing as string[][], parsed[index] as ParsedASSEventTextParsed)
-			}
-			let lineWidth = this.ctx.measureText(lines[currentLine] as string).width
-			let x = 0
-			switch (this.textAlign) {
-				case 'left':
-					x = marginL + previousTextWidth
-					break
-				case 'center':
-					x = (this.canvas.width - lineWidth) / 2 + previousTextWidth
-					break
-				case 'right':
-					x = this.canvas.width - marginR - lineWidth + previousTextWidth
-					break
-				default:
-					x = marginL + previousTextWidth
-					break
-			}
-			let parsedBatch = splitTextOnTheNextCharacter(parsed[index]?.text ?? '')
-			// if in the parsed batch there is a word that is an empty string, remove it
-			parsedBatch = parsedBatch.filter((word) => word !== '')
-			let parsedBatchWithLineBreaks: string[] = []
-			for (let i = 0; i < parsedBatch.length; i++) {
-				let split = parsedBatch[i]?.split('\\N') ?? []
-				if (split?.length === 1) {
-					parsedBatchWithLineBreaks.push(parsedBatch[i] as string)
-				} else {
-					split.forEach((word, idx) => {
-						parsedBatchWithLineBreaks.push(word)
-						if (idx < split.length - 1) {
-							parsedBatchWithLineBreaks.push('\\N')
-						}
-					})
-				}
-			}
-			// remove empty strings
-			parsedBatchWithLineBreaks = parsedBatchWithLineBreaks.filter((word) => word !== '')
-			parsedBatch = parsedBatchWithLineBreaks
-			// console.debug("parsedBatch", parsedBatch)
-			let currentWordsWidth = 0
-
-			parsedBatch.forEach((word, _) => {
-				let wordWidth = this.ctx.measureText(word).width
-				// console.debug('word', `"${word}"`)
-				// console.debug('wordWidth', wordWidth)
-				// console.debug('line', `"${lines[currentLine]}"`)
-				if (word === '\\N') {
-					// console.debug('y', y)
-					currentLine++
-					y += lineHeight
-					// console.debug('next-y', y)
-					previousTextWidth = 0
-					currentWordsWidth = 0
-					lineWidth = this.ctx.measureText(lines[currentLine] as string).width
-					switch (this.textAlign) {
-						case 'left':
-							x = marginL
-							break
-						case 'center':
-							x = (this.canvas.width - lineWidth) / 2
-							break
-						case 'right':
-							x = this.canvas.width - marginR - lineWidth
-							break
-						default:
-							x = marginL
-					}
-				} else {
-					if (this.ctx.lineWidth > 0) {
-						this.ctx.strokeText(word, x + currentWordsWidth, y)
-					}
-
-					this.ctx.fillText(word, x + currentWordsWidth, y)
-					currentWordsWidth += wordWidth
-					previousTextWidth += wordWidth
-				}
-			})
-		})
+		if (tag.fscx !== undefined) {font.t.fscx = tag.fscx}
+		if (tag.fscy !== undefined) {font.t.fscy = tag.fscy}
+		if (tag.frz !== undefined) {font.t.frz   = tag.frz}
+		if (tag.frx !== undefined) {font.t.frx   = tag.frx}
+		if (tag.fry !== undefined) {font.t.fry   = tag.fry}
+		if (tag.fax !== undefined) {font.t.fax   = tag.fax}
+		if (tag.fay !== undefined) {font.t.fay   = tag.fay}
+		if (tag.fsp !== undefined) {font.t.fsp   = this.upscale(tag.fsp, this.playerResX, this.canvas.width)}
+		if (tag.blur !== undefined) { this.ctx.shadowBlur = this.upscale(tag.blur, this.playerResY, this.canvas.height) }
+		if (tag.pbo)
+		this.ctx.font = this.fontDecriptorString(font)
+		// console.debug("font", font, this.fontDecriptorString(font), "->", this.ctx.font)
+		return font
 	}
 
-	isOverflown(text: string[]) {
-		text.forEach((line) => {
-			if (this.ctx.measureText(line).width > this.canvas.width) {
-				return true
-			}
-		})
-		return false
+	upscale(x: number, firstcomp: number, secondcomp: number) {
+		return (ruleOfThree(firstcomp, secondcomp) * x) / 100
 	}
 
-	drawTextAtPositionV2(
-		parsed: ParsedASSEventTextParsed[],
-		position: [number, number],
-		fontDescriptor: FontDescriptor,
-		isAnimation: boolean,
-		appliedTweaks: Tweaks,
-		debugLines: boolean = false
-	) {
-		let parses = parsed.map((line) => line.text)
-		let lines = makeLines(parses)
-		// console.debug('lines', lines)
-		let lineHeights = lines.map(
-			(line) =>
-				this.ctx.measureText(line).actualBoundingBoxAscent +
-				this.ctx.measureText(line).actualBoundingBoxDescent
-		)
-		let lineHeight = Math.max(...lineHeights)
-		let previousTextWidth = 0
-		let currentLine = 0
+	fontDecriptorString(font: FontDescriptor) {
+		return `${font.bold ? 'bold ' : ''}${font.italic ? 'italic ' : ''}${font.fontsize}px ${font.fontname}`
+	}
+
+	computeStyle(name: string, styles: { [styleName: string]: CompiledASSStyle }, alignment: number) {
+		const style = styles[name] as CompiledASSStyle
+		if (style === undefined) {
+			console.warn(`Style ${name} not found`)
+		}
+		const {
+			fn, // font name
+			fs, // font size
+			a1, // primary alpha
+			// c2, // secondary color
+			// a2, // secondary alpha
+			a3, // outline alpha
+			c4, // shadow color
+			a4, // shadow alpha
+			b,  // bold
+			i,  // italic
+			u,  // underline
+			s,  // strikeout
+			fscx, // font scale x
+			fscy, // font scale y
+			fsp, // font spacing
+			frz, // font rotation z
+			xbord, // x border
+			ybord, // y border
+			xshad, // x shadow
+			yshad, // y shadow
+			fe, // font encoding
+			q // wrap style
+		} = style.tag
+        
+        const { PrimaryColour, OutlineColour } = style.style
 		
-		let y = position[1] as number
-		
-		switch (this.textBaseline) {
-			case 'top':
-				y += lineHeight
-				break
-			case 'middle':
-				y += lineHeight / 2
-				break
-			case 'bottom':
-				y -= lineHeight
-				break
-			default:
-				y += lineHeight
-				break
+        const font: FontDescriptor = {
+			fontsize: this.upscale(fs, this.playerResY, this.canvas.height),
+			fontname: fn,
+			bold: b === 1,
+			italic: i === 1,
+			underline: u === 1,
+			strikeout: s === 1,
+			t: {
+				fscx: fscx,
+				fscy: fscy,
+				frz: frz,
+				frx: 0,
+				fry: 0,
+				q: q
+			},
+			xbord: xbord,
+			ybord: ybord,
+			fe: fe,
 		}
-		
-		parses.forEach((_, index) => {
-			// console.debug("previousTextWidth", previousTextWidth)
-			// console.debug("index", parsed[index])
-			let x = position[0] as number
-			let tag = this.flatTags(parsed[index]?.tags ?? [])
-			let tweaks = this.teawksDrawSettings(parsed[index]?.tags ?? [], fontDescriptor)
-			this.applyTweaks(tweaks)
 
-			if ((parsed[index]?.drawing as string[][]).length > 0) {
-				// console.debug('drawing', parsed[index]?.drawing)
-				this.drawDrawing(parsed[index]?.drawing as string[][], parsed[index] as ParsedASSEventTextParsed)
-			}
-			let lineWidth = this.ctx.measureText(lines[currentLine] as string).width
-			switch (this.textAlign) {
-				case 'left':
-					// console.debug("left", x, previousTextWidth)
-					x += previousTextWidth
-					break
-				case 'center':
-					x += previousTextWidth - lineWidth / 2
-					// console.debug("center")
-					break
-				case 'right':
-					x -= lineWidth + previousTextWidth
-					// console.debug("right")
-					break
-				default:
-					x += previousTextWidth
-					// console.debug("default textAlign")
-					break
-			}
-
-			let parsedBatch = splitTextOnTheNextCharacter(parsed[index]?.text ?? '')
-			parsedBatch = parsedBatch.filter((word) => word !== '')
-			let parsedBatchWithLineBreaks: string[] = []
-			for (let i = 0; i < parsedBatch.length; i++) {
-				let split = parsedBatch[i]?.split('\\N') ?? []
-				if (split?.length === 1) {
-					parsedBatchWithLineBreaks.push(parsedBatch[i] as string)
-				} else {
-					split.forEach((word, idx) => {
-						parsedBatchWithLineBreaks.push(word)
-						if (idx < split.length - 1) {
-							parsedBatchWithLineBreaks.push('\\N')
-						}
-					})
-				}
-			}
-			// remove empty strings
-			parsedBatchWithLineBreaks = parsedBatchWithLineBreaks.filter((word) => word !== '')
-			parsedBatch = parsedBatchWithLineBreaks
-			let currentWordsWidth = 0			
-
-
-			const xpos = position[0] as number
-			parsedBatch.forEach((word, _) => {
-				// console.debug('word', `"${word}"`)
-				let wordWidth = this.ctx.measureText(word).width
-				if (word === '\\N') {
-					currentLine++
-					y += lineHeight
-					previousTextWidth = 0
-					currentWordsWidth = 0
-					lineWidth = this.ctx.measureText(lines[currentLine] as string).width
-					switch (this.textAlign) {
-						case 'left':
-							x = xpos
-							break
-						case 'center':
-							x = xpos - lineWidth / 2
-							break
-						case 'right':
-							x = xpos - lineWidth
-							break
-						default:
-							x = xpos
-					}
-				} else {
-					// console.debug("word", `"${word}"`, "x", x + currentWordsWidth, "y", y, "wordsWidth", currentWordsWidth)
-					if (this.ctx.lineWidth > 0) {
-						this.ctx.strokeText(word, x + currentWordsWidth, y)
-					}
-					this.ctx.fillText(word, x + currentWordsWidth, y)
-					currentWordsWidth += wordWidth
-					previousTextWidth += wordWidth
-					if (debugLines) {
-						let lastglobalAlpha = this.ctx.globalAlpha
-						this.ctx.globalAlpha = 1
-						let lastlineWidth = this.ctx.lineWidth
-						this.ctx.lineWidth = 1
-						let laststrokeStyle = this.ctx.strokeStyle
-						this.ctx.strokeStyle = 'red'
-						this.ctx.strokeRect(
-							x + currentWordsWidth - wordWidth,
-							y - lineHeight,
-							wordWidth,
-							lineHeight
-						)
-						this.ctx.lineWidth = lastlineWidth
-						this.ctx.strokeStyle = laststrokeStyle
-						this.ctx.globalAlpha = lastglobalAlpha
-					}
-				}
-			})
-		})
-	}
-
-	applyTweaks(tweaks: Tweaks) {
-		let animations: ASSAnimation.Animation[] = []
-		let positionChanged = false
-		if (!tweaks.tweaked) {
-			// console.debug('no tweaks')
-			this.tweaksAppliedResult = {
-				positionChanged: false,
-				position: [0, 0],
-				animation: animations,
-			}
-		} else {
-			// console.debug('tweaks', tweaks)
-			if (typeof tweaks.primaryColor === 'string') {
-				this.ctx.fillStyle = tweaks.primaryColor
-			}
-			
-			// if (typeof tweaks.secondaryColor === 'string') {
-			// 	this.ctx.strokeStyle = tweaks.secondaryColor
-			// }
-			
-			if (typeof tweaks.outlineColor === 'string') {
-				this.ctx.strokeStyle = tweaks.outlineColor
-			}
-			
-			if (typeof tweaks.shadowColor === 'string') {
-				this.ctx.shadowColor = tweaks.shadowColor
-			}
-			
-			if (typeof tweaks.outline === 'number') {
-				if (tweaks.outline > 0) {
-					this.ctx.lineWidth =
-						((ruleOfThree(this.playerResX, this.canvas.width) * tweaks.outline) / 100) * 2
-				} else {
-					this.ctx.strokeStyle = 'transparent'
-				}
-			}
-			
-			if (typeof tweaks.shadow === 'number') {
-				if (tweaks.shadow > 0) {
-					this.ctx.shadowBlur =
-						(ruleOfThree(this.playerResX, this.canvas.width) * tweaks.shadow) / 100
-				} else {
-					this.ctx.shadowBlur = 0
-				}
-
-				this.ctx.shadowOffsetX =
-					(ruleOfThree(this.playerResX, this.canvas.width) * tweaks.shadow) / 100
-				this.ctx.shadowOffsetY =
-					(ruleOfThree(this.playerResX, this.canvas.width) * tweaks.shadow) / 100
-			}
-			
-			if (typeof tweaks.fontDescriptor !== 'undefined') {
-				this.ctx.font = ` ${tweaks.fontDescriptor.bold ? 'bold' : ''} ${
-					tweaks.fontDescriptor.italic ? 'italic' : ''
-				}  ${tweaks.fontDescriptor.fontsize}px ${tweaks.fontDescriptor.fontname}`
-			}
-
-			if (typeof tweaks.alignment !== 'undefined') {
-				this.textAlign = this.getAlignment(tweaks.alignment) as CanvasTextAlign
-				this.textBaseline = this.getBaseLine(tweaks.alignment as number) as CanvasTextBaseline
-			}
-
-			if (tweaks.animations.length > 0) {
-				animations = tweaks.animations
-				animations.forEach((animation) => {
-					if (animation.name == "move") {
-						let x = animation.values[0]
-						let y = animation.values[1]
-						this.tweaksAppliedResult = {
-							positionChanged: true,
-							position: [x, y],
-							animation: animations,
-						}
-						positionChanged = true
-						// console.debug('position', `${this.tweaksAppliedResult.position}`)
-					}
-				})
-			}
-
-			if (typeof tweaks.position !== 'undefined') {
-				this.tweaksAppliedResult = {
-					positionChanged: true,
-					position: tweaks.position,
-					animation: animations,
-				}
-				positionChanged = true
-				// console.debug('position', `${this.tweaksAppliedResult.position}`)
-			}
-		}
-		if (!positionChanged) {
-			this.tweaksAppliedResult = {
-				positionChanged: false,
-				position: [0, 0],
-				animation: animations,
-			}
-		}
+		this.textAlign = this.getAlignment(alignment)
+		this.textBaseline = this.getBaseLine(alignment)
+		this.fontSpacing = this.upscale(fsp, this.playerResX, this.canvas.width)
+		this.ctx.fillStyle = blendAlpha(convertAegisubColorToHex(PrimaryColour), parseFloat(a1))
+		this.ctx.strokeStyle = blendAlpha(convertAegisubColorToHex(OutlineColour), parseFloat(a3))
+		this.ctx.font = this.fontDecriptorString(font)
+		this.ctx.shadowOffsetX = this.upscale(xshad, this.playerResX, this.canvas.width)
+		this.ctx.shadowOffsetY = this.upscale(yshad, this.playerResY, this.canvas.height)
+		this.ctx.shadowBlur = 0
+		this.ctx.shadowColor = blendAlpha(c4, parseFloat(a4))
+		this.ctx.lineWidth = this.upscale(xbord, this.playerResX, this.canvas.width) + this.upscale(ybord, this.playerResY, this.canvas.height)
+		this.ctx.lineCap = 'round'
+		this.ctx.lineJoin = 'round'
+		return font
 	}
 
 	getAlignment(alignment: number) {
@@ -807,23 +559,6 @@ export class Renderer {
 				return 'top'
 			default:
 				return 'alphabetic'
-		}
-	}
-
-	getStyle(styleName: string) {
-		return this.styles.find((style) => style.Name === styleName)
-	}
-
-	getFontDescriptor(style: SingleStyle): FontDescriptor {
-		const fontsize =
-			(ruleOfThree(this.playerResY, this.canvas.height) * parseFloat(style.Fontsize)) / 100
-		return {
-			fontname: style.Fontname,
-			fontsize: fontsize,
-			bold: style.Bold === '-1',
-			italic: style.Italic === '-1',
-			underline: style.Underline === '-1',
-			strikeout: style.StrikeOut === '-1'
 		}
 	}
 }
