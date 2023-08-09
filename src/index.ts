@@ -27,11 +27,12 @@ export default class ASS {
 			this.videoElement = this.video
 		}
 
+		this.setCanvasSize()
+
 		if (typeof this.fonts !== 'undefined') {
 			await this.loadFonts(this.fonts)
 		}
 
-		this.setCanvasSize()
 		this.renderer = new Renderer(
 			compile(this.assText, {}),
 			this.canvas as HTMLCanvasElement,
@@ -103,14 +104,36 @@ export default class ASS {
 
 	private async loadFonts(fonts: Font[]) {
 		for (const font of fonts) {
-			const fontFace = new FontFace(font.family, `url(${font.url})`, font.descriptors)
-			fontFace.load().then((loadedFace) => {
-				if (!document.fonts.check(loadedFace.family)) {
-					console.warn(`Unable to load font ${font.family}`)
+			try {
+				const loaded = await this.loadFont(font)
+				if (loaded) {
+					console.info(`Font ${font.family} loaded from ${font.url}`)
 				} else {
-					console.info(`Loaded font ${font.family}`)
+					console.warn(`Unable to load font ${font.family} from ${font.url}`)
 				}
-			})
+			} catch (e) {
+				console.warn(`Unable to load font ${font.family} from ${font.url}`)
+				console.warn(e)
+			}
 		}
+	}
+
+	private async getFontUrl(fontUrl: string) {
+		const response = await fetch(fontUrl)
+		const blob = await response.blob()
+		return this.newBlobUrl(blob)
+	}
+
+	private newBlobUrl(blob: Blob) {
+		return URL.createObjectURL(blob)
+	}
+
+	private async loadFont(font: Font) {
+		const url = await this.getFontUrl(font.url)
+		const fontFace = new FontFace(font.family, `url(${url})`, font.descriptors || {})
+		const loadedFace = await fontFace.load()
+		// @ts-ignore
+		document.fonts.add(loadedFace)
+		return fontFace.status === 'loaded'
 	}
 }

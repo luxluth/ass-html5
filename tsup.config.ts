@@ -5,7 +5,7 @@ export default defineConfig({
 	clean: false,
 	dts: false,
 	platform: 'browser',
-	target: 'es2015',
+	target: 'esnext',
 	noExternal: ['ass-compiler'],
 	name: 'ASS',
 	globalName: 'ass',

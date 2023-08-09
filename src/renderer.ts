@@ -328,6 +328,7 @@ export class Renderer {
 	}
 	
     drawWord(word: string, x: number, y: number, font: FontDescriptor, debug = false) {
+		// console.debug(`${this.ctx.font} ===?=== ${this.fontDecriptorString(font)}`)
 		let baseY = y
 		let yChanged = false
 		this.ctx.save()
@@ -435,13 +436,13 @@ export class Renderer {
 	}
 
 	fontDecriptorString(font: FontDescriptor) {
-		return `${font.bold ? 'bold ' : ''}${font.italic ? 'italic ' : ''}${font.fontsize}px ${font.fontname}`
+		return `${font.bold ? 'bold ' : ''}${font.italic ? 'italic ' : ''}${font.fontsize.toFixed(3)}px "${font.fontname}"`
 	}
 
 	computeStyle(name: string, styles: { [styleName: string]: CompiledASSStyle }, alignment: number) {
 		const style = styles[name] as CompiledASSStyle
 		if (style === undefined) {
-			console.warn(`Style ${name} not found`)
+			console.warn(`[ass-html5:Renderer] Style ${name} not found`)
 		}
 		const {
 			fn, // font name
