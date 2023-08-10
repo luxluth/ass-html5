@@ -144,8 +144,8 @@ export class Renderer {
 			
             const lineHeights = lines.map(
 				(line) =>
-					this.ctx.measureText(line).actualBoundingBoxAscent +
-					this.ctx.measureText(line).actualBoundingBoxDescent
+					this.ctx.measureText(line).fontBoundingBoxAscent +
+					this.ctx.measureText(line).fontBoundingBoxDescent
 			)
 
 			const lineHeight = Math.max(...lineHeights)
@@ -245,8 +245,8 @@ export class Renderer {
 
 			const lineHeights = lines.map(
 				(line) =>
-					this.ctx.measureText(line).actualBoundingBoxAscent +
-					this.ctx.measureText(line).actualBoundingBoxDescent
+					this.ctx.measureText(line).fontBoundingBoxAscent +
+					this.ctx.measureText(line).fontBoundingBoxDescent
 			)
 			
 			let previousTextWidth = 0
