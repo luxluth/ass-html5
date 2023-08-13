@@ -57,7 +57,8 @@ export type FontDescriptor = {
 	bold: boolean
 	italic: boolean
 	underline: boolean
-	strikeout: boolean
+	strikeout: boolean,
+	colors: Colors
 	/** font transformation */
 	t: FontTransfomation
 	/** x border */
@@ -66,6 +67,17 @@ export type FontDescriptor = {
 	ybord: number
 	/** font encoding */
 	fe?: number
+}
+
+export type Colors = {
+	c1: string,
+	a1: number,
+	c2: string,
+	a2: number,
+	c3: string,
+	a3: number,
+	c4: string,
+	a4: number,
 }
 
 export type FontTransfomation = {

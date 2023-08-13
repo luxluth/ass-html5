@@ -33,7 +33,7 @@ export class Renderer {
 		if (this.ctx === null) {
 			throw new Error('Unable to initilize the Canvas 2D context')
 		}
-		let data = [{ compiledASS: this.compiledASS }, { canvas: this.canvas }, { ctx: this.ctx }]
+		// let data = [{ compiledASS: this.compiledASS }, { canvas: this.canvas }, { ctx: this.ctx }]
 		// console.debug(data)
 	}
 
@@ -140,8 +140,6 @@ export class Renderer {
 
             // console.debug(lines)
 			
-            // console.debug(this.resampleLinesOnOverflow(lines))
-			
             const lineHeights = lines.map(
 				(line) =>
 					this.ctx.measureText(line).fontBoundingBoxAscent +
@@ -245,21 +243,22 @@ export class Renderer {
 
 			const lineHeights = lines.map(
 				(line) =>
-					this.ctx.measureText(line).fontBoundingBoxAscent +
-					this.ctx.measureText(line).fontBoundingBoxDescent
+					this.ctx.measureText(line).actualBoundingBoxAscent +
+					this.ctx.measureText(line).actualBoundingBoxDescent
 			)
-			
+			// console.log("lineHeights", lineHeights, font.fontsize)
 			let previousTextWidth = 0
 			let currentLine = 0
 			let lineHeight = Math.max(...lineHeights)
+			let totalHeight = lineHeights.reduce((a, b) => a + b, 0)
 			let y = pos.y
 
 			switch (this.textBaseline) {
 				case 'top':
-					y += lineHeight
+					y += lineHeight / lines.length
 					break
 				case 'middle':
-					y += lineHeight / 2
+					y += totalHeight / 2
 					break
 				case 'bottom':
 					y -= lineHeight
@@ -298,7 +297,7 @@ export class Renderer {
 				words.forEach((word) => {
 					if (word === '\\N') {
 						currentLine++
-						y += lineHeight + plusH
+						y += font.fontsize + plusH
 						previousTextWidth = 0
 						currentWordsWidth = 0
 						lineWidth = this.ctx.measureText(lines[currentLine] as string).width
@@ -335,7 +334,7 @@ export class Renderer {
         this.ctx.beginPath()
         if (font.t.fscy !== 100 && font.t.fscx == 100) {
             // console.debug("stretch-y by", font.t.fscy / 100)
-			y -= this.ctx.measureText(word).actualBoundingBoxAscent * (font.t.fscy / 100 - 1)
+			y -= this.ctx.measureText(word).fontBoundingBoxAscent * (font.t.fscy / 100 - 1)
             this.ctx.scale(1, font.t.fscy / 100)
 			yChanged = true
         } else if (font.t.fscx !== 100 && font.t.fscy == 100) {
@@ -345,13 +344,21 @@ export class Renderer {
         } else if (font.t.fscx !== 100 && font.t.fscy !== 100) {
             // console.debug("stretch-x-y", font.t.fscx / 100, font.t.fscy / 100)
 			x -= this.ctx.measureText(word).width * (font.t.fscx / 100 - 1)
-			y -= this.ctx.measureText(word).actualBoundingBoxAscent * (font.t.fscy / 100 - 1)
+			y -= this.ctx.measureText(word).fontBoundingBoxAscent * (font.t.fscy / 100 - 1)
             this.ctx.scale(font.t.fscx / 100, font.t.fscy / 100)
 			yChanged = true
         }
 
 		// console.debug(word, x, y, this.textAlign, this.textBaseline)
 
+		// font rotation
+		// if (font.t.frz !== 0) {
+		// 	let rotate = font.t.frz * (Math.PI / 180)
+		// 	// rotate around the start of the word
+		// 	this.ctx.translate(x, y)
+		// 	// transformation matrix
+		// 	this.ctx.transform(1, 0, Math.tan(rotate), 1, 0, 0)
+		// }
 		
         if (font.xbord !== 0 || font.ybord !== 0) {
 			this.ctx.strokeText(word, x, y)
@@ -362,7 +369,7 @@ export class Renderer {
 		if (debug) {
 			// debug bounding box
 			this.ctx.strokeStyle = "red"
-			this.ctx.strokeRect(x, y - this.ctx.measureText(word).actualBoundingBoxAscent, this.ctx.measureText(word).width, this.ctx.measureText(word).actualBoundingBoxAscent + this.ctx.measureText(word).actualBoundingBoxDescent)
+			this.ctx.strokeRect(x, y - this.ctx.measureText(word).fontBoundingBoxAscent, this.ctx.measureText(word).width, this.ctx.measureText(word).fontBoundingBoxAscent + this.ctx.measureText(word).fontBoundingBoxDescent)
 		}
 		
 		this.ctx.stroke();
@@ -371,7 +378,7 @@ export class Renderer {
         this.ctx.restore();
 
 		// return the height added by the word in more from the passed y
-		return yChanged ? y - baseY + this.ctx.measureText(word).actualBoundingBoxAscent + this.ctx.measureText(word).actualBoundingBoxDescent : 0
+		return yChanged ? y - baseY + this.ctx.measureText(word).fontBoundingBoxAscent + this.ctx.measureText(word).fontBoundingBoxDescent : 0
     }
 
 	upscalePosition(pos: Position) {
@@ -425,7 +432,6 @@ export class Renderer {
 		if (tag.fay !== undefined) {font.t.fay   = tag.fay}
 		if (tag.fsp !== undefined) {font.t.fsp   = this.upscale(tag.fsp, this.playerResX, this.canvas.width)}
 		if (tag.blur !== undefined) { this.ctx.shadowBlur = this.upscale(tag.blur, this.playerResY, this.canvas.height) }
-		if (tag.pbo)
 		this.ctx.font = this.fontDecriptorString(font)
 		// console.debug("font", font, this.fontDecriptorString(font), "->", this.ctx.font)
 		return font
@@ -448,8 +454,8 @@ export class Renderer {
 			fn, // font name
 			fs, // font size
 			a1, // primary alpha
-			// c2, // secondary color
-			// a2, // secondary alpha
+			c2, // secondary color
+			a2, // secondary alpha
 			a3, // outline alpha
 			c4, // shadow color
 			a4, // shadow alpha
@@ -469,7 +475,7 @@ export class Renderer {
 			q // wrap style
 		} = style.tag
         
-        const { PrimaryColour, OutlineColour } = style.style
+        const { PrimaryColour, OutlineColour, SecondaryColour } = style.style
 		
         const font: FontDescriptor = {
 			fontsize: this.upscale(fs, this.playerResY, this.canvas.height),
@@ -478,6 +484,16 @@ export class Renderer {
 			italic: i === 1,
 			underline: u === 1,
 			strikeout: s === 1,
+			colors: {
+				c1: convertAegisubColorToHex(PrimaryColour),
+				c2: convertAegisubColorToHex(SecondaryColour),
+				c3: convertAegisubColorToHex(OutlineColour),
+				c4,
+				a1: parseFloat(a1),
+				a2: parseFloat(a2),
+				a3: parseFloat(a3),
+				a4: parseFloat(a4),
+			},
 			t: {
 				fscx: fscx,
 				fscy: fscy,
@@ -494,8 +510,8 @@ export class Renderer {
 		this.textAlign = this.getAlignment(alignment)
 		this.textBaseline = this.getBaseLine(alignment)
 		this.fontSpacing = this.upscale(fsp, this.playerResX, this.canvas.width)
-		this.ctx.fillStyle = blendAlpha(convertAegisubColorToHex(PrimaryColour), parseFloat(a1))
-		this.ctx.strokeStyle = blendAlpha(convertAegisubColorToHex(OutlineColour), parseFloat(a3))
+		this.ctx.fillStyle = blendAlpha(font.colors.c1, parseFloat(a1))
+		this.ctx.strokeStyle = blendAlpha(font.colors.c3, parseFloat(a3))
 		this.ctx.font = this.fontDecriptorString(font)
 		this.ctx.shadowOffsetX = this.upscale(xshad, this.playerResX, this.canvas.width)
 		this.ctx.shadowOffsetY = this.upscale(yshad, this.playerResY, this.canvas.height)

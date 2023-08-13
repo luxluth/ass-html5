@@ -5,10 +5,10 @@ import { newCanvas } from './utils'
 
 export default class ASS {
 	assText: string
-	video: HTMLVideoElement | string
+	private video: HTMLVideoElement | string
 	videoElement: HTMLVideoElement | null = null
 	canvas: HTMLCanvasElement | null = null
-	renderer: Renderer | null = null
+	private renderer: Renderer | null = null
 	private fonts?: Font[]
 
 	constructor(options: Options) {

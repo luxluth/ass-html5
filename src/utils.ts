@@ -73,7 +73,7 @@ export function rgbaToHex(rgba: string) {
 	return rgbHex
 }
 
-export function hexToRgba(hex: string) {
+export function hexToRgba(hex: string, defaultAlpha = 1) {
 	const hexValue = hex.replace('#', '') // Remove '#' if present
 	const isShortHex = hexValue.length === 3 || hexValue.length === 4
 
