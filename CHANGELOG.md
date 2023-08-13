@@ -1,5 +1,11 @@
 # ass-html5
 
+## 0.3.5
+
+### Patch Changes
+
+- 8c59a89: Font vertical spacing & Text custom position improve
+
 ## 0.3.4
 
 ### Patch Changes
