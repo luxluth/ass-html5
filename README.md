@@ -52,7 +52,7 @@ pnpm add ass-html5
 > It's therefore recommanded to use a third party player rather than the native one. You can see an example with [plry](https://github.com/sampotts/plyr) [here](#svelte-and-plry).
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/ass-html5@0.3.5/dist/ass.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/ass-html5@<VERSION>/dist/ass.min.js"></script>
 ```
 
 ```html
@@ -117,7 +117,7 @@ pnpm add ass-html5
 In the `head` :
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/ass-html5@0.3.5/dist/ass.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/ass-html5@<VERSION>/dist/ass.min.js" defer></script>
 <script src="https://vjs.zencdn.net/8.3.0/video.min.js" defer></script>
 <link href="https://vjs.zencdn.net/8.3.0/video-js.css" rel="stylesheet" />
 ```
