@@ -48,7 +48,12 @@ export type ASSOptions = {
 	/**
 	 * Fonts to load
 	 */
-	fonts?: Font[]
+	fonts?: Font[],
+
+	/**
+	 * Corresponds to the `z-index` to placed the Canvas renderer 
+	 */
+	zIndex?: number,
 }
 
 export type FontDescriptor = {
@@ -67,6 +72,7 @@ export type FontDescriptor = {
 	ybord: number
 	/** font encoding */
 	fe?: number
+	borderStyle: number
 }
 
 export type Colors = {

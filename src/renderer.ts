@@ -33,8 +33,6 @@ export class Renderer {
 		if (this.ctx === null) {
 			throw new Error('Unable to initilize the Canvas 2D context')
 		}
-		// let data = [{ compiledASS: this.compiledASS }, { canvas: this.canvas }, { ctx: this.ctx }]
-		// console.debug(data)
 	}
 
 	render() {
@@ -240,7 +238,6 @@ export class Renderer {
 				return fragment.text
 			}))
 
-
 			const lineHeights = lines.map(
 				(line) =>
 					this.ctx.measureText(line).actualBoundingBoxAscent +
@@ -360,16 +357,26 @@ export class Renderer {
 		// 	this.ctx.transform(1, 0, Math.tan(rotate), 1, 0, 0)
 		// }
 		
-        if (font.xbord !== 0 || font.ybord !== 0) {
-			this.ctx.strokeText(word, x, y)
-        }
+		if (font.borderStyle !== 3) {
+
+			if (font.xbord !== 0 || font.ybord !== 0) {
+				this.ctx.strokeText(word, x, y)
+			}
+			
+		} // else {
+		// 	// a border style of 3 is a filled box
+		// 	this.ctx.save()
+		// 	this.ctx.fillStyle = this.ctx.strokeStyle
+		// 	this.ctx.fillRect(x, y - this.ctx.measureText(word).fontBoundingBoxAscent, this.ctx.measureText(word).width, this.ctx.measureText(word).fontBoundingBoxAscent + this.ctx.measureText(word).fontBoundingBoxDescent)
+		// 	this.ctx.restore()
+		// }
 		
-        this.ctx.fillText(word, x, y)
+		this.ctx.fillText(word, x, y)
 		
 		if (debug) {
 			// debug bounding box
 			this.ctx.strokeStyle = "red"
-			this.ctx.strokeRect(x, y - this.ctx.measureText(word).fontBoundingBoxAscent, this.ctx.measureText(word).width, this.ctx.measureText(word).fontBoundingBoxAscent + this.ctx.measureText(word).fontBoundingBoxDescent)
+			this.ctx.strokeRect(x, y - this.ctx.measureText(word).actualBoundingBoxAscent, this.ctx.measureText(word).width, this.ctx.measureText(word).actualBoundingBoxAscent + this.ctx.measureText(word).fontBoundingBoxDescent)
 		}
 		
 		this.ctx.stroke();
@@ -434,7 +441,6 @@ export class Renderer {
 		if (tag.blur !== undefined) { this.ctx.shadowBlur = this.upscale(tag.blur, this.playerResY, this.canvas.height) }
 		this.ctx.font = this.fontDecriptorString(font)
 		// console.debug("font", font, this.fontDecriptorString(font), "->", this.ctx.font)
-		return font
 	}
 
 	upscale(x: number, firstcomp: number, secondcomp: number) {
@@ -472,10 +478,10 @@ export class Renderer {
 			xshad, // x shadow
 			yshad, // y shadow
 			fe, // font encoding
-			q // wrap style
+			q, // wrap style
 		} = style.tag
         
-        const { PrimaryColour, OutlineColour, SecondaryColour } = style.style
+        const { PrimaryColour, OutlineColour, SecondaryColour, BorderStyle } = style.style
 		
         const font: FontDescriptor = {
 			fontsize: this.upscale(fs, this.playerResY, this.canvas.height),
@@ -505,6 +511,7 @@ export class Renderer {
 			xbord: xbord,
 			ybord: ybord,
 			fe: fe,
+			borderStyle: BorderStyle
 		}
 
 		this.textAlign = this.getAlignment(alignment)

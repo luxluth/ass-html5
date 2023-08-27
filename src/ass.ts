@@ -3,6 +3,14 @@ import { Renderer } from './renderer'
 import { ASSOptions as Options, Font } from './types'
 import { newCanvas } from './utils'
 
+/**
+ * @class ASS
+ * 
+ * ASS is an ass/ssa subtitle renderer.
+ * 
+ * It uses a `canvas` that is placed on top of 
+ * the targeted video element
+ * */
 export default class ASS {
 	assText: string
 	private video: HTMLVideoElement | string
@@ -10,13 +18,18 @@ export default class ASS {
 	canvas: HTMLCanvasElement | null = null
 	private renderer: Renderer | null = null
 	private fonts?: Font[]
+	private zIndex?: number
 
 	constructor(options: Options) {
 		this.assText = options.assText
 		this.video = options.video
 		this.fonts = options.fonts
+		this.zIndex = options.zIndex
 	}
 
+	/**
+	 * Initialize a new ASS Canvas renderer
+	 */
 	async init() {
 		if (typeof this.video == 'string') {
 			this.videoElement = document.querySelector(this.video)
@@ -45,12 +58,28 @@ export default class ASS {
 		window.addEventListener('resize', () => {
 			this.setCanvasSize()
 			this.renderer?.redraw()
-			// console.debug('resize')
 		})
 
 		this.renderer.render()
 	}
 
+	/**
+	 * Re-initialize the ASS Canvas renderer
+	 * @param options The ASS options
+	 */
+	async reinit(options: Options) {
+		this.destroy()
+		this.assText = options.assText
+		this.video = options.video
+		this.fonts = options.fonts
+		await this.init()
+	}
+
+	/**
+	 * Destroy the ASS `canvas`
+	 * 	
+	 * It removes events bind to the video and the canvas renderer
+	 */
 	destroy() {
 		this.videoElement?.removeEventListener('loadedmetadata', () => {
 			this.setCanvasSize()
@@ -90,7 +119,13 @@ export default class ASS {
 		}
 
 		if (this.canvas === null) {
-			this.canvas = newCanvas(y, x, width, height, this.videoElement as HTMLVideoElement)
+			this.canvas = newCanvas(
+				y, x, 
+				width, 
+				height, 
+				this.videoElement as HTMLVideoElement, 
+				this.zIndex
+			)
 		} else {
 			this.canvas.style.position = 'absolute'
 			this.canvas.style.top = y + 'px'
