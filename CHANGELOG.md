@@ -1,5 +1,11 @@
 # ass-html5
 
+## 0.3.6
+
+### Patch Changes
+
+- 9e978ab: Adding text transparency
+
 ## 0.3.5
 
 ### Patch Changes
