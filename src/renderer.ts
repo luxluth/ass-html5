@@ -1,4 +1,4 @@
-import type { CompiledASS, CompiledASSStyle, Dialogue } from 'ass-compiler'
+import type { CompiledASS, CompiledASSStyle, Dialogue, DialogueFragment } from 'ass-compiler'
 import type { CompiledTag } from 'ass-compiler/types/tags'
 import type { FontDescriptor, Override, Styles, Position } from './types'
 import { 
@@ -233,7 +233,7 @@ export class Renderer {
 		pos = this.upscalePosition(pos)
 		const { slices } = dialogue
 		slices.forEach((slice) => {
-			const font = this.computeStyle(slice.style, styles, dialogue.alignment)
+			let font = this.computeStyle(slice.style, styles, dialogue.alignment)
 			const lines = makeLines(slice.fragments.map((fragment) => {
 				return fragment.text
 			}))
@@ -265,6 +265,13 @@ export class Renderer {
 					break
 			}
 
+			if (font.borderStyle === 3) {
+				let savedy = y
+				this.drawTextBackground(lines, currentLine, pos, font, y, slice.fragments)
+				currentLine=0
+				y = savedy
+			}
+
 			slice.fragments.forEach((fragment) => {
 				// console.debug("frag", fragment)
 				let x = pos.x
@@ -291,6 +298,7 @@ export class Renderer {
 
 				let currentWordsWidth = 0
 				let plusH = 0
+
 				words.forEach((word) => {
 					if (word === '\\N') {
 						currentLine++
@@ -322,8 +330,56 @@ export class Renderer {
 			})
 		})
 	}
+
+	drawTextBackground(
+		lines: string[],
+		currentLine: number,
+		pos: Position,
+		font: FontDescriptor,
+		y: number,
+		fragments: DialogueFragment[]
+	) {
+		fragments.forEach((fragment) => {
+			let x = pos.x
+			this.applyOverrideTag(fragment.tag, font)
+			const lineWidth = this.ctx.measureText(lines[currentLine] as string).width + (this.ctx.measureText(' ').width * 2)
+			const words = splitTextOnTheNextCharacter(lines[currentLine] as string)
+
+			// finding the biggest word height
+			let lineHeight = 0
+			words.forEach((word) => {
+				let wordHeight = this.ctx.measureText(word).fontBoundingBoxAscent + this.ctx.measureText(word).fontBoundingBoxDescent
+				if (wordHeight > lineHeight) {
+					lineHeight = wordHeight
+				}
+			})
+
+			switch (this.textAlign) {
+				case 'left':
+					x += 0
+					break
+				case 'center':
+					x -= lineWidth / 2
+					break
+				case 'right':
+					x -= lineWidth
+					break
+				default:
+					x += 0
+					break
+			}
+
+			this.ctx.save()
+			this.ctx.fillStyle = this.ctx.strokeStyle
+			this.ctx.fillRect(x, y - lineHeight, lineWidth, lineHeight)
+			currentLine++
+			y += lineHeight
+			this.ctx.restore()
+		})
+	}
 	
-    drawWord(word: string, x: number, y: number, font: FontDescriptor, debug = false) {
+    drawWord(word: string, x: number, y: number, font: FontDescriptor, behindTextCanvas?: HTMLCanvasElement) {
+		const debug = false
 		// console.debug(`${this.ctx.font} ===?=== ${this.fontDecriptorString(font)}`)
 		let baseY = y
 		let yChanged = false
@@ -356,7 +412,11 @@ export class Renderer {
 		// 	// transformation matrix
 		// 	this.ctx.transform(1, 0, Math.tan(rotate), 1, 0, 0)
 		// }
-		
+
+
+		// Solution: Drawing the text on buffer canvas and then add it to the main canvas
+		// That way, the font background is drawn on the buffer canvas and not on the main canvas
+		// so the background doesn't overlap the other text
 		if (font.borderStyle !== 3) {
 
 			if (font.xbord !== 0 || font.ybord !== 0) {
