@@ -1,4 +1,4 @@
-import type { Tag } from './types'
+import type { FontDescriptor, Tag } from './types'
 /**
  * Convert a color in RGBA format to Aegisub format
  * @param aegisubColor The color in Aegisub format
@@ -166,10 +166,12 @@ export function newCanvas(
 	width: number,
 	height: number,
 	insertAfter?: HTMLElement,
-	zIndex?: number
+	zIndex?: number,
+	dataLayer=0
 ) {
 	const canvas = document.createElement('canvas')
-	canvas.id = randomId(2, '-', 'ASSRendererCanvas-', 5)
+	canvas.id = randomId(2, '-', 'ASSRendererCanvas-', 5) + 
+				'-' + uuidgen() + '-' + dataLayer + '-layer'
 	canvas.style.position = 'absolute'
 	canvas.style.width = width + 'px'
 	canvas.style.height = height + 'px'
@@ -180,6 +182,8 @@ export function newCanvas(
 	canvas.style.pointerEvents = 'none'
 	canvas.width = width
 	canvas.height = height
+	canvas.attributes.setNamedItem(document.createAttribute('data-layer'))
+	canvas.setAttribute('data-layer', dataLayer.toString())
 
 	if (zIndex) {
 		canvas.style.zIndex = zIndex.toString()
@@ -281,7 +285,6 @@ export function separateNewLine(words: string[]) {
 	return wordsWithLineBreaks
 }
 
-
 export function blendAlpha(color: string, alpha: number) {
 	color = color.replace('#', '')
 	// color = FFFFFF
@@ -291,4 +294,17 @@ export function blendAlpha(color: string, alpha: number) {
 	const green = parseInt(color.substring(2, 4), 16)
 	const blue = parseInt(color.substring(4, 6), 16)
 	return `rgba(${red}, ${green}, ${blue}, ${alpha == 0 ? 1 : alpha / 160})`
+}
+
+export function uuidgen() {
+	const v4 = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'
+	return v4.replace(/[xy]/g, (c) => {
+		const r = (Math.random() * 16) | 0
+		const v = c === 'x' ? r : (r & 0x3) | 0x8
+		return v.toString(16)
+	})
+}
+
+export function fontDecriptorString(font: FontDescriptor) {
+	return `${font.bold ? 'bold ' : ''}${font.italic ? 'italic ' : ''}${font.fontsize.toFixed(3)}px "${font.fontname}"`
 }

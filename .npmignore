@@ -10,3 +10,5 @@ src
 README.md
 rollup.config.js
 .gitmodules
+sandbox
+ROADMAP.md

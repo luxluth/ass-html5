@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<!-- <script src="./app.js" defer></script> -->
+		<title>Sandbox</title>
+	</head>
+	<body>
+		<video src="./dummy.mp4" controls
+		width="640"
+		height="480"
+		id="video"
+		></video>
+	</body>
+</html>
+<script type="module">
+	import ASS from "../dist/ass.mjs"
+	document.addEventListener('DOMContentLoaded', async () => {
+		let res = await fetch('./dummy.ass')
+		let assSubs = await res.text()
+
+		const ass = new ASS({
+			assText: assSubs,
+			video: document.getElementById('video')
+		})
+		await ass.init()
+	})
+</script>
+
+<style>
+	html,
+	body {
+		background-color: #f4f4f4;
+		height: 100%;
+	}
+
+	body {
+		display: flex;
+		justify-content: center;
+		align-items: center;
+	}
+</style>
