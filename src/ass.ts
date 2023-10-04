@@ -1,6 +1,6 @@
-import { compile } from 'ass-compiler'
+import { CompiledASS, compile } from 'ass-compiler'
 import { Renderer } from './renderer'
-import { ASSOptions as Options, Font } from './types'
+import { ASSOptions as Options, Font, OnInitSizes } from './types'
 import { newCanvas } from './utils'
 
 /**
@@ -26,7 +26,7 @@ export default class ASS {
 		this.fonts = options.fonts
 		this.zIndex = options.zIndex
 	}
-
+	
 	/**
 	 * Initialize a new ASS Canvas renderer
 	 */
@@ -40,7 +40,7 @@ export default class ASS {
 			this.videoElement = this.video
 		}
 
-		this.setCanvasSize()
+		const sizes = this.setCanvasSize()
 
 		if (typeof this.fonts !== 'undefined') {
 			await this.loadFonts(this.fonts)
@@ -48,8 +48,9 @@ export default class ASS {
 
 		this.renderer = new Renderer(
 			compile(this.assText, {}),
-			this.canvas as HTMLCanvasElement,
-			this.videoElement
+			sizes,
+			this.videoElement,
+			this.zIndex
 		)
 		this.videoElement?.addEventListener('loadedmetadata', () => {
 			this.setCanvasSize()
@@ -119,24 +120,26 @@ export default class ASS {
 			x += (maxWidth - width) / 2
 		}
 
-		if (this.canvas === null) {
-			this.canvas = newCanvas(
-				y,
-				x,
-				width,
-				height,
-				this.videoElement as HTMLVideoElement,
-				this.zIndex
-			)
-		} else {
-			this.canvas.style.position = 'absolute'
-			this.canvas.style.top = y + 'px'
-			this.canvas.style.left = x + 'px'
-			this.canvas.style.width = width + 'px'
-			this.canvas.style.height = height + 'px'
-			this.canvas.width = width
-			this.canvas.height = height
+		const sizes = {
+			width,
+			height,
+			x,
+			y
+		} as OnInitSizes
+
+		if (this.renderer?.renderDiv) {
+			this.renderer.renderDiv.style.width = width + 'px'
+			this.renderer.renderDiv.style.height = height + 'px'
+			this.renderer.renderDiv.style.top = y + 'px'
+			this.renderer.renderDiv.style.left = x + 'px'
 		}
+
+		this.renderer?.layers.forEach((layer) => {
+			layer.canvas.width = width
+			layer.canvas.height = height
+		})
+
+		return sizes
 	}
 
 	private async loadFonts(fonts: Font[]) {

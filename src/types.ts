@@ -33,6 +33,13 @@ export type Font = {
 	descriptors?: Partial<FontStyle>
 }
 
+export type OnInitSizes = {
+	width : number
+	height: number
+	x     : number
+	y     : number
+}
+
 export type ASSOptions = {
 	/**
 	 * The ass text string
@@ -48,12 +55,12 @@ export type ASSOptions = {
 	/**
 	 * Fonts to load
 	 */
-	fonts?: Font[],
+	fonts?: Font[]
 
 	/**
-	 * Corresponds to the `z-index` to placed the Canvas renderer 
+	 * Corresponds to the `z-index` to placed the Canvas renderer
 	 */
-	zIndex?: number,
+	zIndex?: number
 }
 
 export type FontDescriptor = {
@@ -62,7 +69,7 @@ export type FontDescriptor = {
 	bold: boolean
 	italic: boolean
 	underline: boolean
-	strikeout: boolean,
+	strikeout: boolean
 	colors: Colors
 	/** font transformation */
 	t: FontTransfomation
@@ -75,36 +82,41 @@ export type FontDescriptor = {
 	borderStyle: number
 }
 
+export type Layer = {
+	canvas: HTMLCanvasElement,
+	ctx: CanvasRenderingContext2D,
+}
+
 export type Colors = {
-	c1: string,
-	a1: number,
-	c2: string,
-	a2: number,
-	c3: string,
-	a3: number,
-	c4: string,
-	a4: number,
+	c1: string
+	a1: number
+	c2: string
+	a2: number
+	c3: string
+	a3: number
+	c4: string
+	a4: number
 }
 
 export type FontTransfomation = {
 	/** font scale x */
-	fscx: number,
+	fscx: number
 	/** font scale y */
-	fscy: number,
+	fscy: number
 	/** font rotation z*/
-	frz: number,
+	frz: number
 	/** font rotation x*/
-	frx: number,
+	frx: number
 	/** font rotation y*/
-	fry: number,
+	fry: number
 	/** font shear x */
-	fax?: number,
+	fax?: number
 	/** font shear y */
-	fay?: number,
+	fay?: number
 	/** font spacing */
-	fsp?: number,
+	fsp?: number
 	/** wrap style */
-	q: 0 | 2 | 1 | 3,
+	q: 0 | 2 | 1 | 3
 }
 
 export type Tag = { [K in keyof ParsedTag]: ParsedTag[K] }

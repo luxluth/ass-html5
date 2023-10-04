@@ -160,37 +160,81 @@ export function hashString(str: string) {
 	return hash
 }
 
-export function newCanvas(
+
+export function newRender(
 	top: number,
 	left: number,
 	width: number,
 	height: number,
+	zIndex?: number,
 	insertAfter?: HTMLElement,
-	zIndex?: number
+) {
+	const render = document.createElement('div')
+	render.id = randomId(2, '-', 'ASSRendererRender-', 5)
+	render.style.position = 'absolute'
+	render.style.width = width + 'px'
+	render.style.height = height + 'px'
+	render.style.top = top + 'px'
+	render.style.left = left + 'px'
+	render.style.pointerEvents = 'none'
+	render.style.overflow = 'hidden'
+	render.style.boxSizing = 'border-box'
+	render.style.padding = '0px'
+	render.style.margin = '0px'
+	if (zIndex) {
+		render.style.zIndex = zIndex.toString()
+	}
+
+	if (insertAfter) {
+		insertAfter.after(render)
+	} else {
+		document.body.appendChild(render)
+	}
+
+	return render
+}
+
+export function newCanvas(
+	width: number,
+	height: number,
+	dataLayer = 0,
+	layerName?: string,
+	appendIn?: HTMLElement,
+	insertAfter?: HTMLElement,
 ) {
 	const canvas = document.createElement('canvas')
-	canvas.id = randomId(2, '-', 'ASSRendererCanvas-', 5)
+	canvas.id = randomId(2, '-', 'Canvas-', 5)
 	canvas.style.position = 'absolute'
-	canvas.style.width = width + 'px'
-	canvas.style.height = height + 'px'
-	canvas.width = width
-	canvas.height = height
-	canvas.style.top = top + 'px'
-	canvas.style.left = left + 'px'
+	canvas.style.top = '0px';
+	canvas.style.left = '0px';
 	canvas.style.pointerEvents = 'none'
 	canvas.width = width
 	canvas.height = height
-
-	if (zIndex) {
-		canvas.style.zIndex = zIndex.toString()
+	canvas.dataset.layer = dataLayer.toString()
+	canvas.dataset.identifier = uuidgen()
+	
+	if (layerName) {
+		canvas.dataset.name = layerName
 	}
 
 	if (insertAfter) {
 		insertAfter.after(canvas)
 	} else {
-		document.body.appendChild(canvas)
+		if (!appendIn) {
+			appendIn = document.body
+		}
+		appendIn.appendChild(canvas)
 	}
 	return canvas
+}
+
+export function uuidgen() {
+	const v4 = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'
+	return v4.replace(/[xy]/g, (c) => {
+		const r = (Math.random() * 16) | 0
+		const v = c === 'x' ? r : (r & 0x3) | 0x8
+		return v.toString(16)
+	})
 }
 
 export function makeLines(strArr: string[]) {
@@ -280,7 +324,6 @@ export function separateNewLine(words: string[]) {
 
 	return wordsWithLineBreaks
 }
-
 
 export function blendAlpha(color: string, alpha: number) {
 	color = color.replace('#', '')
