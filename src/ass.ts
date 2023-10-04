@@ -5,10 +5,10 @@ import { newCanvas } from './utils'
 
 /**
  * @class ASS
- * 
+ *
  * ASS is an ass/ssa subtitle renderer.
- * 
- * It uses a `canvas` that is placed on top of 
+ *
+ * It uses a `canvas` that is placed on top of
  * the targeted video element
  * */
 export default class ASS {
@@ -72,12 +72,13 @@ export default class ASS {
 		this.assText = options.assText
 		this.video = options.video
 		this.fonts = options.fonts
+		this.zIndex = options.zIndex
 		await this.init()
 	}
 
 	/**
 	 * Destroy the ASS `canvas`
-	 * 	
+	 *
 	 * It removes events bind to the video and the canvas renderer
 	 */
 	destroy() {
@@ -120,10 +121,11 @@ export default class ASS {
 
 		if (this.canvas === null) {
 			this.canvas = newCanvas(
-				y, x, 
-				width, 
-				height, 
-				this.videoElement as HTMLVideoElement, 
+				y,
+				x,
+				width,
+				height,
+				this.videoElement as HTMLVideoElement,
 				this.zIndex
 			)
 		} else {
