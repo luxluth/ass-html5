@@ -34,10 +34,10 @@ export type Font = {
 }
 
 export type OnInitSizes = {
-	width : number
+	width: number
 	height: number
-	x     : number
-	y     : number
+	x: number
+	y: number
 }
 
 export type ASSOptions = {
@@ -83,8 +83,8 @@ export type FontDescriptor = {
 }
 
 export type Layer = {
-	canvas: HTMLCanvasElement,
-	ctx: CanvasRenderingContext2D,
+	canvas: HTMLCanvasElement
+	ctx: CanvasRenderingContext2D
 }
 
 export type Colors = {
@@ -122,14 +122,19 @@ export type FontTransfomation = {
 export type Tag = { [K in keyof ParsedTag]: ParsedTag[K] }
 
 export declare namespace ASSAnimation {
-	export type Fade = {
-		name: 'fad' | 'fade'
-		/**
-		 * The values of the fade animation
-		 * `\fad(<fadein>,<fadeout>)` or `\fade(<a1>,<a2>,<a3>,<t1>,<t2>,<t3>,<t4>)`
-		 */
-		values: [number, number] | [number, number, number, number, number, number]
-	}
+	export type Fade =
+		| {
+				name: 'fad'
+				/**
+				 * The values of the fade animation
+				 * `\fad(<fadein>,<fadeout>)` or `\fade(<a1>,<a2>,<a3>,<t1>,<t2>,<t3>,<t4>)`
+				 */
+				values: [number, number]
+		  }
+		| {
+				name: 'fade'
+				values: [number, number, number, number, number, number, number]
+		  }
 
 	export type MoveValues =
 		| [number, number, number, number]

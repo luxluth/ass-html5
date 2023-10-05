@@ -160,14 +160,13 @@ export function hashString(str: string) {
 	return hash
 }
 
-
 export function newRender(
 	top: number,
 	left: number,
 	width: number,
 	height: number,
 	zIndex?: number,
-	insertAfter?: HTMLElement,
+	insertAfter?: HTMLElement
 ) {
 	const render = document.createElement('div')
 	render.id = randomId(2, '-', 'ASSRendererRender-', 5)
@@ -200,19 +199,19 @@ export function newCanvas(
 	dataLayer = 0,
 	layerName?: string,
 	appendIn?: HTMLElement,
-	insertAfter?: HTMLElement,
+	insertAfter?: HTMLElement
 ) {
 	const canvas = document.createElement('canvas')
 	canvas.id = randomId(2, '-', 'Canvas-', 5)
 	canvas.style.position = 'absolute'
-	canvas.style.top = '0px';
-	canvas.style.left = '0px';
+	canvas.style.top = '0px'
+	canvas.style.left = '0px'
 	canvas.style.pointerEvents = 'none'
 	canvas.width = width
 	canvas.height = height
 	canvas.dataset.layer = dataLayer.toString()
 	canvas.dataset.identifier = uuidgen()
-	
+
 	if (layerName) {
 		canvas.dataset.name = layerName
 	}
