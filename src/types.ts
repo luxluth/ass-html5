@@ -188,6 +188,14 @@ export declare namespace ASSAnimation {
 		words: Word[]
 		layer: number
 	}
+
+	export type AnimationBundle = {
+		animations: Animation[]
+		start: number
+		end: number
+		frames: AnimationFrameRenderState[]
+		hash: string
+	}
 }
 
 export type Tweaks = {
