@@ -1,4 +1,4 @@
-import { compile } from 'ass-compiler'
+import { compile, type CompiledASS } from 'ass-compiler'
 import { Renderer } from './renderer'
 import { ASSOptions as Options, Font, OnInitSizes } from './types'
 
@@ -18,9 +18,11 @@ export default class ASS {
 	private renderer: Renderer | null = null
 	private fonts?: Font[]
 	private zIndex?: number
+	private compiledAss: CompiledASS
 
 	constructor(options: Options) {
 		this.assText = options.assText
+		this.compiledAss = compile(this.assText, {})
 		this.video = options.video
 		this.fonts = options.fonts
 		this.zIndex = options.zIndex
@@ -45,7 +47,7 @@ export default class ASS {
 			await this.loadFonts(this.fonts)
 		}
 
-		this.renderer = new Renderer(compile(this.assText, {}), sizes, this.videoElement, this.zIndex)
+		this.renderer = new Renderer(this.compiledAss, sizes, this.videoElement, this.zIndex)
 		this.videoElement?.addEventListener('loadedmetadata', () => {
 			this.setCanvasSize()
 		})

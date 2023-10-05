@@ -1,5 +1,5 @@
 import { Dialogue } from 'ass-compiler'
-import { DrawingStrategy } from './interfaces'
+import { DrawingStrategy } from './types'
 import { Renderer } from './renderer'
 import { Styles, Layer, Position, ASSAnimation } from './types'
 import { makeLines, separateNewLine, splitTextOnTheNextCharacter } from './utils'

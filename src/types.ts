@@ -1,5 +1,6 @@
 import type { CompiledASSStyle, Dialogue } from 'ass-compiler'
 import type { ParsedTag } from 'ass-compiler/types/tags'
+import type { Renderer } from './renderer'
 
 export type FontStyle = {
 	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/ascentOverride) */
@@ -158,6 +159,35 @@ export declare namespace ASSAnimation {
 	}
 
 	export type Animation = Fade | Move | Org
+	
+	export type Word = {
+		type: 'word'
+		text: string
+		width: number
+		height: number
+		font: FontDescriptor
+		style: CompiledASSStyle
+		position: Position
+	} | {
+		type: 'drawing'
+		height: number
+		width: number
+		drawing: string
+		position: Position
+		opacity: number
+	}
+
+	export type AnimationFrameRenderState = {
+		playerResX: number
+		playerResY: number
+		canvas: {
+			width: number
+			height: number
+		},
+		time: number
+		words: Word[]
+		layer: number
+	}
 }
 
 export type Tweaks = {
@@ -190,4 +220,10 @@ export type Styles = { [styleName: string]: CompiledASSStyle }
 export type Position = {
 	x: number
 	y: number
+}
+export interface DrawingStrategy {
+	renderer: Renderer
+	dialogue: Dialogue
+	styles: Styles
+	draw(): void
 }
