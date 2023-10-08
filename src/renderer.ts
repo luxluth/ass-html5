@@ -301,6 +301,7 @@ export class Renderer {
 				this.applyFont(word.font, 
 					this.layers[layer] as Layer
 				)
+				// TODO - Investigate Color tags override mismatche in custom positioning styles
 				this.drawWord(
 					word.text,
 					word.position.x,
