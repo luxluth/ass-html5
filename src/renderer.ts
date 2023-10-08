@@ -1,4 +1,4 @@
-import type { CompiledASS, CompiledASSStyle, Dialogue, DialogueFragment } from 'ass-compiler'
+import type { CompiledASS, CompiledASSStyle, Dialogue } from 'ass-compiler'
 import type { CompiledTag } from 'ass-compiler/types/tags'
 import type {
 	FontDescriptor,
@@ -13,7 +13,6 @@ import { SimpleDrawing, AnimateDrawing, SpecificPositionDrawing } from './drawin
 import {
 	ruleOfThree,
 	blendAlpha,
-	splitTextOnTheNextCharacter,
 	convertAegisubColorToHex,
 	swapBBGGRR,
 	newCanvas,
@@ -182,53 +181,18 @@ export class Renderer {
 	}
 
 	drawTextBackground(
-		lines: string[],
-		currentLine: number,
+		text: string,
 		pos: Position,
+		height: number,
 		font: FontDescriptor,
-		y: number,
-		fragments: DialogueFragment[]
 	) {
 		const layer = this.layers[0] as Layer
-		fragments.forEach((fragment) => {
-			let x = pos.x
-			this.applyOverrideTag(fragment.tag, font)
-			const lineWidth =
-				layer.ctx.measureText(lines[currentLine] as string).width +
-				layer.ctx.measureText(' ').width * 2
-			const words = splitTextOnTheNextCharacter(lines[currentLine] as string)
-
-			// finding the biggest word height
-			let lineHeight = 0
-			words.forEach((word) => {
-				let wordHeight =
-					layer.ctx.measureText(word).fontBoundingBoxAscent +
-					layer.ctx.measureText(word).fontBoundingBoxDescent
-				if (wordHeight > lineHeight) {
-					lineHeight = wordHeight
-				}
-			})
-
-			switch (this.textAlign) {
-				case 'left':
-					x += 0
-					break
-				case 'center':
-					x -= lineWidth / 2
-					break
-				case 'right':
-					x -= lineWidth
-					break
-				default:
-					x += 0
-					break
-			}
-
-			layer.ctx.fillStyle = layer.ctx.strokeStyle
-			layer.ctx.fillRect(x, y - lineHeight, lineWidth, lineHeight)
-			currentLine++
-			y += lineHeight
-		})
+		layer.ctx.save()
+		layer.ctx.beginPath()
+		layer.ctx.fillStyle = font.colors.c2
+		layer.ctx.fillRect(pos.x, pos.y - height, layer.ctx.measureText(text).width, height)
+		layer.ctx.closePath()
+		layer.ctx.restore()
 	}
 
 	drawWord(
@@ -237,7 +201,6 @@ export class Renderer {
 		y: number,
 		font: FontDescriptor,
 		ctx: CanvasRenderingContext2D,
-		behindTextCanvas?: HTMLCanvasElement
 	) {
 		const debug = false
 		// console.debug(`${this.ctx.font} ===?=== ${this.fontDecriptorString(font)}`)
@@ -301,6 +264,16 @@ export class Renderer {
 			)
 		}
 
+		if (font.borderStyle === 3) {
+			// a border style of 3 is a filled box
+			this.drawTextBackground(
+				word,
+				{ x: x, y: y },
+				ctx.measureText(word).actualBoundingBoxAscent + ctx.measureText(word).fontBoundingBoxDescent,
+				font
+			)
+		}
+
 		ctx.stroke()
 		ctx.fill()
 		ctx.closePath()
@@ -313,6 +286,30 @@ export class Renderer {
 					ctx.measureText(word).fontBoundingBoxAscent +
 					ctx.measureText(word).fontBoundingBoxDescent
 			: 0
+	}
+
+	drawFrame(renderState: ASSAnimation.FrameRenderState, layer: number) {
+		renderState.words.forEach((word) => {
+			if (word.type == 'word') {
+				// each renderState got the width and height of the canvas when it was created
+				// so we upscale the position of the word to the current canvas size if needed
+				if (renderState.canvas.width !== this.layers[layer]?.canvas.width) {
+					word.position.x = this.upscale(word.position.x, renderState.canvas.width, this.layers[layer]?.canvas.width || 0)
+					word.position.y = this.upscale(word.position.y, renderState.canvas.height, this.layers[layer]?.canvas.height || 0)
+					word.font.fontsize = this.upscale(word.font.fontsize, renderState.playerResY, this.layers[layer]?.canvas.height || 0)
+				}
+				this.applyFont(word.font, 
+					this.layers[layer] as Layer
+				)
+				this.drawWord(
+					word.text,
+					word.position.x,
+					word.position.y,
+					word.font,
+					this.layers[layer]?.ctx as CanvasRenderingContext2D
+				)
+			}
+		})
 	}
 
 	upscalePosition(pos: Position) {
@@ -399,6 +396,7 @@ export class Renderer {
 					this.playerResX,
 					this.layers[0]?.canvas.width || 0
 				)
+				font.xshad = tag.xshad
 			}
 			if (tag.yshad !== undefined) {
 				layer.ctx.shadowOffsetY = this.upscale(
@@ -406,6 +404,7 @@ export class Renderer {
 					this.playerResY,
 					this.layers[0]?.canvas.height || 0
 				)
+				font.yshad = tag.yshad
 			}
 			if (tag.xbord !== undefined) {
 				layer.ctx.lineWidth = this.upscale(
@@ -504,6 +503,9 @@ export class Renderer {
 			},
 			xbord: xbord,
 			ybord: ybord,
+			xshad: xshad,
+			yshad: yshad,
+
 			fe: fe,
 			borderStyle: BorderStyle
 		}
@@ -534,6 +536,21 @@ export class Renderer {
 			layer.ctx.lineJoin = 'round'
 		}
 		return font
+	}
+
+	applyFont(font: FontDescriptor, layer: Layer) {
+		layer.ctx.font = this.fontDecriptorString(font)
+		layer.ctx.fillStyle = blendAlpha(font.colors.c1, font.colors.a1)
+		layer.ctx.strokeStyle = blendAlpha(font.colors.c3, font.colors.a3)
+		layer.ctx.shadowOffsetX = this.upscale(font.xshad, this.playerResX, layer.canvas.width)
+		layer.ctx.shadowOffsetY = this.upscale(font.yshad, this.playerResY, layer.canvas.height)
+		layer.ctx.shadowBlur = 0
+		layer.ctx.shadowColor = blendAlpha(font.colors.c4, font.colors.a4)
+		layer.ctx.lineWidth =
+			this.upscale(font.xbord, this.playerResX, layer.canvas.width) +
+			this.upscale(font.ybord, this.playerResY, layer.canvas.height)
+		layer.ctx.lineCap = 'round'
+		layer.ctx.lineJoin = 'round'
 	}
 
 	getAlignment(alignment: number) {

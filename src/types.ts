@@ -78,6 +78,8 @@ export type FontDescriptor = {
 	xbord: number
 	/** y border */
 	ybord: number
+	xshad: number
+	yshad: number
 	/** font encoding */
 	fe?: number
 	borderStyle: number
@@ -163,10 +165,8 @@ export declare namespace ASSAnimation {
 	export type Word = {
 		type: 'word'
 		text: string
-		width: number
-		height: number
 		font: FontDescriptor
-		style: CompiledASSStyle
+		style: string
 		position: Position
 	} | {
 		type: 'drawing'
@@ -177,7 +177,7 @@ export declare namespace ASSAnimation {
 		opacity: number
 	}
 
-	export type AnimationFrameRenderState = {
+	export type FrameRenderState = {
 		playerResX: number
 		playerResY: number
 		canvas: {
@@ -189,12 +189,14 @@ export declare namespace ASSAnimation {
 		layer: number
 	}
 
-	export type AnimationBundle = {
+	export type Bundle = {
 		animations: Animation[]
 		start: number
 		end: number
-		frames: AnimationFrameRenderState[]
-		hash: string
+		frames: FrameRenderState[]
+		hash: number
+		active: boolean
+		requestFrameId?: number
 	}
 }
 
