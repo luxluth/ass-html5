@@ -289,6 +289,7 @@ export class Renderer {
 	}
 
 	drawFrame(renderState: ASSAnimation.FrameRenderState, layer: number) {
+		// console.log("drawFrame")
 		renderState.words.forEach((word) => {
 			if (word.type == 'word') {
 				// each renderState got the width and height of the canvas when it was created
@@ -309,8 +310,14 @@ export class Renderer {
 					word.font,
 					this.layers[layer]?.ctx as CanvasRenderingContext2D
 				)
+				// console.debug(word.text, word.position.x, word.position.y, word.font)
+
 			}
 		})
+	}
+
+	clearLayer(layer: number) {
+		this.layers[layer]?.ctx.clearRect(0, 0, this.layers[layer]?.canvas.width as number, this.layers[layer]?.canvas.height as number)
 	}
 
 	upscalePosition(pos: Position) {
