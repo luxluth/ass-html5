@@ -381,22 +381,28 @@ export class Renderer {
 		for (let i = 0; i < this.layers.length; i++) {
 			const layer = this.layers[i] as Layer
 			if (tag.c1 !== undefined) {
-				layer.ctx.fillStyle = swapBBGGRR(tag.c1)
+                font.colors.c1 = swapBBGGRR(tag.c1)
+				layer.ctx.fillStyle = font.colors.c1
 			}
 			if (tag.a1 !== undefined) {
-				layer.ctx.fillStyle = blendAlpha(layer.ctx.fillStyle as string, parseFloat(tag.a1))
+                font.colors.a1 = parseFloat(tag.a1)
+				layer.ctx.fillStyle = blendAlpha(layer.ctx.fillStyle as string, font.colors.a1)
 			}
 			if (tag.c3 !== undefined) {
-				layer.ctx.strokeStyle = swapBBGGRR(tag.c3)
+                font.colors.c3 = swapBBGGRR(tag.c3)
+				layer.ctx.strokeStyle = font.colors.c3
 			}
 			if (tag.a3 !== undefined) {
-				layer.ctx.strokeStyle = blendAlpha(layer.ctx.strokeStyle as string, parseFloat(tag.a3))
+                font.colors.a3 = parseFloat(tag.a3)
+				layer.ctx.strokeStyle = blendAlpha(layer.ctx.strokeStyle as string, font.colors.a3)
 			}
 			if (tag.c4 !== undefined) {
-				layer.ctx.shadowColor = swapBBGGRR(tag.c4)
+                font.colors.c4 = swapBBGGRR(tag.c4)
+				layer.ctx.shadowColor = font.colors.c4
 			}
 			if (tag.a4 !== undefined) {
-				layer.ctx.shadowColor = blendAlpha(layer.ctx.shadowColor as string, parseFloat(tag.a4))
+                font.colors.a4 = parseFloat(tag.a4)
+				layer.ctx.shadowColor = blendAlpha(layer.ctx.shadowColor as string, font.colors.a4)
 			}
 			if (tag.xshad !== undefined) {
 				layer.ctx.shadowOffsetX = this.upscale(
@@ -436,6 +442,7 @@ export class Renderer {
 					this.playerResY,
 					this.layers[0]?.canvas.height || 0
 				)
+                font.blur = tag.blur
 			}
 			layer.ctx.font = this.fontDecriptorString(font)
 		}
@@ -513,7 +520,7 @@ export class Renderer {
 			ybord: ybord,
 			xshad: xshad,
 			yshad: yshad,
-
+            blur: 0,
 			fe: fe,
 			borderStyle: BorderStyle
 		}
@@ -550,13 +557,25 @@ export class Renderer {
 		layer.ctx.font = this.fontDecriptorString(font)
 		layer.ctx.fillStyle = blendAlpha(font.colors.c1, font.colors.a1)
 		layer.ctx.strokeStyle = blendAlpha(font.colors.c3, font.colors.a3)
-		layer.ctx.shadowOffsetX = this.upscale(font.xshad, this.playerResX, layer.canvas.width)
-		layer.ctx.shadowOffsetY = this.upscale(font.yshad, this.playerResY, layer.canvas.height)
-		layer.ctx.shadowBlur = 0
+		layer.ctx.shadowOffsetX = this.upscale(
+			font.xshad,
+			this.playerResX,
+			this.layers[0]?.canvas.width || 0
+		)
+		layer.ctx.shadowOffsetY = this.upscale(
+			font.yshad,
+			this.playerResY,
+			this.layers[0]?.canvas.height || 0
+		)
+		layer.ctx.shadowBlur = this.upscale(
+			font.blur,
+			this.playerResY,
+			this.layers[0]?.canvas.height || 0
+		)
 		layer.ctx.shadowColor = blendAlpha(font.colors.c4, font.colors.a4)
 		layer.ctx.lineWidth =
-			this.upscale(font.xbord, this.playerResX, layer.canvas.width) +
-			this.upscale(font.ybord, this.playerResY, layer.canvas.height)
+			this.upscale(font.xbord, this.playerResX, this.layers[0]?.canvas.width || 0) +
+			this.upscale(font.ybord, this.playerResY, this.layers[0]?.canvas.height || 0)
 		layer.ctx.lineCap = 'round'
 		layer.ctx.lineJoin = 'round'
 	}

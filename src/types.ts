@@ -80,6 +80,8 @@ export type FontDescriptor = {
 	ybord: number
 	xshad: number
 	yshad: number
+	/** shadow blur */
+	blur: number
 	/** font encoding */
 	fe?: number
 	borderStyle: number
@@ -206,26 +208,6 @@ export declare namespace ASSAnimation {
 		requestFrameId?: number
 		layer: number
 	}
-}
-
-export type Tweaks = {
-	tweaked: boolean
-	primaryColor?: string
-	secondaryColor?: string
-	outlineColor?: string
-	shadowColor?: string
-	scaleX?: number
-	scaleY?: number
-	spacing?: number
-	angle?: number
-	borderStyle?: number // 1: outline, 3: opaque box ?
-	outline?: number
-	shadow?: number
-	alignment?: number
-	position?: [number, number]
-	fontDescriptor: FontDescriptor
-	custompositioning: boolean
-	animations: ASSAnimation.Animation[]
 }
 
 export type Override = {

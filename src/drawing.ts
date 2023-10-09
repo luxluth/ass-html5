@@ -115,7 +115,7 @@ function drawText(renderer: Renderer, dialogue: Dialogue, styles: Styles): ASSAn
 					renderState.words.push({
 						type: 'word',
 						text: word,
-						font: Object.assign({}, font),
+						font: JSON.parse(JSON.stringify(font)),
 						style: slice.style,
 						position: {
 							x: x + currentWordsWidth,
@@ -238,7 +238,7 @@ function drawTextAtPosition(pos: Position, renderer: Renderer, dialogue: Dialogu
 					renderState.words.push({
 						type: 'word',
 						text: word,
-						font: Object.assign({}, font),
+						font: JSON.parse(JSON.stringify(font)),
 						style: slice.style,
 						position: {
 							x: x + currentWordsWidth,
@@ -557,7 +557,7 @@ export class AnimateDrawing implements DrawingStrategy {
 		const frameDuration = 1000 / fps
 
 		for (let i = 0; i < frames; i++) {
-			let frameRenderState = Object.assign({}, pureState)
+			let frameRenderState = JSON.parse(JSON.stringify(pureState))
 			frameRenderState.time = i * frameDuration
 			animationBundle.frames.push(frameRenderState)
 		}
@@ -612,7 +612,9 @@ export class AnimateDrawing implements DrawingStrategy {
 			return
 		}
 
-		this.animate(animationBundle, duration, fps)
+		console.debug(animationBundle)
+
+		// this.animate(animationBundle, duration, fps)
 	}
 
 	animate(animationBundle: ASSAnimation.Bundle, duration: number, fps: number) {
