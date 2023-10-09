@@ -283,6 +283,15 @@ export class Renderer {
 			: 0
 	}
 
+	upscaleY(y: number, baseCanvasHeight: number) {
+		const canvasHeight = this.layers[0]?.canvas.height || 0
+		return (canvasHeight * y) / baseCanvasHeight
+	}
+	upscaleX(x: number, baseCanvasWidth: number) {
+		const canvasWidth = this.layers[0]?.canvas.width || 0
+		return (canvasWidth * x) / baseCanvasWidth
+	}
+
 	drawFrame(renderState: ASSAnimation.FrameRenderState, layer: number, beforeDraw?: ( ctx: CanvasRenderingContext2D ) => void) {
 		// console.log("drawFrame")
 		renderState.words.forEach((word) => {

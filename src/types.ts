@@ -200,6 +200,10 @@ export declare namespace ASSAnimation {
 		time: number
 		words: Word[]
 		layer: number
+		x: number
+		y: number
+		width: number
+		height: number
 	}
 
 	export type Bundle = {

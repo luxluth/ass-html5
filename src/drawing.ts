@@ -27,7 +27,11 @@ function drawText(
 			width: layer.canvas.width,
 			height: layer.canvas.height
 		},
-		words: []
+		words: [],
+		x: 0,
+		y: 0,
+		width: 0,
+		height: 0,
 	}
 
 	slices.forEach((slice) => {
@@ -97,7 +101,7 @@ function drawText(
 
 			let currentWordsWidth = 0
 
-			words.forEach((word) => {
+			words.forEach((word, index) => {
 				let wordWidth = layer.ctx.measureText(word).width
 				if (word === '\\N') {
 					// console.debug('y', y)
@@ -121,6 +125,10 @@ function drawText(
 							x = margin.left
 					}
 				} else {
+					if (index === 0) {
+						renderState.x = x + currentWordsWidth
+						renderState.y = y
+					}
 					renderState.words.push({
 						type: 'word',
 						text: word,
@@ -137,6 +145,9 @@ function drawText(
 				}
 			})
 		})
+
+		renderState.width = previousTextWidth
+		renderState.height = totalHeight
 	})
 	return renderState
 }
@@ -160,7 +171,11 @@ function drawTextAtPosition(
 			width: layer.canvas.width,
 			height: layer.canvas.height
 		},
-		words: []
+		words: [],
+		x: pos.x,
+		y: pos.y,
+		width: 0,
+		height: 0
 	}
 
 	slices.forEach((slice) => {
@@ -264,6 +279,9 @@ function drawTextAtPosition(
 				}
 			})
 		})
+
+		renderState.width = previousTextWidth
+		renderState.height = totalHeight
 	})
 
 	return renderState
@@ -653,7 +671,9 @@ export class AnimateDrawing implements DrawingStrategy {
 					const frameId = Math.floor((time - start) / (1000 / 60))
 					const frame = bundle.frames[frameId]
 					if (frame) {
-						this.renderer.drawFrame(frame, bundle.layer, (ctx) => {	})
+						this.renderer.drawFrame(frame, bundle.layer, (ctx) => {
+							ctx.globalCompositeOperation = 'source-over'
+						})
 					}
 				} else {
 					bundle.active = false
