@@ -85,6 +85,7 @@ export type FontDescriptor = {
 	/** font encoding */
 	fe?: number
 	borderStyle: number
+	opacity: number
 }
 
 export type Layer = {
@@ -127,19 +128,20 @@ export type FontTransfomation = {
 export type Tag = { [K in keyof ParsedTag]: ParsedTag[K] }
 
 export declare namespace ASSAnimation {
-	export type Fade = {
-		name: 'fad'
-		/**
-		 * The values of the fade animation
-		 * `\fad(<fadein>,<fadeout>)` or `\fade(<a1>,<a2>,<a3>,<t1>,<t2>,<t3>,<t4>)`
-		 */
-		values: FadValues
-		}
-	| {
-		name: 'fade'
-		values: FadeValues
-		}
-	
+	export type Fade =
+		| {
+				name: 'fad'
+				/**
+				 * The values of the fade animation
+				 * `\fad(<fadein>,<fadeout>)` or `\fade(<a1>,<a2>,<a3>,<t1>,<t2>,<t3>,<t4>)`
+				 */
+				values: FadValues
+		  }
+		| {
+				name: 'fade'
+				values: FadeValues
+		  }
+
 	export type FadeValues = [number, number, number, number, number, number, number]
 	export type FadValues = [number, number]
 
@@ -147,7 +149,7 @@ export declare namespace ASSAnimation {
 
 	export type MoveValuesSimple = [number, number, number, number]
 	export type MoveValuesComplex = [number, number, number, number, number, number]
-	
+
 	export type Move = {
 		name: 'move'
 		/**
@@ -169,22 +171,24 @@ export declare namespace ASSAnimation {
 	export type OrgValues = [number, number]
 
 	export type Animation = Fade | Move | Org
-	
-	export type Word = {
-		type: 'word'
-		text: string
-		font: FontDescriptor
-		style: string
-		position: Position
-	} | {
-		type: 'drawing'
-		height: number
-		width: number
-		drawing: string
-		position: Position
-		font: FontDescriptor
-		opacity: number
-	}
+
+	export type Word =
+		| {
+				type: 'word'
+				text: string
+				font: FontDescriptor
+				style: string
+				position: Position
+		  }
+		| {
+				type: 'drawing'
+				height: number
+				width: number
+				drawing: string
+				position: Position
+				font: FontDescriptor
+				opacity: number
+		  }
 
 	export type FrameRenderState = {
 		playerResX: number
@@ -192,7 +196,7 @@ export declare namespace ASSAnimation {
 		canvas: {
 			width: number
 			height: number
-		},
+		}
 		time: number
 		words: Word[]
 		layer: number
@@ -205,8 +209,8 @@ export declare namespace ASSAnimation {
 		frames: FrameRenderState[]
 		hash: number
 		active: boolean
-		requestFrameId?: number
 		layer: number
+		taskId?: number
 	}
 }
 
@@ -226,4 +230,22 @@ export interface DrawingStrategy {
 	dialogue: Dialogue
 	styles: Styles
 	draw(): void
+}
+
+export type SingleTask<T> = {
+	id: number
+	task: T
+	data?: {
+		[key: string]: any
+	}
+	exec?: () => void
+}
+
+export interface TaskScheduler<T> {
+	tasks: SingleTask<T>[]
+	addTask(task: T, data?: { [key: string]: any}, exec?: () => void ): number 
+	removeTask(id: number): void
+	clear(): void
+	isEmpty(): boolean
+	findTask(id: number): T | null
 }

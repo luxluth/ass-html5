@@ -1,4 +1,4 @@
-import type { Tag } from './types'
+import type { SingleTask, Tag, TaskScheduler } from './types'
 /**
  * Convert a color in RGBA format to Aegisub format
  * @param aegisubColor The color in Aegisub format
@@ -333,4 +333,49 @@ export function blendAlpha(color: string, alpha: number) {
 	const green = parseInt(color.substring(2, 4), 16)
 	const blue = parseInt(color.substring(4, 6), 16)
 	return `rgba(${red}, ${green}, ${blue}, ${alpha == 0 ? 1 : alpha / 160})`
+}
+
+export class Scheduler<T> implements TaskScheduler<T> {
+	tasks: SingleTask<T>[]
+
+	constructor() {
+		this.tasks = []
+	}
+
+	addTask(
+		task: T,
+		data?: {
+			[key: string]: any
+		},
+		exec?: () => void
+	): number {
+		const id = Date.now()
+		this.tasks.push({
+			id,
+			task,
+			data,
+			exec,
+		})
+		return id
+	}
+
+	removeTask(id: number): void {
+		this.tasks = this.tasks.filter((task) => task.id !== id)
+	}
+
+	clear(): void {
+		this.tasks = []
+	}
+
+	isEmpty(): boolean {
+		return this.tasks.length == 0
+	}
+
+	findTask(id: number): T | null {
+		this.tasks.forEach((task) => {
+			if (task.id === id) return task.task
+		})
+
+		return null
+	}
 }

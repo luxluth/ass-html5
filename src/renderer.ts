@@ -30,7 +30,6 @@ export class Renderer {
 
 	textAlign: CanvasTextAlign = 'start'
 	textBaseline: CanvasTextBaseline = 'alphabetic'
-	fontSpacing = 0
 
 	constructor(ass: CompiledASS, sizes: OnInitSizes, video: HTMLVideoElement, zIndex?: number) {
 		this.compiledASS = ass
@@ -174,18 +173,13 @@ export class Renderer {
 					values: [org.x, org.y]
 				} as ASSAnimation.Org)
 			}
-			new AnimateDrawing(this, dialogue, styles, animations).draw()
+			AnimateDrawing.getInstance(this, dialogue, styles, animations).draw()
 		} else {
 			new SimpleDrawing(this, dialogue, styles).draw()
 		}
 	}
 
-	drawTextBackground(
-		text: string,
-		pos: Position,
-		height: number,
-		font: FontDescriptor,
-	) {
+	drawTextBackground(text: string, pos: Position, height: number, font: FontDescriptor) {
 		const layer = this.layers[0] as Layer
 		layer.ctx.save()
 		layer.ctx.beginPath()
@@ -200,7 +194,7 @@ export class Renderer {
 		x: number,
 		y: number,
 		font: FontDescriptor,
-		ctx: CanvasRenderingContext2D,
+		ctx: CanvasRenderingContext2D
 	) {
 		const debug = false
 		// console.debug(`${this.ctx.font} ===?=== ${this.fontDecriptorString(font)}`)
@@ -269,7 +263,8 @@ export class Renderer {
 			this.drawTextBackground(
 				word,
 				{ x: x, y: y },
-				ctx.measureText(word).actualBoundingBoxAscent + ctx.measureText(word).fontBoundingBoxDescent,
+				ctx.measureText(word).actualBoundingBoxAscent +
+					ctx.measureText(word).fontBoundingBoxDescent,
 				font
 			)
 		}
@@ -288,36 +283,58 @@ export class Renderer {
 			: 0
 	}
 
-	drawFrame(renderState: ASSAnimation.FrameRenderState, layer: number) {
+	drawFrame(renderState: ASSAnimation.FrameRenderState, layer: number, beforeDraw?: ( ctx: CanvasRenderingContext2D ) => void) {
 		// console.log("drawFrame")
 		renderState.words.forEach((word) => {
 			if (word.type == 'word') {
 				// each renderState got the width and height of the canvas when it was created
 				// so we upscale the position of the word to the current canvas size if needed
 				if (renderState.canvas.width !== this.layers[layer]?.canvas.width) {
-					word.position.x = this.upscale(word.position.x, renderState.canvas.width, this.layers[layer]?.canvas.width || 0)
-					word.position.y = this.upscale(word.position.y, renderState.canvas.height, this.layers[layer]?.canvas.height || 0)
-					word.font.fontsize = this.upscale(word.font.fontsize, renderState.playerResY, this.layers[layer]?.canvas.height || 0)
+					word.position.x = this.upscale(
+						word.position.x,
+						renderState.canvas.width,
+						this.layers[layer]?.canvas.width || 0
+					)
+					word.position.y = this.upscale(
+						word.position.y,
+						renderState.canvas.height,
+						this.layers[layer]?.canvas.height || 0
+					)
+					word.font.fontsize = this.upscale(
+						word.font.fontsize,
+						renderState.playerResY,
+						this.layers[layer]?.canvas.height || 0
+					)
 				}
-				this.applyFont(word.font, 
-					this.layers[layer] as Layer
-				)
-				// TODO - Investigate Color tags override mismatche in custom positioning styles
-				this.drawWord(
-					word.text,
-					word.position.x,
-					word.position.y,
-					word.font,
-					this.layers[layer]?.ctx as CanvasRenderingContext2D
-				)
-				// console.debug(word.text, word.position.x, word.position.y, word.font)
 
+				const ctx = this.layers[layer]?.ctx
+				if (ctx) {
+					ctx.save()
+					this.applyFont(word.font, this.layers[layer] as Layer)
+					ctx.globalAlpha = word.font.opacity
+					if (beforeDraw) {
+						beforeDraw(ctx)
+					}
+					this.drawWord(
+						word.text,
+						word.position.x,
+						word.position.y,
+						word.font,
+						this.layers[layer]?.ctx as CanvasRenderingContext2D
+					)
+					ctx.restore()
+				}
 			}
 		})
 	}
 
 	clearLayer(layer: number) {
-		this.layers[layer]?.ctx.clearRect(0, 0, this.layers[layer]?.canvas.width as number, this.layers[layer]?.canvas.height as number)
+		this.layers[layer]?.ctx.clearRect(
+			0,
+			0,
+			this.layers[layer]?.canvas.width as number,
+			this.layers[layer]?.canvas.height as number
+		)
 	}
 
 	upscalePosition(pos: Position) {
@@ -381,27 +398,27 @@ export class Renderer {
 		for (let i = 0; i < this.layers.length; i++) {
 			const layer = this.layers[i] as Layer
 			if (tag.c1 !== undefined) {
-                font.colors.c1 = swapBBGGRR(tag.c1)
+				font.colors.c1 = swapBBGGRR(tag.c1)
 				layer.ctx.fillStyle = font.colors.c1
 			}
 			if (tag.a1 !== undefined) {
-                font.colors.a1 = parseFloat(tag.a1)
+				font.colors.a1 = parseFloat(tag.a1)
 				layer.ctx.fillStyle = blendAlpha(layer.ctx.fillStyle as string, font.colors.a1)
 			}
 			if (tag.c3 !== undefined) {
-                font.colors.c3 = swapBBGGRR(tag.c3)
+				font.colors.c3 = swapBBGGRR(tag.c3)
 				layer.ctx.strokeStyle = font.colors.c3
 			}
 			if (tag.a3 !== undefined) {
-                font.colors.a3 = parseFloat(tag.a3)
+				font.colors.a3 = parseFloat(tag.a3)
 				layer.ctx.strokeStyle = blendAlpha(layer.ctx.strokeStyle as string, font.colors.a3)
 			}
 			if (tag.c4 !== undefined) {
-                font.colors.c4 = swapBBGGRR(tag.c4)
+				font.colors.c4 = swapBBGGRR(tag.c4)
 				layer.ctx.shadowColor = font.colors.c4
 			}
 			if (tag.a4 !== undefined) {
-                font.colors.a4 = parseFloat(tag.a4)
+				font.colors.a4 = parseFloat(tag.a4)
 				layer.ctx.shadowColor = blendAlpha(layer.ctx.shadowColor as string, font.colors.a4)
 			}
 			if (tag.xshad !== undefined) {
@@ -442,7 +459,7 @@ export class Renderer {
 					this.playerResY,
 					this.layers[0]?.canvas.height || 0
 				)
-                font.blur = tag.blur
+				font.blur = tag.blur
 			}
 			layer.ctx.font = this.fontDecriptorString(font)
 		}
@@ -468,7 +485,6 @@ export class Renderer {
 			fn, // font name
 			fs, // font size
 			a1, // primary alpha
-			c2, // secondary color
 			a2, // secondary alpha
 			a3, // outline alpha
 			c4, // shadow color
@@ -514,19 +530,20 @@ export class Renderer {
 				frz: frz,
 				frx: 0,
 				fry: 0,
+				fsp: this.upscale(fsp, this.playerResX, this.layers[0]?.canvas.width || 0),
 				q: q
 			},
 			xbord: xbord,
 			ybord: ybord,
 			xshad: xshad,
 			yshad: yshad,
-            blur: 0,
+			blur: 0,
 			fe: fe,
-			borderStyle: BorderStyle
+			borderStyle: BorderStyle,
+			opacity: 1
 		}
 		this.textAlign = this.getAlignment(alignment)
 		this.textBaseline = this.getBaseLine(alignment)
-		this.fontSpacing = this.upscale(fsp, this.playerResX, this.layers[0]?.canvas.width || 0)
 		for (let i = 0; i < this.layers.length; i++) {
 			const layer = this.layers[i] as Layer
 			layer.ctx.fillStyle = blendAlpha(font.colors.c1, parseFloat(a1))
@@ -549,6 +566,7 @@ export class Renderer {
 				this.upscale(ybord, this.playerResY, this.layers[0]?.canvas.height || 0)
 			layer.ctx.lineCap = 'round'
 			layer.ctx.lineJoin = 'round'
+			layer.ctx.globalAlpha = font.opacity
 		}
 		return font
 	}
@@ -578,6 +596,7 @@ export class Renderer {
 			this.upscale(font.ybord, this.playerResY, this.layers[0]?.canvas.height || 0)
 		layer.ctx.lineCap = 'round'
 		layer.ctx.lineJoin = 'round'
+		layer.ctx.globalAlpha = font.opacity
 	}
 
 	getAlignment(alignment: number) {

@@ -1,12 +1,21 @@
 import { Dialogue } from 'ass-compiler'
-import { DrawingStrategy } from './types'
+import { DrawingStrategy, FontDescriptor } from './types'
 import { Renderer } from './renderer'
 import { Styles, Layer, Position, ASSAnimation } from './types'
-import { hashString, makeLines, separateNewLine, splitTextOnTheNextCharacter } from './utils'
+import {
+	Scheduler,
+	hashString,
+	makeLines,
+	separateNewLine,
+	splitTextOnTheNextCharacter
+} from './utils'
 
-
-function drawText(renderer: Renderer, dialogue: Dialogue, styles: Styles): ASSAnimation.FrameRenderState {
-	const slices = dialogue.slices	
+function drawText(
+	renderer: Renderer,
+	dialogue: Dialogue,
+	styles: Styles
+): ASSAnimation.FrameRenderState {
+	const slices = dialogue.slices
 	const layer = renderer.getLayer(dialogue.layer) as Layer
 
 	let renderState: ASSAnimation.FrameRenderState = {
@@ -16,7 +25,7 @@ function drawText(renderer: Renderer, dialogue: Dialogue, styles: Styles): ASSAn
 		layer: dialogue.layer,
 		canvas: {
 			width: layer.canvas.width,
-			height: layer.canvas.height,
+			height: layer.canvas.height
 		},
 		words: []
 	}
@@ -132,8 +141,12 @@ function drawText(renderer: Renderer, dialogue: Dialogue, styles: Styles): ASSAn
 	return renderState
 }
 
-
-function drawTextAtPosition(pos: Position, renderer: Renderer, dialogue: Dialogue, styles: Styles): ASSAnimation.FrameRenderState {
+function drawTextAtPosition(
+	pos: Position,
+	renderer: Renderer,
+	dialogue: Dialogue,
+	styles: Styles
+): ASSAnimation.FrameRenderState {
 	pos = renderer.upscalePosition(pos)
 	const slices = dialogue.slices
 	const layer = renderer.getLayer(dialogue.layer) as Layer
@@ -145,7 +158,7 @@ function drawTextAtPosition(pos: Position, renderer: Renderer, dialogue: Dialogu
 		layer: dialogue.layer,
 		canvas: {
 			width: layer.canvas.width,
-			height: layer.canvas.height,
+			height: layer.canvas.height
 		},
 		words: []
 	}
@@ -256,7 +269,6 @@ function drawTextAtPosition(pos: Position, renderer: Renderer, dialogue: Dialogu
 	return renderState
 }
 
-
 export class SimpleDrawing implements DrawingStrategy {
 	renderer: Renderer
 	dialogue: Dialogue
@@ -271,7 +283,7 @@ export class SimpleDrawing implements DrawingStrategy {
 	draw(): void {
 		const { layer } = this.dialogue
 		const renderState = drawText(this.renderer, this.dialogue, this.styles)
-		console.debug('renderState', renderState)
+		// console.debug('renderState', renderState)
 		this.renderer.drawFrame(renderState, layer)
 	}
 }
@@ -291,19 +303,27 @@ export class SpecificPositionDrawing implements DrawingStrategy {
 	draw(): void {
 		const { layer } = this.dialogue
 		const renderState = drawTextAtPosition(this.pos, this.renderer, this.dialogue, this.styles)
-		console.debug('renderState', renderState)
+		// console.debug('renderState', renderState)
 		this.renderer.drawFrame(renderState, layer)
 	}
 }
 
-
 export let animationBundles: ASSAnimation.Bundle[] = []
+export const tasks = new Scheduler<ASSAnimation.Bundle>()
 
 export class AnimateDrawing implements DrawingStrategy {
+	//@ts-ignore
 	renderer: Renderer
+	//@ts-ignore
 	dialogue: Dialogue
+	//@ts-ignore
 	styles: Styles
+	//@ts-ignore
 	animations: ASSAnimation.Animation[]
+
+	isAnimating = false
+
+	private static instance: AnimateDrawing | null = null
 
 	constructor(
 		renderer: Renderer,
@@ -311,29 +331,60 @@ export class AnimateDrawing implements DrawingStrategy {
 		styles: Styles,
 		animations: ASSAnimation.Animation[]
 	) {
-		this.renderer = renderer
-		this.dialogue = dialogue
-		this.styles = styles
-		this.animations = animations
+		if (AnimateDrawing.instance !== null) {
+			return AnimateDrawing.instance
+		} else {
+			this.renderer = renderer
+			this.dialogue = dialogue
+			this.styles = styles
+			this.animations = animations
+			AnimateDrawing.instance = this
+		}
+	}
+
+	static getInstance(
+		renderer: Renderer,
+		dialogue: Dialogue,
+		styles: Styles,
+		animations: ASSAnimation.Animation[]
+	): AnimateDrawing {
+		// Check if an instance already exists
+		if (AnimateDrawing.instance === null) {
+			// Create a new instance if none exists
+			AnimateDrawing.instance = new AnimateDrawing(renderer, dialogue, styles, animations)
+		} else {
+			// Update the instance if one exists
+			AnimateDrawing.instance.renderer = renderer
+			AnimateDrawing.instance.dialogue = dialogue
+			AnimateDrawing.instance.styles = styles
+			AnimateDrawing.instance.animations = animations
+		}
+
+		return AnimateDrawing.instance
 	}
 
 	/**
 	 * ## Fade
-	 * 
+	 *
 	 * Apply a fade-in and fade-out effect to the dialogue
 	 * @param values - [fadein, fadeout]
 	 * @param pureState - The state of the frame before applying the animation
 	 * @param duration - The duration of the dialogue in seconds
 	 * @param fps - The framerate of the video
 	 */
-	applyfad(values: ASSAnimation.FadValues, pureState: ASSAnimation.FrameRenderState[], duration: number, fps: number = 60) {
+	applyfad(
+		values: ASSAnimation.FadValues,
+		pureState: ASSAnimation.FrameRenderState[],
+		duration: number,
+		fps: number = 60
+	) {
 		// Produce a fade-in and fade-out effect
 		// example: \fad(1200,250)
-		// Fade in the line in the first 1.2 seconds it is to be displayed, 
+		// Fade in the line in the first 1.2 seconds it is to be displayed,
 		// and fade it out for the last one quarter second it is displayed.
 		const [fadein, fadeout] = values
-		const fadeInFrames = fadein / 1000 * fps
-		const fadeOutFrames = fadeout / 1000 * fps
+		const fadeInFrames = (fadein / 1000) * fps
+		const fadeOutFrames = (fadeout / 1000) * fps
 		const totalFrames = duration * fps
 		const fadeInStep = 1 / fadeInFrames
 		const fadeOutStep = 1 / fadeOutFrames
@@ -341,98 +392,77 @@ export class AnimateDrawing implements DrawingStrategy {
 		pureState.forEach((frame, index) => {
 			if (index < fadeInFrames) {
 				frame.words.forEach((word) => {
-					const alpha = fadeInStep * index
-					word.font.colors.a1 = alpha
-					word.font.colors.a2 = alpha
-					word.font.colors.a3 = alpha
-					word.font.colors.a4 = alpha
+					word.font.opacity = fadeInStep * index
 				})
 			} else if (index > totalFrames - fadeOutFrames) {
 				frame.words.forEach((word) => {
-					const alpha = fadeOutStep * (totalFrames - index)
-					word.font.colors.a1 = alpha
-					word.font.colors.a2 = alpha
-					word.font.colors.a3 = alpha
-					word.font.colors.a4 = alpha
+					word.font.opacity = fadeOutStep * (totalFrames - index)
 				})
 			} else {
 				frame.words.forEach((word) => {
-					word.font.colors.a1 = 1
-					word.font.colors.a2 = 1
-					word.font.colors.a3 = 1
-					word.font.colors.a4 = 1
+					word.font.opacity = 1
 				})
 			}
 		})
 	}
-	
+
 	/**
 	 * ## Fade (complex)
-	 * 
+	 *
 	 * Perform a five-part fade using three alpha values a1, a2 and a3 and four times t1, t2, t3 and t4.
-	 * The alpha values are given in decimal and are between 0 and 255, with 0 being fully visible and 255 being invisible. 
+	 * The alpha values are given in decimal and are between 0 and 255, with 0 being fully visible and 255 being invisible.
 	 * The time values are given in milliseconds after the start of the line. All seven parameters are required.
-	 * 
+	 *
 	 * @param values - [a1, a2, a3, t1, t2, t3, t4]
 	 * @param pureState - The state of the frame before applying the animation
 	 * @param duration - The duration of the dialogue in seconds
 	 * @param fps - The framerate of the video
 	 */
-	applyfade(values: ASSAnimation.FadeValues, pureState: ASSAnimation.FrameRenderState[], duration: number, fps: number=60) {
+	applyfade(
+		values: ASSAnimation.FadeValues,
+		pureState: ASSAnimation.FrameRenderState[],
+		duration: number,
+		fps: number = 60
+	) {
 		// Before t1, the line has alpha a1.
 		// Between t1 and t2 the line fades from alpha a1 to alpha a2.
 		// Between t2 and t3 the line has alpha a2 constantly.
 		// Between t3 and t4 the line fades from alpha a2 to alpha a3.
 		// After t4 the line has alpha a3.
 		// example: \fade(255,32,224,0,500,2000,2200)
-		// Starts invisible, fades to almost totally opaque, then fades to almost totally invisible. 
-		// First fade starts when the line starts and lasts 500 milliseconds. 
+		// Starts invisible, fades to almost totally opaque, then fades to almost totally invisible.
+		// First fade starts when the line starts and lasts 500 milliseconds.
 		// Second fade starts 1500 milliseconds later, and lasts 200 milliseconds.
 
 		const [a1, a2, a3, t1, t2, t3, t4] = values
 		const totalFrames = duration * fps
-		const fadeInFrames = t2 / 1000 * fps
-		const fadeOutFrames = t4 / 1000 * fps
+		const fadeInFrames = (t2 / 1000) * fps
+		const fadeOutFrames = (t4 / 1000) * fps
 		const fadeInStep = (a2 - a1) / fadeInFrames
 		const fadeOutStep = (a3 - a2) / fadeOutFrames
 
 		pureState.forEach((frame, index) => {
-			if (index < t1 / 1000 * fps) {
+			if (index < (t1 / 1000) * fps) {
 				frame.words.forEach((word) => {
-					word.font.colors.a1 = a1 / 255
-					word.font.colors.a2 = a1 / 255
-					word.font.colors.a3 = a1 / 255
-					word.font.colors.a4 = a1 / 255
+					word.font.opacity = a1 / 255
 				})
-			} else if (index < t2 / 1000 * fps) {
+			} else if (index < (t2 / 1000) * fps) {
 				frame.words.forEach((word) => {
-					const alpha = a1 / 255 + fadeInStep * (index - t1 / 1000 * fps)
-					word.font.colors.a1 = alpha
-					word.font.colors.a2 = alpha
-					word.font.colors.a3 = alpha
-					word.font.colors.a4 = alpha
+					const alpha = a1 / 255 + fadeInStep * (index - (t1 / 1000) * fps)
+					word.font.opacity = alpha
 				})
-			} else if (index < t3 / 1000 * fps) {
+			} else if (index < (t3 / 1000) * fps) {
 				frame.words.forEach((word) => {
-					word.font.colors.a1 = a2 / 255
-					word.font.colors.a2 = a2 / 255
-					word.font.colors.a3 = a2 / 255
-					word.font.colors.a4 = a2 / 255
+					word.font.opacity = a2 / 255
 				})
-			} else if (index < t4 / 1000 * fps) {
+			} else if (index < (t4 / 1000) * fps) {
 				frame.words.forEach((word) => {
-					const alpha = a2 / 255 + fadeOutStep * (index - t3 / 1000 * fps)
-					word.font.colors.a1 = alpha
-					word.font.colors.a2 = alpha
-					word.font.colors.a3 = alpha
-					word.font.colors.a4 = alpha
+					const alpha = a2 / 255 + fadeOutStep * (index - (t3 / 1000) * fps)
+					word.font.opacity = alpha
 				})
 			} else {
 				frame.words.forEach((word) => {
-					word.font.colors.a1 = a3 / 255
-					word.font.colors.a2 = a3 / 255
-					word.font.colors.a3 = a3 / 255
-					word.font.colors.a4 = a3 / 255
+					word.font.opacity = a3 / 255
 				})
 			}
 		})
@@ -440,28 +470,33 @@ export class AnimateDrawing implements DrawingStrategy {
 
 	/**
 	 * ## Move
-	 * 
+	 *
 	 * Move the dialogue from one position to another
-	 * The two versions of `\move` differ in that one makes the movement occur over the 
-	 * entire duration of the subtitle, while on the other you specify the time 
+	 * The two versions of `\move` differ in that one makes the movement occur over the
+	 * entire duration of the subtitle, while on the other you specify the time
 	 * over which the movement occurs.
-	 * 
+	 *
 	 * @param values - [x1, y1, x2, y2] or [x1, y1, x2, y2, t1, t2]
 	 * @param pureState - The state of the frame before applying the animation
 	 * @param duration - The duration of the dialogue in seconds
 	 * @param fps - The framerate of the video
 	 */
-	applymove(values: ASSAnimation.MoveValues, pureState: ASSAnimation.FrameRenderState[], duration: number, fps: number = 60) {
+	applymove(
+		values: ASSAnimation.MoveValues,
+		pureState: ASSAnimation.FrameRenderState[],
+		duration: number,
+		fps: number = 60
+	) {
 		switch (values.length) {
 			case 4:
 				// Example: \move(100,150,300,350)
-				// When the line appears on screen, the subtitle is at (100,150). 
-				// While the subtitle is displayed, it moves at constant speed such 
+				// When the line appears on screen, the subtitle is at (100,150).
+				// While the subtitle is displayed, it moves at constant speed such
 				// that it will arrive at point (300,350) at the same time it disappears.
 				const [x1, y1, x2, y2] = values
 				pureState.forEach((frame, index) => {
-					const x = x1 + (x2 - x1) / duration * index / fps
-					const y = y1 + (y2 - y1) / duration * index / fps
+					const x = x1 + (((x2 - x1) / duration) * index) / fps
+					const y = y1 + (((y2 - y1) / duration) * index) / fps
 					frame.words.forEach((word) => {
 						word.position.x = x
 						word.position.y = y
@@ -470,13 +505,13 @@ export class AnimateDrawing implements DrawingStrategy {
 				break
 			case 6:
 				// Example: \move(100,150,300,350,500,1500)
-				// The line appears at (100,150). 
-				// After the line has been displayed for half a second (500 milliseconds) 
-				// it begins moving towards (300,350) such that it will arrive at the point 
+				// The line appears at (100,150).
+				// After the line has been displayed for half a second (500 milliseconds)
+				// it begins moving towards (300,350) such that it will arrive at the point
 				// a second and a half (1500 milliseconds) after the line first appeared on screen.
 				const [Px1, Py1, Px2, Py2, Pt1, Pt2] = values
-				const moveStartFrame = Pt1 / 1000 * fps
-				const moveEndFrame = Pt2 / 1000 * fps
+				const moveStartFrame = (Pt1 / 1000) * fps
+				const moveEndFrame = (Pt2 / 1000) * fps
 				const moveDuration = Pt2 - Pt1
 				const moveStepX = (Px2 - Px1) / moveDuration
 				const moveStepY = (Py2 - Py1) / moveDuration
@@ -509,31 +544,36 @@ export class AnimateDrawing implements DrawingStrategy {
 
 	/**
 	 * ## Rotation origin
-	 * 
-	 * Set the origin point used for rotation. 
-	 * This affects all rotations of the line. 
+	 *
+	 * Set the origin point used for rotation.
+	 * This affects all rotations of the line.
 	 * The X and Y coordinates are given in integer script resolution pixels.
-	 * 
+	 *
 	 * @param values - [x, y]
 	 * @param pureState - The state of the frame before applying the animation
 	 * @param duration - The duration of the dialogue in seconds
 	 * @param fps - The framerate of the video
-	 * 
+	 *
 	 * > **Note:** This animation is not implemented yet.
 	 */
-	applyrotate(values: ASSAnimation.OrgValues, pureState: ASSAnimation.FrameRenderState[], duration: number, fps: number = 60) {
+	applyrotate(
+		values: ASSAnimation.OrgValues,
+		pureState: ASSAnimation.FrameRenderState[],
+		duration: number,
+		fps: number = 60
+	) {
 		console.warn('Rotation origin animation not implemented.', values)
 	}
-	
-    buildBundle(): ASSAnimation.Bundle {
-        let animationBundle: ASSAnimation.Bundle = {
+
+	buildBundle(): ASSAnimation.Bundle {
+		let animationBundle: ASSAnimation.Bundle = {
 			start: this.dialogue.start,
 			end: this.dialogue.end,
 			animations: this.animations,
 			hash: hashString(JSON.stringify(this.dialogue)),
 			frames: [],
 			active: false,
-			layer: this.dialogue.layer,
+			layer: this.dialogue.layer
 		}
 
 		const { move, pos } = this.dialogue
@@ -543,10 +583,15 @@ export class AnimateDrawing implements DrawingStrategy {
 		if (pos !== undefined) {
 			pureState = drawTextAtPosition(pos, this.renderer, this.dialogue, this.styles)
 		} else if (move !== undefined) {
-			pureState = drawTextAtPosition({
-				x: move.x1,
-				y: move.y1,
-			}, this.renderer, this.dialogue, this.styles)
+			pureState = drawTextAtPosition(
+				{
+					x: move.x1,
+					y: move.y1
+				},
+				this.renderer,
+				this.dialogue,
+				this.styles
+			)
 		} else {
 			pureState = drawText(this.renderer, this.dialogue, this.styles)
 		}
@@ -581,8 +626,9 @@ export class AnimateDrawing implements DrawingStrategy {
 					break
 			}
 		})
+
 		return animationBundle
-    }
+	}
 
 	getAnimationBundle(): ASSAnimation.Bundle | null {
 		let hash = hashString(JSON.stringify(this.dialogue))
@@ -594,57 +640,98 @@ export class AnimateDrawing implements DrawingStrategy {
 		}
 	}
 
-    draw(): void {
-		// console.warn('AnimateDrawing not implemented.', this.animations)
-		const start = this.dialogue.start
-		const end = this.dialogue.end
-		const duration = end - start
-		const fps = 60
+	private animate(): void {
+		this.isAnimating = true
+		if (!tasks.isEmpty()) {
+			tasks.tasks.forEach((task) => {
+				const bundle = task.task
+				bundle.active = true
+				const time = this.renderer.video.currentTime * 1000
+				const start = bundle.start * 1000
+				const end = bundle.end * 1000
+				if (start <= time && end >= time) {
+					const frameId = Math.floor((time - start) / (1000 / 60))
+					const frame = bundle.frames[frameId]
+					if (frame) {
+						this.renderer.drawFrame(frame, bundle.layer, (ctx) => {	})
+					}
+				} else {
+					bundle.active = false
+					bundle.taskId = undefined
+					tasks.removeTask(task.id)
+				}
+			})
+		}
+
+		requestAnimationFrame(this.animate.bind(this))
+	}
+
+	computeDimensions(frames: ASSAnimation.FrameRenderState[]): { width: number; height: number } {
+		let width = 0
+		let height = 0
+		frames.forEach((frame) => {
+			frame.words.forEach((word) => {
+				if (word.type !== 'word') return
+				const wordWidth = this.computeWordWidth(word.text, word.font)
+				const wordHeight = this.computeWordHeight(word.font)
+				if (word.position.x + wordWidth > width) {
+					width = word.position.x + wordWidth
+				}
+				if (word.position.y + wordHeight > height) {
+					height = word.position.y + wordHeight
+				}
+			})
+		})
+		return {
+			width: width,
+			height: height
+		}
+	}
+
+	computeWordWidth(word: string, font: FontDescriptor): number {
+		const layer = this.renderer.getLayer(this.dialogue.layer) as Layer
+		const ctx = layer.ctx
+		const fontString = this.renderer.fontDecriptorString(font)
+		ctx.font = fontString
+		return ctx.measureText(word).width
+	}
+
+	computeWordHeight(font: FontDescriptor): number {
+		const layer = this.renderer.getLayer(this.dialogue.layer) as Layer
+		const ctx = layer.ctx
+		const fontString = this.renderer.fontDecriptorString(font)
+		ctx.font = fontString
+		return ctx.measureText('M').fontBoundingBoxAscent + ctx.measureText('M').fontBoundingBoxDescent
+	}
+
+	draw(): void {
+		const video = this.renderer.video
+
 		let animationBundle = this.getAnimationBundle()
 		if (animationBundle === null) {
 			animationBundle = this.buildBundle()
 			animationBundles.push(animationBundle)
 		}
 
-		const renderState = animationBundle.frames.find((frame) => frame.time === 0)
-		if (typeof renderState === 'undefined') {
-			console.warn('No render state found for frame 0')
-			return
+		if (animationBundle.taskId === undefined) {
+			animationBundle.taskId = tasks.addTask(animationBundle)
 		}
 
-		console.debug(animationBundle)
-
-		// this.animate(animationBundle, duration, fps)
-	}
-
-	animate(animationBundle: ASSAnimation.Bundle, duration: number, fps: number) {
-		const { layer } = this.dialogue
-		const frames = duration * fps
-		const frameDuration = 1000 / fps
-
-		const bundleRequestFrameId = window.requestAnimationFrame(() => {
-			animationBundle.active = true
-			animationBundle.frames.forEach((frame, index) => {
-				window.setTimeout(() => {
-					// this.renderer.clearLayer(layer)
-					this.renderer.drawFrame(frame, layer)
-				}, index * frameDuration)
+		if (!this.isAnimating) {
+			video.addEventListener('pause', () => {
+				tasks.clear()
 			})
-			window.setTimeout(() => {
-				animationBundle.active = false
-			}, frames * frameDuration)
-		})
-		animationBundle.requestFrameId = bundleRequestFrameId
-	}
 
-	pause(): void {
-		for (let bundle of animationBundles) {
-			if (bundle.active) {
-				if (bundle.requestFrameId !== undefined) {
-					window.cancelAnimationFrame(bundle.requestFrameId)
-				}
-				bundle.active = false
-			}
+			video.addEventListener('seeked', () => {
+				tasks.clear()
+			})
+
+			video.addEventListener('ended', () => {
+				tasks.clear()
+			})
+
+			requestAnimationFrame(this.animate.bind(this))
 		}
+
 	}
 }
