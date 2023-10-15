@@ -7,7 +7,9 @@ import {
 	hashString,
 	makeLines,
 	separateNewLine,
-	splitTextOnTheNextCharacter
+	splitTextOnTheNextCharacter,
+	getDistance,
+	linearInterpolation
 } from './utils'
 
 function drawText(
@@ -491,7 +493,7 @@ export class AnimateDrawing implements DrawingStrategy {
 	 *
 	 * Move the dialogue from one position to another
 	 * The two versions of `\move` differ in that one makes the movement occur over the
-	 * entire duration of the subtitle, while on the other you specify the time
+	 * entire duration of the subtitle, while the other you specify the time
 	 * over which the movement occurs.
 	 *
 	 * @param values - [x1, y1, x2, y2] or [x1, y1, x2, y2, t1, t2]
@@ -505,60 +507,55 @@ export class AnimateDrawing implements DrawingStrategy {
 		duration: number,
 		fps: number = 60
 	) {
+		let totalFrames = pureState.length;
 		switch (values.length) {
 			case 4:
 				// Example: \move(100,150,300,350)
-				// When the line appears on screen, the subtitle is at (100,150).
-				// While the subtitle is displayed, it moves at constant speed such
+				// When the line appears on the screen, the subtitle is at (100,150).
+				// While the subtitle is displayed, it moves at a constant speed such
 				// that it will arrive at point (300,350) at the same time it disappears.
-				const [x1, y1, x2, y2] = values
-				pureState.forEach((frame, index) => {
-					const x = x1 + (((x2 - x1) / duration) * index) / fps
-					const y = y1 + (((y2 - y1) / duration) * index) / fps
+				const [x1, y1, x2, y2] = values;
+
+
+				// Calculate the change in position per frame
+				const dx = (x2 - x1) / totalFrames;
+				const dy = (y2 - y1) / totalFrames;
+
+				// Apply the move animation to each frame
+				for (let i = 1; i < pureState.length; i++) {
+					const frame = pureState[i] as ASSAnimation.FrameRenderState;
+
+					// Calculate the new position
+					const x = x1 + dx * i;
+					const y = y1 + dy * i;
+
+					frame.x = x;
+					frame.y = y;
+
+					// Update the position of each word
 					frame.words.forEach((word) => {
-						word.position.x = x
-						word.position.y = y
-					})
-				})
-				break
+						word.position.x += x;
+						word.position.y += y;
+					});
+					
+				}
+				break;
+
 			case 6:
 				// Example: \move(100,150,300,350,500,1500)
-				// The line appears at (100,150).
-				// After the line has been displayed for half a second (500 milliseconds)
-				// it begins moving towards (300,350) such that it will arrive at the point
-				// a second and a half (1500 milliseconds) after the line first appeared on screen.
-				const [Px1, Py1, Px2, Py2, Pt1, Pt2] = values
-				const moveStartFrame = (Pt1 / 1000) * fps
-				const moveEndFrame = (Pt2 / 1000) * fps
-				const moveDuration = Pt2 - Pt1
-				const moveStepX = (Px2 - Px1) / moveDuration
-				const moveStepY = (Py2 - Py1) / moveDuration
-				pureState.forEach((frame, index) => {
-					if (index < moveStartFrame) {
-						frame.words.forEach((word) => {
-							word.position.x = Px1
-							word.position.y = Py1
-						})
-					} else if (index < moveEndFrame) {
-						const x = Px1 + moveStepX * (index - moveStartFrame)
-						const y = Py1 + moveStepY * (index - moveStartFrame)
-						frame.words.forEach((word) => {
-							word.position.x = x
-							word.position.y = y
-						})
-					} else {
-						frame.words.forEach((word) => {
-							word.position.x = Px2
-							word.position.y = Py2
-						})
-					}
-				})
-				break
+				// The line appears at (100,150) position on the screen.
+				// After the line has been displayed for half a second (500 milliseconds),
+				// it begins moving towards (300,350) position such that it will arrive at the point
+				// a second and a half (1500 milliseconds) after the line first appeared on the screen.
+				const [Px1, Py1, Px2, Py2, Pt1, Pt2] = values;
+				// TODO: Implement this
+				break;
 			default:
-				console.warn('Invalid move animation', values)
-				break
+				console.warn('Invalid move animation', values);
+				break;
 		}
 	}
+
 
 	/**
 	 * ## Rotation origin
@@ -635,6 +632,7 @@ export class AnimateDrawing implements DrawingStrategy {
 					break
 				case 'move':
 					this.applymove(animation.values, animationBundle.frames, duration, fps)
+                    console.debug(animationBundle)
 					break
 				case 'org':
 					this.applyrotate(animation.values, animationBundle.frames, duration, fps)
@@ -671,8 +669,8 @@ export class AnimateDrawing implements DrawingStrategy {
 					const frameId = Math.floor((time - start) / (1000 / 60))
 					const frame = bundle.frames[frameId]
 					if (frame) {
-						this.renderer.drawFrame(frame, bundle.layer, (ctx) => {
-							ctx.globalCompositeOperation = 'source-over'
+						this.renderer.drawFrame(frame, bundle.layer, (_ctx) => {
+							// this.renderer.clearLayer(frame.layer)
 						})
 					}
 				} else {
@@ -738,10 +736,6 @@ export class AnimateDrawing implements DrawingStrategy {
 		}
 
 		if (!this.isAnimating) {
-			video.addEventListener('pause', () => {
-				tasks.clear()
-			})
-
 			video.addEventListener('seeked', () => {
 				tasks.clear()
 			})

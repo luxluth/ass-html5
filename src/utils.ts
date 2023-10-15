@@ -379,3 +379,65 @@ export class Scheduler<T> implements TaskScheduler<T> {
 		return null
 	}
 }
+
+/**
+ * ### Get distance between two points
+ * 
+ * @param x1 The x coordinate of the first point
+ * @param y1 The y coordinate of the first point
+ * @param x2 The x coordinate of the second point
+ * @param y2 The y coordinate of the second point
+ * @returns The distance between the two points
+ */
+export function getDistance(x1: number, y1: number, x2: number, y2: number) {
+	return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2))
+}
+
+
+/**
+ * ### Linear interpolation
+ * 
+ * https://en.wikipedia.org/wiki/Linear_interpolation
+ * 
+ * @param x  The value of x to interpolate
+ * @param x1  The value of x1 to interpolate
+ * @param x2  The value of x2 to interpolate
+ * @param y1  The value of y1 to interpolate
+ * @param y2  The value of y2 to interpolate
+ * @returns  The interpolated value of x
+ */
+export function linearInterpolation(x: number, x1: number, x2: number, y1: number, y2: number): number
+
+/**
+ * ### Linear interpolation
+ * 
+ * https://en.wikipedia.org/wiki/Linear_interpolation
+ * 
+ * @param x  The value of x to interpolate
+ * @param y1  The value of y1 to interpolate
+ * @param y2  The value of y2 to interpolate
+ */
+export function linearInterpolation(x: number, x1: number, x2: number): number 
+
+export function linearInterpolation(...args: number[]): number {
+	let x : number | undefined = args[0]
+	let x1: number | undefined = args[1]
+	let x2: number | undefined = args[2]
+	let y1: number | undefined = args[3]
+	let y2: number | undefined = args[4]
+
+	switch (args.length) {
+		case 3:
+			if (typeof x === 'number' && typeof y1 === 'number' && typeof y2 === 'number') {
+				return y1 + ((y2 - y1) * (x - 0)) / (1 - 0)
+			}
+			break
+		case 5:
+			if (typeof x === 'number' && typeof x2 === 'number' && typeof x1 === 'number' && typeof x2 === 'number' && typeof y1 === 'number' && typeof y2 === 'number') {
+				return y1 + ((y2 - y1) * (x - x1)) / (x2 - x1)
+			}
+			break
+	}
+
+	return 0
+}

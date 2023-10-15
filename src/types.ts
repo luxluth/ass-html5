@@ -179,6 +179,7 @@ export declare namespace ASSAnimation {
 				font: FontDescriptor
 				style: string
 				position: Position
+
 		  }
 		| {
 				type: 'drawing'
@@ -187,7 +188,6 @@ export declare namespace ASSAnimation {
 				drawing: string
 				position: Position
 				font: FontDescriptor
-				opacity: number
 		  }
 
 	export type FrameRenderState = {
