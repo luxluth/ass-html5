@@ -179,7 +179,6 @@ export declare namespace ASSAnimation {
 				font: FontDescriptor
 				style: string
 				position: Position
-
 		  }
 		| {
 				type: 'drawing'
@@ -247,7 +246,7 @@ export type SingleTask<T> = {
 
 export interface TaskScheduler<T> {
 	tasks: SingleTask<T>[]
-	addTask(task: T, data?: { [key: string]: any}, exec?: () => void ): number 
+	addTask(task: T, data?: { [key: string]: any }, exec?: () => void): number
 	removeTask(id: number): void
 	clear(): void
 	isEmpty(): boolean

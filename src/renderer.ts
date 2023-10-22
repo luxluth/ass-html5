@@ -59,12 +59,12 @@ export class Renderer {
 		for (let i = 0; i < this.numberOfLayers; i++) {
 			const canvas = newCanvas(sizes.width, sizes.height, i, 'frame', undefined, insertAfter)
 			const ctx = canvas.getContext('2d') as CanvasRenderingContext2D
-            if (ctx === null) {
+			if (ctx === null) {
 				throw new Error('Unable to initilize the Canvas 2D context')
 			}
-            
-            //@ts-ignore
-            ctx.textRendering = "geometricPrecision"
+
+			//@ts-ignore
+			ctx.textRendering = 'geometricPrecision'
 
 			this.layers.push({
 				canvas: canvas,
@@ -297,7 +297,11 @@ export class Renderer {
 		return (canvasWidth * x) / baseCanvasWidth
 	}
 
-	drawFrame(renderState: ASSAnimation.FrameRenderState, layer: number, beforeDraw?: ( ctx: CanvasRenderingContext2D ) => void) {
+	drawFrame(
+		renderState: ASSAnimation.FrameRenderState,
+		layer: number,
+		beforeDraw?: (ctx: CanvasRenderingContext2D) => void
+	) {
 		// console.log("drawFrame")
 		renderState.words.forEach((word) => {
 			if (word.type == 'word') {

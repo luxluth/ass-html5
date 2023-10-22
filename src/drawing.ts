@@ -33,7 +33,7 @@ function drawText(
 		x: 0,
 		y: 0,
 		width: 0,
-		height: 0,
+		height: 0
 	}
 
 	slices.forEach((slice) => {
@@ -507,39 +507,37 @@ export class AnimateDrawing implements DrawingStrategy {
 		duration: number,
 		fps: number = 60
 	) {
-		let totalFrames = pureState.length;
+		let totalFrames = pureState.length
 		switch (values.length) {
 			case 4:
 				// Example: \move(100,150,300,350)
 				// When the line appears on the screen, the subtitle is at (100,150).
 				// While the subtitle is displayed, it moves at a constant speed such
 				// that it will arrive at point (300,350) at the same time it disappears.
-				const [x1, y1, x2, y2] = values;
-
+				const [x1, y1, x2, y2] = values
 
 				// Calculate the change in position per frame
-				const dx = (x2 - x1) / totalFrames;
-				const dy = (y2 - y1) / totalFrames;
+				const dx = (x2 - x1) / totalFrames
+				const dy = (y2 - y1) / totalFrames
 
 				// Apply the move animation to each frame
 				for (let i = 1; i < pureState.length; i++) {
-					const frame = pureState[i] as ASSAnimation.FrameRenderState;
+					const frame = pureState[i] as ASSAnimation.FrameRenderState
 
 					// Calculate the new position
-					const x = x1 + dx * i;
-					const y = y1 + dy * i;
+					const x = x1 + dx * i
+					const y = y1 + dy * i
 
-					frame.x = x;
-					frame.y = y;
+					frame.x = x
+					frame.y = y
 
 					// Update the position of each word
 					frame.words.forEach((word) => {
-						word.position.x += x;
-						word.position.y += y;
-					});
-					
+						word.position.x += x
+						word.position.y += y
+					})
 				}
-				break;
+				break
 
 			case 6:
 				// Example: \move(100,150,300,350,500,1500)
@@ -547,15 +545,14 @@ export class AnimateDrawing implements DrawingStrategy {
 				// After the line has been displayed for half a second (500 milliseconds),
 				// it begins moving towards (300,350) position such that it will arrive at the point
 				// a second and a half (1500 milliseconds) after the line first appeared on the screen.
-				const [Px1, Py1, Px2, Py2, Pt1, Pt2] = values;
+				const [Px1, Py1, Px2, Py2, Pt1, Pt2] = values
 				// TODO: Implement this
-				break;
+				break
 			default:
-				console.warn('Invalid move animation', values);
-				break;
+				console.warn('Invalid move animation', values)
+				break
 		}
 	}
-
 
 	/**
 	 * ## Rotation origin
@@ -632,7 +629,7 @@ export class AnimateDrawing implements DrawingStrategy {
 					break
 				case 'move':
 					this.applymove(animation.values, animationBundle.frames, duration, fps)
-                    console.debug(animationBundle)
+					console.debug(animationBundle)
 					break
 				case 'org':
 					this.applyrotate(animation.values, animationBundle.frames, duration, fps)
@@ -746,6 +743,5 @@ export class AnimateDrawing implements DrawingStrategy {
 
 			requestAnimationFrame(this.animate.bind(this))
 		}
-
 	}
 }
