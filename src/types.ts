@@ -1,5 +1,6 @@
 import type { CompiledASSStyle, Dialogue } from 'ass-compiler'
 import type { ParsedTag } from 'ass-compiler/types/tags'
+import type { Renderer } from './renderer'
 
 export type FontStyle = {
 	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/ascentOverride) */
@@ -33,6 +34,13 @@ export type Font = {
 	descriptors?: Partial<FontStyle>
 }
 
+export type OnInitSizes = {
+	width: number
+	height: number
+	x: number
+	y: number
+}
+
 export type ASSOptions = {
 	/**
 	 * The ass text string
@@ -48,12 +56,12 @@ export type ASSOptions = {
 	/**
 	 * Fonts to load
 	 */
-	fonts?: Font[],
+	fonts?: Font[]
 
 	/**
-	 * Corresponds to the `z-index` to placed the Canvas renderer 
+	 * Corresponds to the `z-index` to placed the Canvas renderer
 	 */
-	zIndex?: number,
+	zIndex?: number
 }
 
 export type FontDescriptor = {
@@ -62,7 +70,7 @@ export type FontDescriptor = {
 	bold: boolean
 	italic: boolean
 	underline: boolean
-	strikeout: boolean,
+	strikeout: boolean
 	colors: Colors
 	/** font transformation */
 	t: FontTransfomation
@@ -70,58 +78,78 @@ export type FontDescriptor = {
 	xbord: number
 	/** y border */
 	ybord: number
+	xshad: number
+	yshad: number
+	/** shadow blur */
+	blur: number
 	/** font encoding */
 	fe?: number
 	borderStyle: number
+	opacity: number
+}
+
+export type Layer = {
+	canvas: HTMLCanvasElement
+	ctx: CanvasRenderingContext2D
 }
 
 export type Colors = {
-	c1: string,
-	a1: number,
-	c2: string,
-	a2: number,
-	c3: string,
-	a3: number,
-	c4: string,
-	a4: number,
+	c1: string
+	a1: number
+	c2: string
+	a2: number
+	c3: string
+	a3: number
+	c4: string
+	a4: number
 }
 
 export type FontTransfomation = {
 	/** font scale x */
-	fscx: number,
+	fscx: number
 	/** font scale y */
-	fscy: number,
+	fscy: number
 	/** font rotation z*/
-	frz: number,
+	frz: number
 	/** font rotation x*/
-	frx: number,
+	frx: number
 	/** font rotation y*/
-	fry: number,
+	fry: number
 	/** font shear x */
-	fax?: number,
+	fax?: number
 	/** font shear y */
-	fay?: number,
+	fay?: number
 	/** font spacing */
-	fsp?: number,
+	fsp?: number
 	/** wrap style */
-	q: 0 | 2 | 1 | 3,
+	q: 0 | 2 | 1 | 3
 }
 
 export type Tag = { [K in keyof ParsedTag]: ParsedTag[K] }
 
 export declare namespace ASSAnimation {
-	export type Fade = {
-		name: 'fad' | 'fade'
-		/**
-		 * The values of the fade animation
-		 * `\fad(<fadein>,<fadeout>)` or `\fade(<a1>,<a2>,<a3>,<t1>,<t2>,<t3>,<t4>)`
-		 */
-		values: [number, number] | [number, number, number, number, number, number]
-	}
+	export type Fade =
+		| {
+				name: 'fad'
+				/**
+				 * The values of the fade animation
+				 * `\fad(<fadein>,<fadeout>)` or `\fade(<a1>,<a2>,<a3>,<t1>,<t2>,<t3>,<t4>)`
+				 */
+				values: FadValues
+		  }
+		| {
+				name: 'fade'
+				values: FadeValues
+		  }
 
-	export type MoveValues =
-		| [number, number, number, number]
-		| [number, number, number, number, number, number]
+	export type FadeValues = [number, number, number, number, number, number, number]
+	export type FadValues = [number, number]
+
+	export type MoveValues = MoveValuesSimple | MoveValuesComplex
+
+	export type MoveValuesSimple = [number, number, number, number]
+	export type MoveValuesComplex = [number, number, number, number, number, number]
+
 	export type Move = {
 		name: 'move'
 		/**
@@ -137,30 +165,56 @@ export declare namespace ASSAnimation {
 		 * The values of the Rotation origin animation
 		 * `\org(<x>,<y>)`
 		 */
-		values: [number, number]
+		values: OrgValues
 	}
 
-	export type Animation = Fade | Move | Org
-}
+	export type OrgValues = [number, number]
 
-export type Tweaks = {
-	tweaked: boolean
-	primaryColor?: string
-	secondaryColor?: string
-	outlineColor?: string
-	shadowColor?: string
-	scaleX?: number
-	scaleY?: number
-	spacing?: number
-	angle?: number
-	borderStyle?: number // 1: outline, 3: opaque box ?
-	outline?: number
-	shadow?: number
-	alignment?: number
-	position?: [number, number]
-	fontDescriptor: FontDescriptor
-	custompositioning: boolean
-	animations: ASSAnimation.Animation[]
+	export type Animation = Fade | Move | Org
+
+	export type Word =
+		| {
+				type: 'word'
+				text: string
+				font: FontDescriptor
+				style: string
+				position: Position
+		  }
+		| {
+				type: 'drawing'
+				height: number
+				width: number
+				drawing: string
+				position: Position
+				font: FontDescriptor
+		  }
+
+	export type FrameRenderState = {
+		playerResX: number
+		playerResY: number
+		canvas: {
+			width: number
+			height: number
+		}
+		time: number
+		words: Word[]
+		layer: number
+		x: number
+		y: number
+		width: number
+		height: number
+	}
+
+	export type Bundle = {
+		animations: Animation[]
+		start: number
+		end: number
+		frames: FrameRenderState[]
+		hash: number
+		active: boolean
+		layer: number
+		taskId?: number
+	}
 }
 
 export type Override = {
@@ -173,4 +227,28 @@ export type Styles = { [styleName: string]: CompiledASSStyle }
 export type Position = {
 	x: number
 	y: number
+}
+export interface DrawingStrategy {
+	renderer: Renderer
+	dialogue: Dialogue
+	styles: Styles
+	draw(): void
+}
+
+export type SingleTask<T> = {
+	id: number
+	task: T
+	data?: {
+		[key: string]: any
+	}
+	exec?: () => void
+}
+
+export interface TaskScheduler<T> {
+	tasks: SingleTask<T>[]
+	addTask(task: T, data?: { [key: string]: any }, exec?: () => void): number
+	removeTask(id: number): void
+	clear(): void
+	isEmpty(): boolean
+	findTask(id: number): T | null
 }

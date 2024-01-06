@@ -1,38 +1,94 @@
-import type { CompiledASS, CompiledASSStyle, Dialogue, DialogueFragment } from 'ass-compiler'
+import type { CompiledASS, CompiledASSStyle, Dialogue } from 'ass-compiler'
 import type { CompiledTag } from 'ass-compiler/types/tags'
-import type { FontDescriptor, Override, Styles, Position } from './types'
-import { 
-    ruleOfThree, 
-    blendAlpha, 
-    makeLines, 
-    splitTextOnTheNextCharacter, 
-    separateNewLine,
-    convertAegisubColorToHex,
-    swapBBGGRR
+import type {
+	FontDescriptor,
+	Override,
+	Styles,
+	Position,
+	OnInitSizes,
+	ASSAnimation,
+	Layer
+} from './types'
+import { SimpleDrawing, AnimateDrawing, SpecificPositionDrawing } from './drawing'
+import {
+	ruleOfThree,
+	blendAlpha,
+	convertAegisubColorToHex,
+	swapBBGGRR,
+	newCanvas,
+	newRender
 } from './utils'
 
 export class Renderer {
 	compiledASS: CompiledASS
-	canvas: HTMLCanvasElement
-	ctx: CanvasRenderingContext2D
+	renderDiv: HTMLDivElement
+	layers: Layer[]
+	numberOfLayers: number
 	video: HTMLVideoElement
 	playerResX: number
 	playerResY: number
 
 	textAlign: CanvasTextAlign = 'start'
 	textBaseline: CanvasTextBaseline = 'alphabetic'
-	fontSpacing = 0
 
-	constructor(parsedASS: CompiledASS, canvas: HTMLCanvasElement, video: HTMLVideoElement) {
-		this.compiledASS = parsedASS
+	constructor(ass: CompiledASS, sizes: OnInitSizes, video: HTMLVideoElement, zIndex?: number) {
+		this.compiledASS = ass
 		this.playerResX = this.compiledASS.width
 		this.playerResY = this.compiledASS.height
-		this.canvas = canvas
-		this.video = video
-		this.ctx = canvas.getContext('2d') as CanvasRenderingContext2D
-		if (this.ctx === null) {
+		this.renderDiv = newRender(sizes.y, sizes.x, sizes.width, sizes.height, zIndex, video)
+		const background = newCanvas(sizes.width, sizes.height, -1, 'background', this.renderDiv)
+		const bgCtx = background.getContext('2d') as CanvasRenderingContext2D
+		if (bgCtx === null) {
 			throw new Error('Unable to initilize the Canvas 2D context')
 		}
+		this.layers = [
+			{
+				canvas: background,
+				ctx: bgCtx
+			}
+		]
+
+		this.numberOfLayers = this.findTotalLayers(ass)
+		this.insertLayers(sizes, background)
+		this.video = video
+
+		this.diplay(video.currentTime)
+	}
+
+	insertLayers(sizes: OnInitSizes, insertAfter: HTMLCanvasElement) {
+		for (let i = 0; i < this.numberOfLayers; i++) {
+			const canvas = newCanvas(sizes.width, sizes.height, i, 'frame', undefined, insertAfter)
+			const ctx = canvas.getContext('2d') as CanvasRenderingContext2D
+			if (ctx === null) {
+				throw new Error('Unable to initilize the Canvas 2D context')
+			}
+
+			//@ts-ignore
+			ctx.textRendering = 'geometricPrecision'
+
+			this.layers.push({
+				canvas: canvas,
+				ctx: ctx
+			})
+		}
+	}
+
+	getLayer(l: number): Layer | null {
+		for (let i = 1; i < this.layers.length; i++) {
+			if (this.layers[i]?.canvas.dataset.layer == l.toString()) {
+				return this.layers[i] as Layer
+			}
+		}
+		return null
+	}
+
+	findTotalLayers(ass: CompiledASS) {
+		let maxLayer = 1
+		ass.dialogues.forEach((dialogue) => {
+			if (dialogue.layer >= maxLayer) maxLayer++
+		})
+
+		return maxLayer
 	}
 
 	render() {
@@ -52,7 +108,9 @@ export class Renderer {
 	}
 
 	diplay(time: number) {
-		this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
+		this.layers.forEach((layer) => {
+			layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height)
+		})
 
 		const { dialogues, styles } = this.compiledASS
 		const dialoguesToDisplay = this.getOverrideStyle(time, dialogues)
@@ -75,332 +133,96 @@ export class Renderer {
 
 	showText(overrides: Override[], styles: Styles) {
 		overrides.forEach((override) => {
-			const { dialogue } = override
-			this.computeStyle(dialogue.style, styles, dialogue.alignment)
-			this.drawText(dialogue, styles)
+			this.computeStyle(override.dialogue.style, styles, override.dialogue.alignment)
+			this.drawText(override.dialogue, styles)
 		})
 	}
 
-    flatStrArr(arr: string[]) {
-       return arr.join("\\N") 
-    }
-
-    resampleLinesOnOverflow(lines: string[]): string[] {
-        const resultLines: string[] = [];
-        const maxWidth = this.canvas.width;
-
-        for (const line of lines) {
-            const textWidth = this.ctx.measureText(line).width;
-
-            if (textWidth <= maxWidth) {
-                resultLines.push(line);
-            } else {
-                const words = splitTextOnTheNextCharacter(line)
-                let currentLine = '';
-                for (const word of words) {
-                    const testLine = currentLine ? `${currentLine}${word}` : word;
-                    const testWidth = this.ctx.measureText(testLine).width;
-                    if (testWidth <= maxWidth) {
-                        currentLine = testLine;
-                    } else {
-                        resultLines.push(currentLine);
-                        currentLine = word;
-                    }
-                }
-                if (currentLine) {
-                    resultLines.push(currentLine);
-                }
-            }
-        }
-
-        return resultLines;
-    }
+	flatStrArr(arr: string[]) {
+		return arr.join('\\N')
+	}
 
 	drawText(dialogue: Dialogue, styles: Styles) {
-		const { slices, pos, move } = dialogue
+		const { pos, move, fade, org } = dialogue
 		if (typeof pos !== 'undefined') {
-			this.drawTextAtPosition(dialogue, styles, pos)
+			new SpecificPositionDrawing(this, dialogue, styles, pos).draw()
 			return
-		} else if (typeof move !== 'undefined') {
-			let pos = {
-				x: move.x1,
-				y: move.y1
+		} else if (
+			typeof move !== 'undefined' ||
+			typeof fade !== 'undefined' ||
+			typeof org !== 'undefined'
+		) {
+			let animations = []
+			if (typeof move !== 'undefined') {
+				animations.push({
+					name: 'move',
+					values: [move.x1, move.y1, move.x2, move.y2, move.t1, move.t2]
+				} as ASSAnimation.Move)
 			}
-			this.drawTextAtPosition(dialogue, styles, pos)
-			return
+			if (typeof fade !== 'undefined') {
+				if (fade.type === 'fad') {
+					animations.push({
+						name: 'fad',
+						values: [fade.t1, fade.t2]
+					} as ASSAnimation.Fade)
+				} else if (fade.type === 'fade') {
+					animations.push({
+						name: 'fade',
+						values: [fade.a1, fade.a2, fade.a3, fade.t1, fade.t2, fade.t3, fade.t4]
+					} as ASSAnimation.Fade)
+				}
+			}
+			if (typeof org !== 'undefined') {
+				animations.push({
+					name: 'org',
+					values: [org.x, org.y]
+				} as ASSAnimation.Org)
+			}
+			AnimateDrawing.getInstance(this, dialogue, styles, animations).draw()
+		} else {
+			new SimpleDrawing(this, dialogue, styles).draw()
 		}
-		slices.forEach((slice) => {
-			const font = this.computeStyle(slice.style, styles, dialogue.alignment)
-			const lines = makeLines(slice.fragments.map((fragment) => {
-				// return this.flatStrArr(this.resampleLinesOnOverflow([fragment.text]))
-                return fragment.text
-			}))
-
-            // console.debug(lines)
-			
-            const lineHeights = lines.map(
-				(line) =>
-					this.ctx.measureText(line).fontBoundingBoxAscent +
-					this.ctx.measureText(line).fontBoundingBoxDescent
-			)
-
-			const lineHeight = Math.max(...lineHeights)
-			const totalHeight = lineHeight * lines.length
-			
-			const margin = this.upscaleMargin(dialogue.margin)
-
-			let previousTextWidth = 0
-			let currentLine = 0
-			let y = 0
-
-			switch (this.textBaseline) {
-				case 'top':
-					y = margin.vertical + (lines.length > 1 ? totalHeight / lines.length : lineHeight)
-					break
-				case 'middle':
-					y = (this.canvas.height - totalHeight) / 2 + lineHeight
-					break
-				case 'bottom':
-					y = this.canvas.height - margin.vertical - (lines.length > 1 ? totalHeight / lines.length : 0)
-					break
-				default:
-					y = margin.vertical + lineHeight
-					break
-			}
-
-			slice.fragments.forEach((fragment) => {
-				this.applyOverrideTag(fragment.tag, font)
-				const words = separateNewLine(splitTextOnTheNextCharacter(fragment.text))
-				// console.debug(words)
-				
-				let lineWidth = this.ctx.measureText(lines[currentLine] as string).width
-				let x = 0
-				switch (this.textAlign) {
-					case 'left':
-						x = margin.left + previousTextWidth
-						break
-					case 'center':
-						x = (this.canvas.width - lineWidth) / 2 + previousTextWidth
-						break
-					case 'right':
-						x = this.canvas.width - margin.right - lineWidth + previousTextWidth
-						break
-					default:
-						x = margin.left + previousTextWidth
-						break
-				}
-
-				let currentWordsWidth = 0
-
-				words.forEach((word) => {
-					let wordWidth = this.ctx.measureText(word).width
-					if (word === '\\N') {
-						// console.debug('y', y)
-						currentLine++
-						y += lineHeight
-						// console.debug('next-y', y)
-						previousTextWidth = 0
-						currentWordsWidth = 0
-						lineWidth = this.ctx.measureText(lines[currentLine] as string).width
-						switch (this.textAlign) {
-							case 'left':
-								x = margin.left
-								break
-							case 'center':
-								x = (this.canvas.width - lineWidth) / 2
-								break
-							case 'right':
-								x = this.canvas.width - margin.right - lineWidth
-								break
-							default:
-								x = margin.left
-						}
-					} else {
-                        this.drawWord(word, x + currentWordsWidth, y, font)
-						currentWordsWidth += wordWidth
-						previousTextWidth += wordWidth
-					}
-				})
-			})
-		})
 	}
 
-	drawTextAtPosition(
-		dialogue: Dialogue,
-		styles: Styles,
-		pos: Position,
-	) {
-		pos = this.upscalePosition(pos)
-		const { slices } = dialogue
-		slices.forEach((slice) => {
-			let font = this.computeStyle(slice.style, styles, dialogue.alignment)
-			const lines = makeLines(slice.fragments.map((fragment) => {
-				return fragment.text
-			}))
-
-			const lineHeights = lines.map(
-				(line) =>
-					this.ctx.measureText(line).actualBoundingBoxAscent +
-					this.ctx.measureText(line).actualBoundingBoxDescent
-			)
-			// console.log("lineHeights", lineHeights, font.fontsize)
-			let previousTextWidth = 0
-			let currentLine = 0
-			let lineHeight = Math.max(...lineHeights)
-			let totalHeight = lineHeights.reduce((a, b) => a + b, 0)
-			let y = pos.y
-
-			switch (this.textBaseline) {
-				case 'top':
-					y += lineHeight / lines.length
-					break
-				case 'middle':
-					y += totalHeight / 2
-					break
-				case 'bottom':
-					y -= lineHeight
-					break
-				default:
-					y += lineHeight
-					break
-			}
-
-			if (font.borderStyle === 3) {
-				let savedy = y
-				this.drawTextBackground(lines, currentLine, pos, font, y, slice.fragments)
-				currentLine=0
-				y = savedy
-			}
-
-			slice.fragments.forEach((fragment) => {
-				// console.debug("frag", fragment)
-				let x = pos.x
-				this.applyOverrideTag(fragment.tag, font)
-				let words = separateNewLine(splitTextOnTheNextCharacter(fragment.text))
-				words = words.filter((word) => word !== '')
-				// console.debug("words", words)
-
-				let lineWidth = this.ctx.measureText(lines[currentLine] as string).width
-				switch (this.textAlign) {
-					case 'left':
-						x += previousTextWidth
-						break
-					case 'center':
-						x += previousTextWidth - lineWidth / 2
-						break
-					case 'right':
-						x -= lineWidth + previousTextWidth
-						break
-					default:
-						x += previousTextWidth
-						break
-				}
-
-				let currentWordsWidth = 0
-				let plusH = 0
-
-				words.forEach((word) => {
-					if (word === '\\N') {
-						currentLine++
-						y += font.fontsize + plusH
-						previousTextWidth = 0
-						currentWordsWidth = 0
-						lineWidth = this.ctx.measureText(lines[currentLine] as string).width
-						switch (this.textAlign) {
-							case 'left':
-								x = pos.x
-								break
-							case 'center':
-								x = pos.x - lineWidth / 2
-								break
-							case 'right':
-								x = pos.x - lineWidth
-								break
-							default:
-								x = pos.x
-						}
-					} else {
-						let wordWidth = this.ctx.measureText(word).width
-						// console.debug("word", `'${word}'`, wordWidth)
-						plusH = this.drawWord(word, x + currentWordsWidth, y, font)
-						currentWordsWidth += wordWidth
-						previousTextWidth += wordWidth
-					}
-				})
-			})
-		})
+	drawTextBackground(text: string, pos: Position, height: number, font: FontDescriptor) {
+		const layer = this.layers[0] as Layer
+		layer.ctx.save()
+		layer.ctx.beginPath()
+		layer.ctx.fillStyle = font.colors.c2
+		layer.ctx.fillRect(pos.x, pos.y - height, layer.ctx.measureText(text).width, height)
+		layer.ctx.closePath()
+		layer.ctx.restore()
 	}
 
-	drawTextBackground(
-		lines: string[],
-		currentLine: number,
-		pos: Position,
-		font: FontDescriptor,
+	drawWord(
+		word: string,
+		x: number,
 		y: number,
-		fragments: DialogueFragment[]
+		font: FontDescriptor,
+		ctx: CanvasRenderingContext2D
 	) {
-		fragments.forEach((fragment) => {
-			let x = pos.x
-			this.applyOverrideTag(fragment.tag, font)
-			const lineWidth = this.ctx.measureText(lines[currentLine] as string).width + (this.ctx.measureText(' ').width * 2)
-			const words = splitTextOnTheNextCharacter(lines[currentLine] as string)
-
-			// finding the biggest word height
-			let lineHeight = 0
-			words.forEach((word) => {
-				let wordHeight = this.ctx.measureText(word).fontBoundingBoxAscent + this.ctx.measureText(word).fontBoundingBoxDescent
-				if (wordHeight > lineHeight) {
-					lineHeight = wordHeight
-				}
-			})
-
-			switch (this.textAlign) {
-				case 'left':
-					x += 0
-					break
-				case 'center':
-					x -= lineWidth / 2
-					break
-				case 'right':
-					x -= lineWidth
-					break
-				default:
-					x += 0
-					break
-			}
-
-			this.ctx.save()
-			this.ctx.fillStyle = this.ctx.strokeStyle
-			this.ctx.fillRect(x, y - lineHeight, lineWidth, lineHeight)
-			currentLine++
-			y += lineHeight
-			this.ctx.restore()
-		})
-	}
-	
-    drawWord(word: string, x: number, y: number, font: FontDescriptor, behindTextCanvas?: HTMLCanvasElement) {
 		const debug = false
 		// console.debug(`${this.ctx.font} ===?=== ${this.fontDecriptorString(font)}`)
 		let baseY = y
 		let yChanged = false
-		this.ctx.save()
-        this.ctx.beginPath()
-        if (font.t.fscy !== 100 && font.t.fscx == 100) {
-            // console.debug("stretch-y by", font.t.fscy / 100)
-			y -= this.ctx.measureText(word).fontBoundingBoxAscent * (font.t.fscy / 100 - 1)
-            this.ctx.scale(1, font.t.fscy / 100)
+		ctx.save()
+		ctx.beginPath()
+		if (font.t.fscy !== 100 && font.t.fscx == 100) {
+			// console.debug("stretch-y by", font.t.fscy / 100)
+			y -= ctx.measureText(word).fontBoundingBoxAscent * (font.t.fscy / 100 - 1)
+			ctx.scale(1, font.t.fscy / 100)
 			yChanged = true
-        } else if (font.t.fscx !== 100 && font.t.fscy == 100) {
-            // console.debug("stretch-x by", font.t.fscx / 100)
-			x -= this.ctx.measureText(word).width * (font.t.fscx / 100 - 1)
-            this.ctx.scale(font.t.fscx / 100, 1)
-        } else if (font.t.fscx !== 100 && font.t.fscy !== 100) {
-            // console.debug("stretch-x-y", font.t.fscx / 100, font.t.fscy / 100)
-			x -= this.ctx.measureText(word).width * (font.t.fscx / 100 - 1)
-			y -= this.ctx.measureText(word).fontBoundingBoxAscent * (font.t.fscy / 100 - 1)
-            this.ctx.scale(font.t.fscx / 100, font.t.fscy / 100)
+		} else if (font.t.fscx !== 100 && font.t.fscy == 100) {
+			// console.debug("stretch-x by", font.t.fscx / 100)
+			x -= ctx.measureText(word).width * (font.t.fscx / 100 - 1)
+			ctx.scale(font.t.fscx / 100, 1)
+		} else if (font.t.fscx !== 100 && font.t.fscy !== 100) {
+			// console.debug("stretch-x-y", font.t.fscx / 100, font.t.fscy / 100)
+			x -= ctx.measureText(word).width * (font.t.fscx / 100 - 1)
+			y -= ctx.measureText(word).fontBoundingBoxAscent * (font.t.fscy / 100 - 1)
+			ctx.scale(font.t.fscx / 100, font.t.fscy / 100)
 			yChanged = true
-        }
+		}
 
 		// console.debug(word, x, y, this.textAlign, this.textBaseline)
 
@@ -413,16 +235,13 @@ export class Renderer {
 		// 	this.ctx.transform(1, 0, Math.tan(rotate), 1, 0, 0)
 		// }
 
-
 		// Solution: Drawing the text on buffer canvas and then add it to the main canvas
 		// That way, the font background is drawn on the buffer canvas and not on the main canvas
 		// so the background doesn't overlap the other text
 		if (font.borderStyle !== 3) {
-
 			if (font.xbord !== 0 || font.ybord !== 0) {
-				this.ctx.strokeText(word, x, y)
+				ctx.strokeText(word, x, y)
 			}
-			
 		} // else {
 		// 	// a border style of 3 is a filled box
 		// 	this.ctx.save()
@@ -430,76 +249,238 @@ export class Renderer {
 		// 	this.ctx.fillRect(x, y - this.ctx.measureText(word).fontBoundingBoxAscent, this.ctx.measureText(word).width, this.ctx.measureText(word).fontBoundingBoxAscent + this.ctx.measureText(word).fontBoundingBoxDescent)
 		// 	this.ctx.restore()
 		// }
-		
-		this.ctx.fillText(word, x, y)
-		
+
+		ctx.fillText(word, x, y)
+
 		if (debug) {
 			// debug bounding box
-			this.ctx.strokeStyle = "red"
-			this.ctx.strokeRect(x, y - this.ctx.measureText(word).actualBoundingBoxAscent, this.ctx.measureText(word).width, this.ctx.measureText(word).actualBoundingBoxAscent + this.ctx.measureText(word).fontBoundingBoxDescent)
+			ctx.strokeStyle = 'red'
+			ctx.strokeRect(
+				x,
+				y - ctx.measureText(word).actualBoundingBoxAscent,
+				ctx.measureText(word).width,
+				ctx.measureText(word).actualBoundingBoxAscent + ctx.measureText(word).fontBoundingBoxDescent
+			)
 		}
-		
-		this.ctx.stroke();
-		this.ctx.fill();
-		this.ctx.closePath();
-        this.ctx.restore();
+
+		if (font.borderStyle === 3) {
+			// a border style of 3 is a filled box
+			this.drawTextBackground(
+				word,
+				{ x: x, y: y },
+				ctx.measureText(word).actualBoundingBoxAscent +
+					ctx.measureText(word).fontBoundingBoxDescent,
+				font
+			)
+		}
+
+		ctx.stroke()
+		ctx.fill()
+		ctx.closePath()
+		ctx.restore()
 
 		// return the height added by the word in more from the passed y
-		return yChanged ? y - baseY + this.ctx.measureText(word).fontBoundingBoxAscent + this.ctx.measureText(word).fontBoundingBoxDescent : 0
-    }
+		return yChanged
+			? y -
+					baseY +
+					ctx.measureText(word).fontBoundingBoxAscent +
+					ctx.measureText(word).fontBoundingBoxDescent
+			: 0
+	}
+
+	upscaleY(y: number, baseCanvasHeight: number) {
+		const canvasHeight = this.layers[0]?.canvas.height || 0
+		return (canvasHeight * y) / baseCanvasHeight
+	}
+	upscaleX(x: number, baseCanvasWidth: number) {
+		const canvasWidth = this.layers[0]?.canvas.width || 0
+		return (canvasWidth * x) / baseCanvasWidth
+	}
+
+	drawFrame(
+		renderState: ASSAnimation.FrameRenderState,
+		layer: number,
+		beforeDraw?: (ctx: CanvasRenderingContext2D) => void
+	) {
+		// console.log("drawFrame")
+		renderState.words.forEach((word) => {
+			if (word.type == 'word') {
+				// each renderState got the width and height of the canvas when it was created
+				// so we upscale the position of the word to the current canvas size if needed
+				if (renderState.canvas.width !== this.layers[layer]?.canvas.width) {
+					word.position.x = this.upscale(
+						word.position.x,
+						renderState.canvas.width,
+						this.layers[layer]?.canvas.width || 0
+					)
+					word.position.y = this.upscale(
+						word.position.y,
+						renderState.canvas.height,
+						this.layers[layer]?.canvas.height || 0
+					)
+					word.font.fontsize = this.upscale(
+						word.font.fontsize,
+						renderState.playerResY,
+						this.layers[layer]?.canvas.height || 0
+					)
+				}
+
+				const ctx = this.layers[layer]?.ctx
+				if (ctx) {
+					ctx.save()
+					this.applyFont(word.font, this.layers[layer] as Layer)
+					ctx.globalAlpha = word.font.opacity
+					if (beforeDraw) {
+						beforeDraw(ctx)
+					}
+					this.drawWord(
+						word.text,
+						word.position.x,
+						word.position.y,
+						word.font,
+						this.layers[layer]?.ctx as CanvasRenderingContext2D
+					)
+					ctx.restore()
+				}
+			}
+		})
+	}
+
+	clearLayer(layer: number) {
+		this.layers[layer]?.ctx.clearRect(
+			0,
+			0,
+			this.layers[layer]?.canvas.width as number,
+			this.layers[layer]?.canvas.height as number
+		)
+	}
 
 	upscalePosition(pos: Position) {
 		return {
-			x: this.upscale(pos.x, this.playerResX, this.canvas.width),
-			y: this.upscale(pos.y, this.playerResY, this.canvas.height)
+			x: this.upscale(pos.x, this.playerResX, this.layers[0]?.canvas.width || 0),
+			y: this.upscale(pos.y, this.playerResY, this.layers[0]?.canvas.height || 0)
 		}
 	}
 
-	upscaleMargin(margin: {
-		left: number;
-		right: number;
-		vertical: number;
-	}) {
+	upscaleMargin(margin: { left: number; right: number; vertical: number }) {
 		return {
-			left: this.upscale(margin.left, this.playerResX, this.canvas.width),
-			right: this.upscale(margin.right, this.playerResX, this.canvas.width),
-			vertical: this.upscale(margin.vertical, this.playerResY, this.canvas.height)
+			left: this.upscale(margin.left, this.playerResX, this.layers[0]?.canvas.width || 0),
+			right: this.upscale(margin.right, this.playerResX, this.layers[0]?.canvas.width || 0),
+			vertical: this.upscale(margin.vertical, this.playerResY, this.layers[0]?.canvas.height || 0)
 		}
 	}
 
 	applyOverrideTag(tag: CompiledTag, font: FontDescriptor) {
-		if (tag.b !== undefined) { font.bold = tag.b === 1 }
-		if (tag.i !== undefined) { font.italic = tag.i === 1 }
-		if (tag.u !== undefined) { font.underline = tag.u === 1 }
-		if (tag.s !== undefined) { font.strikeout = tag.s === 1 }
-		if (tag.fn !== undefined) { font.fontname = tag.fn }
-		if (tag.fs !== undefined) { font.fontsize = this.upscale(tag.fs, this.playerResY, this.canvas.height) }
-		if (tag.c1 !== undefined) { this.ctx.fillStyle = swapBBGGRR(tag.c1) }
-		if (tag.a1 !== undefined ) { this.ctx.fillStyle = blendAlpha(this.ctx.fillStyle as string, parseFloat(tag.a1)) }
-		if (tag.c3 !== undefined) { this.ctx.strokeStyle = swapBBGGRR(tag.c3) }
-		if (tag.a3 !== undefined) { this.ctx.strokeStyle = blendAlpha(this.ctx.strokeStyle as string, parseFloat(tag.a3)) }
-		if (tag.c4 !== undefined) { this.ctx.shadowColor = swapBBGGRR(tag.c4) }
-		if (tag.a4 !== undefined) { this.ctx.shadowColor = blendAlpha(this.ctx.shadowColor as string, parseFloat(tag.a4)) }
-		if (tag.xshad !== undefined) { this.ctx.shadowOffsetX = this.upscale(tag.xshad, this.playerResX, this.canvas.width) }
-		if (tag.yshad !== undefined) { this.ctx.shadowOffsetY = this.upscale(tag.yshad, this.playerResY, this.canvas.height) }
-		if (tag.xbord !== undefined) { 
-			this.ctx.lineWidth = this.upscale(tag.xbord, this.playerResX, this.canvas.width)
-			font.xbord = tag.xbord 
+		if (tag.b !== undefined) {
+			font.bold = tag.b === 1
 		}
-		if (tag.ybord !== undefined) { 
-			this.ctx.lineWidth = this.upscale(tag.ybord, this.playerResY, this.canvas.height)
-			font.ybord = tag.ybord
+		if (tag.i !== undefined) {
+			font.italic = tag.i === 1
 		}
-		if (tag.fscx !== undefined) {font.t.fscx = tag.fscx}
-		if (tag.fscy !== undefined) {font.t.fscy = tag.fscy}
-		if (tag.frz !== undefined) {font.t.frz   = tag.frz}
-		if (tag.frx !== undefined) {font.t.frx   = tag.frx}
-		if (tag.fry !== undefined) {font.t.fry   = tag.fry}
-		if (tag.fax !== undefined) {font.t.fax   = tag.fax}
-		if (tag.fay !== undefined) {font.t.fay   = tag.fay}
-		if (tag.fsp !== undefined) {font.t.fsp   = this.upscale(tag.fsp, this.playerResX, this.canvas.width)}
-		if (tag.blur !== undefined) { this.ctx.shadowBlur = this.upscale(tag.blur, this.playerResY, this.canvas.height) }
-		this.ctx.font = this.fontDecriptorString(font)
+		if (tag.u !== undefined) {
+			font.underline = tag.u === 1
+		}
+		if (tag.s !== undefined) {
+			font.strikeout = tag.s === 1
+		}
+		if (tag.fn !== undefined) {
+			font.fontname = tag.fn
+		}
+		if (tag.fs !== undefined) {
+			font.fontsize = this.upscale(tag.fs, this.playerResY, this.layers[0]?.canvas.height || 0)
+		}
+		if (tag.fscx !== undefined) {
+			font.t.fscx = tag.fscx
+		}
+		if (tag.fscy !== undefined) {
+			font.t.fscy = tag.fscy
+		}
+		if (tag.frz !== undefined) {
+			font.t.frz = tag.frz
+		}
+		if (tag.frx !== undefined) {
+			font.t.frx = tag.frx
+		}
+		if (tag.fry !== undefined) {
+			font.t.fry = tag.fry
+		}
+		if (tag.fax !== undefined) {
+			font.t.fax = tag.fax
+		}
+		if (tag.fay !== undefined) {
+			font.t.fay = tag.fay
+		}
+		if (tag.fsp !== undefined) {
+			font.t.fsp = this.upscale(tag.fsp, this.playerResX, this.layers[0]?.canvas.width || 0)
+		}
+		for (let i = 0; i < this.layers.length; i++) {
+			const layer = this.layers[i] as Layer
+			if (tag.c1 !== undefined) {
+				font.colors.c1 = swapBBGGRR(tag.c1)
+				layer.ctx.fillStyle = font.colors.c1
+			}
+			if (tag.a1 !== undefined) {
+				font.colors.a1 = parseFloat(tag.a1)
+				layer.ctx.fillStyle = blendAlpha(layer.ctx.fillStyle as string, font.colors.a1)
+			}
+			if (tag.c3 !== undefined) {
+				font.colors.c3 = swapBBGGRR(tag.c3)
+				layer.ctx.strokeStyle = font.colors.c3
+			}
+			if (tag.a3 !== undefined) {
+				font.colors.a3 = parseFloat(tag.a3)
+				layer.ctx.strokeStyle = blendAlpha(layer.ctx.strokeStyle as string, font.colors.a3)
+			}
+			if (tag.c4 !== undefined) {
+				font.colors.c4 = swapBBGGRR(tag.c4)
+				layer.ctx.shadowColor = font.colors.c4
+			}
+			if (tag.a4 !== undefined) {
+				font.colors.a4 = parseFloat(tag.a4)
+				layer.ctx.shadowColor = blendAlpha(layer.ctx.shadowColor as string, font.colors.a4)
+			}
+			if (tag.xshad !== undefined) {
+				layer.ctx.shadowOffsetX = this.upscale(
+					tag.xshad,
+					this.playerResX,
+					this.layers[0]?.canvas.width || 0
+				)
+				font.xshad = tag.xshad
+			}
+			if (tag.yshad !== undefined) {
+				layer.ctx.shadowOffsetY = this.upscale(
+					tag.yshad,
+					this.playerResY,
+					this.layers[0]?.canvas.height || 0
+				)
+				font.yshad = tag.yshad
+			}
+			if (tag.xbord !== undefined) {
+				layer.ctx.lineWidth = this.upscale(
+					tag.xbord,
+					this.playerResX,
+					this.layers[0]?.canvas.width || 0
+				)
+				font.xbord = tag.xbord
+			}
+			if (tag.ybord !== undefined) {
+				layer.ctx.lineWidth = this.upscale(
+					tag.ybord,
+					this.playerResY,
+					this.layers[0]?.canvas.height || 0
+				)
+				font.ybord = tag.ybord
+			}
+			if (tag.blur !== undefined) {
+				layer.ctx.shadowBlur = this.upscale(
+					tag.blur,
+					this.playerResY,
+					this.layers[0]?.canvas.height || 0
+				)
+				font.blur = tag.blur
+			}
+			layer.ctx.font = this.fontDecriptorString(font)
+		}
 		// console.debug("font", font, this.fontDecriptorString(font), "->", this.ctx.font)
 	}
 
@@ -508,7 +489,9 @@ export class Renderer {
 	}
 
 	fontDecriptorString(font: FontDescriptor) {
-		return `${font.bold ? 'bold ' : ''}${font.italic ? 'italic ' : ''}${font.fontsize.toFixed(3)}px "${font.fontname}"`
+		return `${font.bold ? 'bold ' : ''}${font.italic ? 'italic ' : ''}${font.fontsize.toFixed(
+			3
+		)}px "${font.fontname}"`
 	}
 
 	computeStyle(name: string, styles: { [styleName: string]: CompiledASSStyle }, alignment: number) {
@@ -520,15 +503,14 @@ export class Renderer {
 			fn, // font name
 			fs, // font size
 			a1, // primary alpha
-			c2, // secondary color
 			a2, // secondary alpha
 			a3, // outline alpha
 			c4, // shadow color
 			a4, // shadow alpha
-			b,  // bold
-			i,  // italic
-			u,  // underline
-			s,  // strikeout
+			b, // bold
+			i, // italic
+			u, // underline
+			s, // strikeout
 			fscx, // font scale x
 			fscy, // font scale y
 			fsp, // font spacing
@@ -538,13 +520,13 @@ export class Renderer {
 			xshad, // x shadow
 			yshad, // y shadow
 			fe, // font encoding
-			q, // wrap style
+			q // wrap style
 		} = style.tag
-        
-        const { PrimaryColour, OutlineColour, SecondaryColour, BorderStyle } = style.style
-		
-        const font: FontDescriptor = {
-			fontsize: this.upscale(fs, this.playerResY, this.canvas.height),
+
+		const { PrimaryColour, OutlineColour, SecondaryColour, BorderStyle } = style.style
+
+		const font: FontDescriptor = {
+			fontsize: this.upscale(fs, this.playerResY, this.layers[0]?.canvas.height || 0),
 			fontname: fn,
 			bold: b === 1,
 			italic: i === 1,
@@ -558,7 +540,7 @@ export class Renderer {
 				a1: parseFloat(a1),
 				a2: parseFloat(a2),
 				a3: parseFloat(a3),
-				a4: parseFloat(a4),
+				a4: parseFloat(a4)
 			},
 			t: {
 				fscx: fscx,
@@ -566,28 +548,73 @@ export class Renderer {
 				frz: frz,
 				frx: 0,
 				fry: 0,
+				fsp: this.upscale(fsp, this.playerResX, this.layers[0]?.canvas.width || 0),
 				q: q
 			},
 			xbord: xbord,
 			ybord: ybord,
+			xshad: xshad,
+			yshad: yshad,
+			blur: 0,
 			fe: fe,
-			borderStyle: BorderStyle
+			borderStyle: BorderStyle,
+			opacity: 1
 		}
-
 		this.textAlign = this.getAlignment(alignment)
 		this.textBaseline = this.getBaseLine(alignment)
-		this.fontSpacing = this.upscale(fsp, this.playerResX, this.canvas.width)
-		this.ctx.fillStyle = blendAlpha(font.colors.c1, parseFloat(a1))
-		this.ctx.strokeStyle = blendAlpha(font.colors.c3, parseFloat(a3))
-		this.ctx.font = this.fontDecriptorString(font)
-		this.ctx.shadowOffsetX = this.upscale(xshad, this.playerResX, this.canvas.width)
-		this.ctx.shadowOffsetY = this.upscale(yshad, this.playerResY, this.canvas.height)
-		this.ctx.shadowBlur = 0
-		this.ctx.shadowColor = blendAlpha(c4, parseFloat(a4))
-		this.ctx.lineWidth = this.upscale(xbord, this.playerResX, this.canvas.width) + this.upscale(ybord, this.playerResY, this.canvas.height)
-		this.ctx.lineCap = 'round'
-		this.ctx.lineJoin = 'round'
+		for (let i = 0; i < this.layers.length; i++) {
+			const layer = this.layers[i] as Layer
+			layer.ctx.fillStyle = blendAlpha(font.colors.c1, parseFloat(a1))
+			layer.ctx.strokeStyle = blendAlpha(font.colors.c3, parseFloat(a3))
+			layer.ctx.font = this.fontDecriptorString(font)
+			layer.ctx.shadowOffsetX = this.upscale(
+				xshad,
+				this.playerResX,
+				this.layers[0]?.canvas.width || 0
+			)
+			layer.ctx.shadowOffsetY = this.upscale(
+				yshad,
+				this.playerResY,
+				this.layers[0]?.canvas.height || 0
+			)
+			layer.ctx.shadowBlur = 0
+			layer.ctx.shadowColor = blendAlpha(c4, parseFloat(a4))
+			layer.ctx.lineWidth =
+				this.upscale(xbord, this.playerResX, this.layers[0]?.canvas.width || 0) +
+				this.upscale(ybord, this.playerResY, this.layers[0]?.canvas.height || 0)
+			layer.ctx.lineCap = 'round'
+			layer.ctx.lineJoin = 'round'
+			layer.ctx.globalAlpha = font.opacity
+		}
 		return font
+	}
+
+	applyFont(font: FontDescriptor, layer: Layer) {
+		layer.ctx.font = this.fontDecriptorString(font)
+		layer.ctx.fillStyle = blendAlpha(font.colors.c1, font.colors.a1)
+		layer.ctx.strokeStyle = blendAlpha(font.colors.c3, font.colors.a3)
+		layer.ctx.shadowOffsetX = this.upscale(
+			font.xshad,
+			this.playerResX,
+			this.layers[0]?.canvas.width || 0
+		)
+		layer.ctx.shadowOffsetY = this.upscale(
+			font.yshad,
+			this.playerResY,
+			this.layers[0]?.canvas.height || 0
+		)
+		layer.ctx.shadowBlur = this.upscale(
+			font.blur,
+			this.playerResY,
+			this.layers[0]?.canvas.height || 0
+		)
+		layer.ctx.shadowColor = blendAlpha(font.colors.c4, font.colors.a4)
+		layer.ctx.lineWidth =
+			this.upscale(font.xbord, this.playerResX, this.layers[0]?.canvas.width || 0) +
+			this.upscale(font.ybord, this.playerResY, this.layers[0]?.canvas.height || 0)
+		layer.ctx.lineCap = 'round'
+		layer.ctx.lineJoin = 'round'
+		layer.ctx.globalAlpha = font.opacity
 	}
 
 	getAlignment(alignment: number) {

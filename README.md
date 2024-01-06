@@ -37,12 +37,13 @@ pnpm add ass-html5
 
 ### Options
 
-| option  |                                                 description                                                 | required |             type              |   default   |
-| :-----: | :---------------------------------------------------------------------------------------------------------: | :------: | :---------------------------: | :---------: |
-| assText |                                             The ass text string                                             |    ✅    |           `string`            | `undefined` |
-|  video  | The video to display the subtile on. Can be either an `HTMLVideoElement` or `string` (html query selector ) |    ✅    | `HTMLVideoElement` / `string` | `undefined` |
-|  fonts  |                                            Custom fonts to load                                             |    🚫    | [`Fonts[]`](src/types.ts#L30) | `undefined` |
-| zIndex  |                                          zIndex of the rendering frame                                         |    🚫    | `number` | Drawn after the video
+| option  |                                                 description                                                 | required |             type              |        default        |
+| :-----: | :---------------------------------------------------------------------------------------------------------: | :------: | :---------------------------: | :-------------------: |
+| assText |                                             The ass text string                                             |    ✅    |           `string`            |      `undefined`      |
+|  video  | The video to display the subtile on. Can be either an `HTMLVideoElement` or `string` (html query selector ) |    ✅    | `HTMLVideoElement` / `string` |      `undefined`      |
+|  fonts  |                                            Custom fonts to load                                             |    🚫    | [`Fonts[]`](src/types.ts#L30) |      `undefined`      |
+| zIndex  |                                        zIndex of the rendering frame                                        |    🚫    |           `number`            | Drawn after the video |
+
 ### Simple HTML
 
 > [!NOTE]

@@ -1,4 +1,4 @@
-import type { Tag } from './types'
+import type { SingleTask, Tag, TaskScheduler } from './types'
 /**
  * Convert a color in RGBA format to Aegisub format
  * @param aegisubColor The color in Aegisub format
@@ -160,37 +160,80 @@ export function hashString(str: string) {
 	return hash
 }
 
-export function newCanvas(
+export function newRender(
 	top: number,
 	left: number,
 	width: number,
 	height: number,
-	insertAfter?: HTMLElement,
-	zIndex?: number
+	zIndex?: number,
+	insertAfter?: HTMLElement
+) {
+	const render = document.createElement('div')
+	render.id = randomId(2, '-', 'ASSRendererRender-', 5)
+	render.style.position = 'absolute'
+	render.style.width = width + 'px'
+	render.style.height = height + 'px'
+	render.style.top = top + 'px'
+	render.style.left = left + 'px'
+	render.style.pointerEvents = 'none'
+	render.style.overflow = 'hidden'
+	render.style.boxSizing = 'border-box'
+	render.style.padding = '0px'
+	render.style.margin = '0px'
+	if (zIndex) {
+		render.style.zIndex = zIndex.toString()
+	}
+
+	if (insertAfter) {
+		insertAfter.after(render)
+	} else {
+		document.body.appendChild(render)
+	}
+
+	return render
+}
+
+export function newCanvas(
+	width: number,
+	height: number,
+	dataLayer = 0,
+	layerName?: string,
+	appendIn?: HTMLElement,
+	insertAfter?: HTMLElement
 ) {
 	const canvas = document.createElement('canvas')
-	canvas.id = randomId(2, '-', 'ASSRendererCanvas-', 5)
+	canvas.id = randomId(2, '-', 'Canvas-', 5)
 	canvas.style.position = 'absolute'
-	canvas.style.width = width + 'px'
-	canvas.style.height = height + 'px'
-	canvas.width = width
-	canvas.height = height
-	canvas.style.top = top + 'px'
-	canvas.style.left = left + 'px'
+	canvas.style.top = '0px'
+	canvas.style.left = '0px'
 	canvas.style.pointerEvents = 'none'
 	canvas.width = width
 	canvas.height = height
+	canvas.dataset.layer = dataLayer.toString()
+	canvas.dataset.identifier = uuidgen()
 
-	if (zIndex) {
-		canvas.style.zIndex = zIndex.toString()
+	if (layerName) {
+		canvas.dataset.name = layerName
 	}
 
 	if (insertAfter) {
 		insertAfter.after(canvas)
 	} else {
-		document.body.appendChild(canvas)
+		if (!appendIn) {
+			appendIn = document.body
+		}
+		appendIn.appendChild(canvas)
 	}
 	return canvas
+}
+
+export function uuidgen() {
+	const v4 = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'
+	return v4.replace(/[xy]/g, (c) => {
+		const r = (Math.random() * 16) | 0
+		const v = c === 'x' ? r : (r & 0x3) | 0x8
+		return v.toString(16)
+	})
 }
 
 export function makeLines(strArr: string[]) {
@@ -281,7 +324,6 @@ export function separateNewLine(words: string[]) {
 	return wordsWithLineBreaks
 }
 
-
 export function blendAlpha(color: string, alpha: number) {
 	color = color.replace('#', '')
 	// color = FFFFFF
@@ -291,4 +333,123 @@ export function blendAlpha(color: string, alpha: number) {
 	const green = parseInt(color.substring(2, 4), 16)
 	const blue = parseInt(color.substring(4, 6), 16)
 	return `rgba(${red}, ${green}, ${blue}, ${alpha == 0 ? 1 : alpha / 160})`
+}
+
+export class Scheduler<T> implements TaskScheduler<T> {
+	tasks: SingleTask<T>[]
+
+	constructor() {
+		this.tasks = []
+	}
+
+	addTask(
+		task: T,
+		data?: {
+			[key: string]: any
+		},
+		exec?: () => void
+	): number {
+		const id = Date.now()
+		this.tasks.push({
+			id,
+			task,
+			data,
+			exec
+		})
+		return id
+	}
+
+	removeTask(id: number): void {
+		this.tasks = this.tasks.filter((task) => task.id !== id)
+	}
+
+	clear(): void {
+		this.tasks = []
+	}
+
+	isEmpty(): boolean {
+		return this.tasks.length == 0
+	}
+
+	findTask(id: number): T | null {
+		this.tasks.forEach((task) => {
+			if (task.id === id) return task.task
+		})
+
+		return null
+	}
+}
+
+/**
+ * ### Get distance between two points
+ *
+ * @param x1 The x coordinate of the first point
+ * @param y1 The y coordinate of the first point
+ * @param x2 The x coordinate of the second point
+ * @param y2 The y coordinate of the second point
+ * @returns The distance between the two points
+ */
+export function getDistance(x1: number, y1: number, x2: number, y2: number) {
+	return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2))
+}
+
+/**
+ * ### Linear interpolation
+ *
+ * https://en.wikipedia.org/wiki/Linear_interpolation
+ *
+ * @param x  The value of x to interpolate
+ * @param x1  The value of x1 to interpolate
+ * @param x2  The value of x2 to interpolate
+ * @param y1  The value of y1 to interpolate
+ * @param y2  The value of y2 to interpolate
+ * @returns  The interpolated value of x
+ */
+export function linearInterpolation(
+	x: number,
+	x1: number,
+	x2: number,
+	y1: number,
+	y2: number
+): number
+
+/**
+ * ### Linear interpolation
+ *
+ * https://en.wikipedia.org/wiki/Linear_interpolation
+ *
+ * @param x  The value of x to interpolate
+ * @param y1  The value of y1 to interpolate
+ * @param y2  The value of y2 to interpolate
+ */
+export function linearInterpolation(x: number, x1: number, x2: number): number
+
+export function linearInterpolation(...args: number[]): number {
+	let x: number | undefined = args[0]
+	let x1: number | undefined = args[1]
+	let x2: number | undefined = args[2]
+	let y1: number | undefined = args[3]
+	let y2: number | undefined = args[4]
+
+	switch (args.length) {
+		case 3:
+			if (typeof x === 'number' && typeof y1 === 'number' && typeof y2 === 'number') {
+				return y1 + ((y2 - y1) * (x - 0)) / (1 - 0)
+			}
+			break
+		case 5:
+			if (
+				typeof x === 'number' &&
+				typeof x2 === 'number' &&
+				typeof x1 === 'number' &&
+				typeof x2 === 'number' &&
+				typeof y1 === 'number' &&
+				typeof y2 === 'number'
+			) {
+				return y1 + ((y2 - y1) * (x - x1)) / (x2 - x1)
+			}
+			break
+	}
+
+	return 0
 }
