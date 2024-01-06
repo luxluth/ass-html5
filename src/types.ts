@@ -2,66 +2,11 @@ import type { CompiledASSStyle, Dialogue } from 'ass-compiler'
 import type { ParsedTag } from 'ass-compiler/types/tags'
 import type { Renderer } from './renderer'
 
-export type FontStyle = {
-	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/ascentOverride) */
-	ascentOverride: string
-	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/descentOverride) */
-	descentOverride: string
-	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/display) */
-	display: FontDisplay
-	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/family) */
-	family: string
-	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/featureSettings) */
-	featureSettings: string
-	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/lineGapOverride) */
-	lineGapOverride: string
-	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/stretch) */
-	stretch: string
-	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/style) */
-	style: string
-	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/unicodeRange) */
-	unicodeRange: string
-	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/variant) */
-	variant: string
-	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/weight) */
-	weight: string
-	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/load) */
-}
-
-export type Font = {
-	family: string
-	url: string
-	descriptors?: Partial<FontStyle>
-}
-
 export type OnInitSizes = {
 	width: number
 	height: number
 	x: number
 	y: number
-}
-
-export type ASSOptions = {
-	/**
-	 * The ass text string
-	 */
-	assText: string
-
-	/**
-	 * The video to display the subtile on.
-	 * Can be either an `HTMLVideoElement` or `string` (html query selector )
-	 */
-	video: HTMLVideoElement | string
-
-	/**
-	 * Fonts to load
-	 */
-	fonts?: Font[]
-
-	/**
-	 * Corresponds to the `z-index` to placed the Canvas renderer
-	 */
-	zIndex?: number
 }
 
 export type FontDescriptor = {
