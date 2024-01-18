@@ -23,6 +23,27 @@ export type ASSOptions = {
 	 * Corresponds to the `z-index` to placed the Canvas renderer
 	 */
 	zIndex?: number
+
+	/**
+	 * A Callback to invoke when the preparation for the rendering is done
+	 */
+	onReady?: () => void
+
+	/**
+	 * Type of logging
+	 * - `DEBUG` only debug type log will be displayed
+	 * - `DISABLE` no logging will be emitted (default)
+	 * - `VERBOSE` every log will be shown
+	 * - `WARN` only warning will be shown
+	 */
+	logging?: LOGTYPE
+}
+
+export enum LOGTYPE {
+	DISABLE = 'DISABLE',
+	VERBOSE = 'VERBOSE',
+	DEBUG = 'DEBUG',
+	WARN = 'WARN'
 }
 
 export type FontStyle = {
@@ -69,10 +90,11 @@ export default class ASS {
 	assText: string
 	private video: HTMLVideoElement | string
 	videoElement: HTMLVideoElement | null = null
-	canvas: HTMLCanvasElement | null = null
 	private renderer: Renderer | null = null
 	private fonts?: Font[]
 	private zIndex?: number
+	private onReady?: () => void
+	private logging: LOGTYPE = LOGTYPE.DISABLE
 	private compiledAss: CompiledASS
 
 	constructor(options: ASSOptions) {
@@ -81,12 +103,14 @@ export default class ASS {
 		this.video = options.video
 		this.fonts = options.fonts
 		this.zIndex = options.zIndex
+		this.onReady = options.onReady
+		if (options.logging) this.logging = options.logging
 	}
 
 	/**
-	 * Initialize a new ASS Canvas renderer
+	 * Start the ass rendering process
 	 */
-	async init() {
+	async render() {
 		if (typeof this.video == 'string') {
 			this.videoElement = document.querySelector(this.video)
 			if (this.videoElement === null) {
@@ -112,7 +136,11 @@ export default class ASS {
 			this.renderer?.redraw()
 		})
 
-		this.renderer.render()
+		await this.renderer.warmup()
+		if (this.onReady) {
+			this.onReady()
+		}
+		this.renderer.startRendering()
 	}
 
 	/**
@@ -125,7 +153,7 @@ export default class ASS {
 		this.video = options.video
 		this.fonts = options.fonts
 		this.zIndex = options.zIndex
-		await this.init()
+		await this.render()
 	}
 
 	/**
@@ -141,9 +169,6 @@ export default class ASS {
 			this.setCanvasSize()
 			this.renderer?.redraw()
 		})
-
-		this.canvas?.remove()
-		this.canvas = null
 
 		this.renderer?.destroy()
 		this.renderer = null
@@ -198,13 +223,17 @@ export default class ASS {
 			try {
 				const loaded = await this.loadFont(font)
 				if (loaded) {
-					console.info(`Font ${font.family} loaded from ${font.url}`)
+					if (this.logging == LOGTYPE.VERBOSE)
+						console.info(`Font ${font.family} loaded from ${font.url}`)
 				} else {
-					console.warn(`Unable to load font ${font.family} from ${font.url}`)
+					if (this.logging == LOGTYPE.VERBOSE || this.logging == LOGTYPE.WARN)
+						console.warn(`Unable to load font ${font.family} from ${font.url}`)
 				}
 			} catch (e) {
-				console.warn(`Unable to load font ${font.family} from ${font.url}`)
-				console.warn(e)
+				if (this.logging == LOGTYPE.VERBOSE || this.logging == LOGTYPE.WARN) {
+					console.warn(`Unable to load font ${font.family} from ${font.url}`)
+					console.warn(e)
+				}
 			}
 		}
 	}

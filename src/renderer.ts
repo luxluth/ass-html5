@@ -27,6 +27,8 @@ export class Renderer {
 	video: HTMLVideoElement
 	playerResX: number
 	playerResY: number
+	stop: boolean = false
+	animationHandle: number | null = null
 
 	textAlign: CanvasTextAlign = 'start'
 	textBaseline: CanvasTextBaseline = 'alphabetic'
@@ -52,7 +54,7 @@ export class Renderer {
 		this.insertLayers(sizes, background)
 		this.video = video
 
-		this.diplay(video.currentTime)
+		// this.display(video.currentTime)
 	}
 
 	insertLayers(sizes: OnInitSizes, insertAfter: HTMLCanvasElement) {
@@ -91,23 +93,40 @@ export class Renderer {
 		return maxLayer
 	}
 
+	/**
+	 * ## INTERNAL DOC: warmup
+	 *
+	 * The Purpose of this function is to prerender all the subtitle frames.
+	 * It will render everithing at the `playerResX` and `playerResY`
+	 * When the frame is display, it'll be rescale correctly to match
+	 * the current video size
+	 */
+	async warmup() {}
+
+	async startRendering() {
+		this.animationHandle = requestAnimationFrame(this.render.bind(this))
+	}
+
 	render() {
-		this.video.addEventListener('timeupdate', () => {
-			this.diplay(this.video.currentTime)
-		})
+		if (this.stop === true) {
+			if (this.animationHandle) {
+				cancelAnimationFrame(this.animationHandle)
+			}
+		} else {
+			this.display(this.video.currentTime)
+			this.animationHandle = requestAnimationFrame(this.render.bind(this))
+		}
 	}
 
 	destroy() {
-		this.video.removeEventListener('timeupdate', () => {
-			this.diplay(this.video.currentTime)
-		})
+		this.stop = true
 	}
 
 	redraw() {
-		this.diplay(this.video.currentTime)
+		this.display(this.video.currentTime)
 	}
 
-	diplay(time: number) {
+	display(time: number) {
 		this.layers.forEach((layer) => {
 			layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height)
 		})
