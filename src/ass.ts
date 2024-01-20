@@ -126,7 +126,13 @@ export default class ASS {
 			await this.loadFonts(this.fonts)
 		}
 
-		this.renderer = new Renderer(this.compiledAss, sizes, this.videoElement, this.zIndex)
+		this.renderer = new Renderer(
+			this.compiledAss,
+			sizes,
+			this.videoElement,
+			this.logging,
+			this.zIndex
+		)
 		this.videoElement?.addEventListener('loadedmetadata', () => {
 			this.setCanvasSize()
 		})
@@ -144,22 +150,7 @@ export default class ASS {
 	}
 
 	/**
-	 * Re-initialize the ASS Canvas renderer
-	 * @param options The ASS options
-	 */
-	async reinit(options: ASSOptions) {
-		this.destroy()
-		this.assText = options.assText
-		this.video = options.video
-		this.fonts = options.fonts
-		this.zIndex = options.zIndex
-		await this.render()
-	}
-
-	/**
-	 * Destroy the ASS `canvas`
-	 *
-	 * It removes events bind to the video and the canvas renderer
+	 * Stop the rendering
 	 */
 	destroy() {
 		this.videoElement?.removeEventListener('loadedmetadata', () => {

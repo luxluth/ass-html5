@@ -1,5 +1,6 @@
 import type { CompiledASS, CompiledASSStyle, Dialogue } from 'ass-compiler'
 import type { CompiledTag } from 'ass-compiler/types/tags'
+import { LOGTYPE } from './ass'
 import type {
 	FontDescriptor,
 	Override,
@@ -29,11 +30,19 @@ export class Renderer {
 	playerResY: number
 	stop: boolean = false
 	animationHandle: number | null = null
+	log: LOGTYPE
 
 	textAlign: CanvasTextAlign = 'start'
 	textBaseline: CanvasTextBaseline = 'alphabetic'
 
-	constructor(ass: CompiledASS, sizes: OnInitSizes, video: HTMLVideoElement, zIndex?: number) {
+	constructor(
+		ass: CompiledASS,
+		sizes: OnInitSizes,
+		video: HTMLVideoElement,
+		log: LOGTYPE,
+		zIndex?: number
+	) {
+		this.log = log
 		this.compiledASS = ass
 		this.playerResX = this.compiledASS.width
 		this.playerResY = this.compiledASS.height
@@ -110,11 +119,13 @@ export class Renderer {
 	render() {
 		if (this.stop === true) {
 			if (this.animationHandle) {
+				this.renderDiv.remove()
 				cancelAnimationFrame(this.animationHandle)
 			}
 		} else {
 			this.display(this.video.currentTime)
 			this.animationHandle = requestAnimationFrame(this.render.bind(this))
+			console.log('rendering...')
 		}
 	}
 
