@@ -146,7 +146,8 @@ export default class ASS {
 		if (this.onReady) {
 			this.onReady()
 		}
-		this.renderer.startRendering()
+		
+		await this.renderer.startRendering()
 	}
 
 	/**

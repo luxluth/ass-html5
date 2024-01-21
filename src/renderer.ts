@@ -7,10 +7,8 @@ import type {
 	Styles,
 	Position,
 	OnInitSizes,
-	ASSAnimation,
 	Layer
 } from './types'
-import { SimpleDrawing, AnimateDrawing, SpecificPositionDrawing } from './drawing'
 import {
 	ruleOfThree,
 	blendAlpha,
@@ -44,6 +42,9 @@ export class Renderer {
 	) {
 		this.log = log
 		this.compiledASS = ass
+		if (this.log === LOGTYPE.DEBUG) {
+			console.debug(this.compiledASS);
+		}
 		this.playerResX = this.compiledASS.width
 		this.playerResY = this.compiledASS.height
 		this.renderDiv = newRender(sizes.y, sizes.x, sizes.width, sizes.height, zIndex, video)
@@ -103,14 +104,16 @@ export class Renderer {
 	}
 
 	/**
-	 * ## INTERNAL DOC: warmup
+	 * ### INTERNAL DOC - warmup
 	 *
 	 * The Purpose of this function is to prerender all the subtitle frames.
-	 * It will render everithing at the `playerResX` and `playerResY`
+	 * It will render everithing at a certain `playerResX` and `playerResY`
 	 * When the frame is display, it'll be rescale correctly to match
 	 * the current video size
 	 */
-	async warmup() {}
+	async warmup() {
+
+	}
 
 	async startRendering() {
 		this.animationHandle = requestAnimationFrame(this.render.bind(this))
@@ -125,7 +128,9 @@ export class Renderer {
 		} else {
 			this.display(this.video.currentTime)
 			this.animationHandle = requestAnimationFrame(this.render.bind(this))
-			console.log('rendering...')
+			if (this.log == LOGTYPE.VERBOSE || this.log == LOGTYPE.DEBUG) {
+				console.log('rendering...');
+			}
 		}
 	}
 
@@ -142,17 +147,17 @@ export class Renderer {
 			layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height)
 		})
 
-		const { dialogues, styles } = this.compiledASS
-		const dialoguesToDisplay = this.getOverrideStyle(time, dialogues)
-		const overrides = dialoguesToDisplay.map((dialogue) => {
-			return {
-				dialogue: dialogue,
-				style: styles[dialogue.style] as CompiledASSStyle
-			}
-		}) as Override[]
-		// console.debug(overrides)
+		// const { dialogues, styles } = this.compiledASS
+		// const dialoguesToDisplay = this.getOverrideStyle(time, dialogues)
+		// const overrides = dialoguesToDisplay.map((dialogue) => {
+		// 	return {
+		// 		dialogue: dialogue,
+		// 		style: styles[dialogue.style] as CompiledASSStyle
+		// 	}
+		// }) as Override[]
+		// // console.debug(overrides)
 
-		this.showText(overrides, styles)
+		// this.showText(overrides, styles)
 	}
 
 	getOverrideStyle(time: number, dialogues: Dialogue[]) {
@@ -163,56 +168,52 @@ export class Renderer {
 
 	showText(overrides: Override[], styles: Styles) {
 		overrides.forEach((override) => {
-			this.computeStyle(override.dialogue.style, styles, override.dialogue.alignment)
-			this.drawText(override.dialogue, styles)
+			// this.computeStyle(override.dialogue.style, styles, override.dialogue.alignment)
+			// this.drawText(override.dialogue, styles)
 		})
 	}
 
-	flatStrArr(arr: string[]) {
-		return arr.join('\\N')
-	}
-
-	drawText(dialogue: Dialogue, styles: Styles) {
-		const { pos, move, fade, org } = dialogue
-		if (typeof pos !== 'undefined') {
-			new SpecificPositionDrawing(this, dialogue, styles, pos).draw()
-			return
-		} else if (
-			typeof move !== 'undefined' ||
-			typeof fade !== 'undefined' ||
-			typeof org !== 'undefined'
-		) {
-			let animations = []
-			if (typeof move !== 'undefined') {
-				animations.push({
-					name: 'move',
-					values: [move.x1, move.y1, move.x2, move.y2, move.t1, move.t2]
-				} as ASSAnimation.Move)
-			}
-			if (typeof fade !== 'undefined') {
-				if (fade.type === 'fad') {
-					animations.push({
-						name: 'fad',
-						values: [fade.t1, fade.t2]
-					} as ASSAnimation.Fade)
-				} else if (fade.type === 'fade') {
-					animations.push({
-						name: 'fade',
-						values: [fade.a1, fade.a2, fade.a3, fade.t1, fade.t2, fade.t3, fade.t4]
-					} as ASSAnimation.Fade)
-				}
-			}
-			if (typeof org !== 'undefined') {
-				animations.push({
-					name: 'org',
-					values: [org.x, org.y]
-				} as ASSAnimation.Org)
-			}
-			AnimateDrawing.getInstance(this, dialogue, styles, animations).draw()
-		} else {
-			new SimpleDrawing(this, dialogue, styles).draw()
-		}
-	}
+	// drawText(dialogue: Dialogue, styles: Styles) {
+	// 	const { pos, move, fade, org } = dialogue
+	// 	if (typeof pos !== 'undefined') {
+	// 		new SpecificPositionDrawing(this, dialogue, styles, pos).draw()
+	// 		return
+	// 	} else if (
+	// 		typeof move !== 'undefined' ||
+	// 		typeof fade !== 'undefined' ||
+	// 		typeof org !== 'undefined'
+	// 	) {
+	// 		let animations = []
+	// 		if (typeof move !== 'undefined') {
+	// 			animations.push({
+	// 				name: 'move',
+	// 				values: [move.x1, move.y1, move.x2, move.y2, move.t1, move.t2]
+	// 			} as ASSAnimation.Move)
+	// 		}
+	// 		if (typeof fade !== 'undefined') {
+	// 			if (fade.type === 'fad') {
+	// 				animations.push({
+	// 					name: 'fad',
+	// 					values: [fade.t1, fade.t2]
+	// 				} as ASSAnimation.Fade)
+	// 			} else if (fade.type === 'fade') {
+	// 				animations.push({
+	// 					name: 'fade',
+	// 					values: [fade.a1, fade.a2, fade.a3, fade.t1, fade.t2, fade.t3, fade.t4]
+	// 				} as ASSAnimation.Fade)
+	// 			}
+	// 		}
+	// 		if (typeof org !== 'undefined') {
+	// 			animations.push({
+	// 				name: 'org',
+	// 				values: [org.x, org.y]
+	// 			} as ASSAnimation.Org)
+	// 		}
+	// 		AnimateDrawing.getInstance(this, dialogue, styles, animations).draw()
+	// 	} else {
+	// 		new SimpleDrawing(this, dialogue, styles).draw()
+	// 	}
+	// }
 
 	drawTextBackground(text: string, pos: Position, height: number, font: FontDescriptor) {
 		const layer = this.layers[0] as Layer
@@ -325,55 +326,6 @@ export class Renderer {
 	upscaleX(x: number, baseCanvasWidth: number) {
 		const canvasWidth = this.layers[0]?.canvas.width || 0
 		return (canvasWidth * x) / baseCanvasWidth
-	}
-
-	drawFrame(
-		renderState: ASSAnimation.FrameRenderState,
-		layer: number,
-		beforeDraw?: (ctx: CanvasRenderingContext2D) => void
-	) {
-		// console.log("drawFrame")
-		renderState.words.forEach((word) => {
-			if (word.type == 'word') {
-				// each renderState got the width and height of the canvas when it was created
-				// so we upscale the position of the word to the current canvas size if needed
-				if (renderState.canvas.width !== this.layers[layer]?.canvas.width) {
-					word.position.x = this.upscale(
-						word.position.x,
-						renderState.canvas.width,
-						this.layers[layer]?.canvas.width || 0
-					)
-					word.position.y = this.upscale(
-						word.position.y,
-						renderState.canvas.height,
-						this.layers[layer]?.canvas.height || 0
-					)
-					word.font.fontsize = this.upscale(
-						word.font.fontsize,
-						renderState.playerResY,
-						this.layers[layer]?.canvas.height || 0
-					)
-				}
-
-				const ctx = this.layers[layer]?.ctx
-				if (ctx) {
-					ctx.save()
-					this.applyFont(word.font, this.layers[layer] as Layer)
-					ctx.globalAlpha = word.font.opacity
-					if (beforeDraw) {
-						beforeDraw(ctx)
-					}
-					this.drawWord(
-						word.text,
-						word.position.x,
-						word.position.y,
-						word.font,
-						this.layers[layer]?.ctx as CanvasRenderingContext2D
-					)
-					ctx.restore()
-				}
-			}
-		})
 	}
 
 	clearLayer(layer: number) {

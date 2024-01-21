@@ -116,50 +116,6 @@ export declare namespace ASSAnimation {
 	export type OrgValues = [number, number]
 
 	export type Animation = Fade | Move | Org
-
-	export type Word =
-		| {
-				type: 'word'
-				text: string
-				font: FontDescriptor
-				style: string
-				position: Position
-		  }
-		| {
-				type: 'drawing'
-				height: number
-				width: number
-				drawing: string
-				position: Position
-				font: FontDescriptor
-		  }
-
-	export type FrameRenderState = {
-		playerResX: number
-		playerResY: number
-		canvas: {
-			width: number
-			height: number
-		}
-		time: number
-		words: Word[]
-		layer: number
-		x: number
-		y: number
-		width: number
-		height: number
-	}
-
-	export type Bundle = {
-		animations: Animation[]
-		start: number
-		end: number
-		frames: FrameRenderState[]
-		hash: number
-		active: boolean
-		layer: number
-		taskId?: number
-	}
 }
 
 export type Override = {
@@ -172,28 +128,4 @@ export type Styles = { [styleName: string]: CompiledASSStyle }
 export type Position = {
 	x: number
 	y: number
-}
-export interface DrawingStrategy {
-	renderer: Renderer
-	dialogue: Dialogue
-	styles: Styles
-	draw(): void
-}
-
-export type SingleTask<T> = {
-	id: number
-	task: T
-	data?: {
-		[key: string]: any
-	}
-	exec?: () => void
-}
-
-export interface TaskScheduler<T> {
-	tasks: SingleTask<T>[]
-	addTask(task: T, data?: { [key: string]: any }, exec?: () => void): number
-	removeTask(id: number): void
-	clear(): void
-	isEmpty(): boolean
-	findTask(id: number): T | null
 }
