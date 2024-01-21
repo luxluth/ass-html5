@@ -1,6 +1,5 @@
 import type { CompiledASS, CompiledASSStyle, Dialogue } from 'ass-compiler'
 import type { CompiledTag } from 'ass-compiler/types/tags'
-import { LOGTYPE } from './ass'
 import type {
 	FontDescriptor,
 	Override,
@@ -9,6 +8,7 @@ import type {
 	OnInitSizes,
 	Layer
 } from './types'
+import { LOGTYPE } from './types'
 import {
 	ruleOfThree,
 	blendAlpha,

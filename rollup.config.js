@@ -9,7 +9,8 @@ export default {
 		{
 			file: 'dist/ass.min.js',
 			format: 'iife',
-			name: 'ASS'
+			name: 'ASS',
+			exports: 'named'
 		}
 	],
 	plugins: [typescript(), resolve(), commonjs(), terser()]

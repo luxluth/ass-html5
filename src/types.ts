@@ -129,3 +129,10 @@ export type Position = {
 	x: number
 	y: number
 }
+
+export enum LOGTYPE {
+	DISABLE = 'DISABLE',
+	VERBOSE = 'VERBOSE',
+	DEBUG = 'DEBUG',
+	WARN = 'WARN'
+}
