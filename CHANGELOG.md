@@ -1,5 +1,11 @@
 # ass-html5
 
+## 0.4.0
+
+### Minor Changes
+
+- 3197954: Rendering encapsulation
+
 ## 0.3.6
 
 ### Patch Changes
