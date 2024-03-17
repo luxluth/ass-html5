@@ -118,6 +118,7 @@ export default class ASS {
 	/**
 	 * Re-initialize the ASS Canvas renderer
 	 * @param options The ASS options
+	 * @deprecated Do not use this
 	 */
 	async reinit(options: ASSOptions) {
 		this.destroy()
