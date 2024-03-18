@@ -42,12 +42,10 @@
 		"@types/node": "^20.11.28",
 		"ass-compiler": "^0.1.11",
 		"prettier": "^3.2.5",
-		"rollup": "^3.29.4",
+		"rollup": "^4.13.0",
 		"terser": "^5.29.2",
 		"tslib": "^2.6.2",
+		"tsup": "^8.0.2",
 		"typescript": "^5.4.2"
-	},
-	"dependencies": {
-		"tsup": "^8.0.2"
 	}
 }
