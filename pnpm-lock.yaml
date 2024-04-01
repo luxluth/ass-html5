@@ -34,7 +34,7 @@ devDependencies:
     version: 4.13.0
   terser:
     specifier: ^5.29.2
-    version: 5.29.2
+    version: 5.30.0
   tslib:
     specifier: ^2.6.2
     version: 2.6.2
@@ -611,7 +611,7 @@ packages:
       rollup: 4.13.0
       serialize-javascript: 6.0.2
       smob: 1.4.1
-      terser: 5.29.2
+      terser: 5.30.0
     dev: true
 
   /@rollup/plugin-typescript@11.1.6(rollup@4.13.0)(tslib@2.6.2)(typescript@5.4.2):
@@ -2814,8 +2814,8 @@ packages:
     engines: {node: '>=8'}
     dev: true
 
-  /terser@5.29.2:
-    resolution: {integrity: sha512-ZiGkhUBIM+7LwkNjXYJq8svgkd+QK3UUr0wJqY4MieaezBSAIPgbSPZyIx0idM6XWK5CMzSWa8MJIzmRcB8Caw==}
+  /terser@5.30.0:
+    resolution: {integrity: sha512-Y/SblUl5kEyEFzhMAQdsxVHh+utAxd4IuRNJzKywY/4uzSogh3G219jqbDDxYu4MXO9CzY3tSEqmZvW6AoEDJw==}
     engines: {node: '>=10'}
     hasBin: true
     dependencies:
