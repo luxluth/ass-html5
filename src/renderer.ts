@@ -1,13 +1,6 @@
 import type { CompiledASS, CompiledASSStyle, Dialogue } from 'ass-compiler'
 import type { CompiledTag } from 'ass-compiler/types/tags'
-import type {
-	FontDescriptor,
-	Override,
-	Styles,
-	Position,
-	OnInitSizes,
-	Layer
-} from './types'
+import type { FontDescriptor, Override, Styles, Position, OnInitSizes, Layer } from './types'
 import { LOGTYPE } from './types'
 import {
 	ruleOfThree,
@@ -43,7 +36,7 @@ export class Renderer {
 		this.log = log
 		this.compiledASS = ass
 		if (this.log === LOGTYPE.DEBUG) {
-			console.debug(this.compiledASS);
+			console.debug(this.compiledASS)
 		}
 		this.playerResX = this.compiledASS.width
 		this.playerResY = this.compiledASS.height
@@ -107,12 +100,13 @@ export class Renderer {
 	 * ### INTERNAL DOC - warmup
 	 *
 	 * The Purpose of this function is to prerender all the subtitle frames.
-	 * It will render everithing at a certain `playerResX` and `playerResY`
+	 * It will render everything at a certain `playerResX` and `playerResY`
 	 * When the frame is display, it'll be rescale correctly to match
 	 * the current video size
 	 */
 	async warmup() {
-
+		const { dialogues, styles } = this.compiledASS
+		console.log(dialogues)
 	}
 
 	async startRendering() {
@@ -129,7 +123,7 @@ export class Renderer {
 			this.display(this.video.currentTime)
 			this.animationHandle = requestAnimationFrame(this.render.bind(this))
 			if (this.log == LOGTYPE.VERBOSE || this.log == LOGTYPE.DEBUG) {
-				console.log('rendering...');
+				console.log('rendering...')
 			}
 		}
 	}
@@ -147,7 +141,6 @@ export class Renderer {
 			layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height)
 		})
 
-		// const { dialogues, styles } = this.compiledASS
 		// const dialoguesToDisplay = this.getOverrideStyle(time, dialogues)
 		// const overrides = dialoguesToDisplay.map((dialogue) => {
 		// 	return {
@@ -359,6 +352,7 @@ export class Renderer {
 		if (tag.i !== undefined) {
 			font.italic = tag.i === 1
 		}
+
 		if (tag.u !== undefined) {
 			font.underline = tag.u === 1
 		}
@@ -397,6 +391,7 @@ export class Renderer {
 		}
 		for (let i = 0; i < this.layers.length; i++) {
 			const layer = this.layers[i] as Layer
+			layer.ctx.letterSpacing = '0px'
 			if (tag.c1 !== undefined) {
 				font.colors.c1 = swapBBGGRR(tag.c1)
 				layer.ctx.fillStyle = font.colors.c1
@@ -462,6 +457,9 @@ export class Renderer {
 				font.blur = tag.blur
 			}
 			layer.ctx.font = this.fontDecriptorString(font)
+			if (font.t.fsp) {
+				layer.ctx.letterSpacing = `${font.t.fsp}px`
+			}
 		}
 		// console.debug("font", font, this.fontDecriptorString(font), "->", this.ctx.font)
 	}

@@ -136,3 +136,4 @@ export enum LOGTYPE {
 	DEBUG = 'DEBUG',
 	WARN = 'WARN'
 }
+

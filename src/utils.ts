@@ -334,3 +334,56 @@ export function blendAlpha(color: string, alpha: number) {
 	const blue = parseInt(color.substring(4, 6), 16)
 	return `rgba(${red}, ${green}, ${blue}, ${alpha == 0 ? 1 : alpha / 160})`
 }
+
+export class Vector2 {
+	x: number
+	y: number
+	constructor(x: number, y: number) {
+		this.x = x
+		this.y = y
+	}
+
+	static add(lhs: Vector2, rhs: Vector2): Vector2 {
+		return {
+			x: lhs.x + rhs.x,
+			y: lhs.y + rhs.y
+		}
+	}
+	static sub(lhs: Vector2, rhs: Vector2): Vector2 {
+		return {
+			x: lhs.x - rhs.x,
+			y: lhs.y - rhs.y
+		}
+	}
+	static mul(lhs: Vector2, i: number): Vector2 {
+		return {
+			x: lhs.x * i,
+			y: lhs.y * i
+		}
+	}
+}
+
+/**
+ * Interpolate a vector2 between tow vector2
+ * @param start - starting point
+ * @param end - the end point
+ * @param t a value between 0..1
+ * start + (end - start) * t
+ */
+export function linearInterpolation(start: Vector2, end: Vector2, t: number): Vector2 {
+	return Vector2.add(start, Vector2.mul(Vector2.sub(end, start), t))
+}
+
+export function liStep(
+	step: Vector2,
+	at: number,
+	start: Vector2,
+	end: Vector2,
+	t: number
+): Vector2 {
+	if (at <= t) {
+		return linearInterpolation(start, step, at)
+	} else {
+		return linearInterpolation(step, end, t)
+	}
+}
