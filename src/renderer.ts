@@ -249,7 +249,7 @@ export class Renderer {
               break;
             case 'top':
               line.forEach((char) => {
-                char.pos.y += margin.vertical;
+                char.pos.y += margin.vertical + lineHeight;
               });
               break;
             default:
