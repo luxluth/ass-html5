@@ -41,7 +41,7 @@ pnpm add ass-html5
 | :-----: | :---------------------------------------------------------------------------------------------------------: | :------: | :---------------------------: | :-------------------: |
 | assText |                                             The ass text string                                             |    ✅    |           `string`            |      `undefined`      |
 |  video  | The video to display the subtile on. Can be either an `HTMLVideoElement` or `string` (html query selector ) |    ✅    | `HTMLVideoElement` / `string` |      `undefined`      |
-|  fonts  |                                            Custom fonts to load                                             |    🚫    |  [`Font[]`](src/ass.ts#L54)  |      `undefined`      |
+|  fonts  |                                            Custom fonts to load                                             |    🚫    |  [`Font[]`](src/ass.ts#L54)   |      `undefined`      |
 | zIndex  |                                        zIndex of the rendering frame                                        |    🚫    |           `number`            | Drawn after the video |
 
 ### Simple HTML
@@ -62,16 +62,16 @@ pnpm add ass-html5
 
 ```html
 <script>
-	document.addEventListener('DOMContentLoaded', async () => {
-		let res = await fetch('/assets/video.ass')
-		let assSubs = await res.text()
+  document.addEventListener('DOMContentLoaded', async () => {
+    let res = await fetch('/assets/video.ass');
+    let assSubs = await res.text();
 
-		const ass = new ASS({
-			assText: assSubs,
-			video: document.getElementById('video')
-		})
-		await ass.init()
-	})
+    const ass = new ASS({
+      assText: assSubs,
+      video: document.getElementById('video')
+    });
+    await ass.init();
+  });
 </script>
 ```
 
@@ -127,15 +127,15 @@ In the `body` :
 
 ```html
 <video
-	id="my-video"
-	class="video-js"
-	controls
-	preload="auto"
-	width="1280"
-	height="720"
-	data-setup="{}"
+  id="my-video"
+  class="video-js"
+  controls
+  preload="auto"
+  width="1280"
+  height="720"
+  data-setup="{}"
 >
-	<source src="assets/video.mp4" type="video/mp4" />
+  <source src="assets/video.mp4" type="video/mp4" />
 </video>
 ```
 
@@ -143,21 +143,21 @@ In the `script` tag :
 
 ```html
 <script>
-	document.addEventListener('DOMContentLoaded', async () => {
-		let res = await fetch('/assets/video.ass')
-		let assSubs = await res.text()
+  document.addEventListener('DOMContentLoaded', async () => {
+    let res = await fetch('/assets/video.ass');
+    let assSubs = await res.text();
 
-		var player = videojs('my-video')
+    var player = videojs('my-video');
 
-		player.ready(async () => {
-			// Get the video element from the player
-			var videoElement = player.el().getElementsByTagName('video')[0]
-			const ass = new ASS({
-				assText: assSubs,
-				video: videoElement
-			})
-			await ass.init()
-		})
-	})
+    player.ready(async () => {
+      // Get the video element from the player
+      var videoElement = player.el().getElementsByTagName('video')[0];
+      const ass = new ASS({
+        assText: assSubs,
+        video: videoElement
+      });
+      await ass.init();
+    });
+  });
 </script>
 ```
