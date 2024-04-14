@@ -23,8 +23,10 @@ import {
 
 type Ppass = {
   start: number;
+  layer: number;
   end: number;
   style: string;
+  alignment: number;
   slices: Array<Char[][]>;
 };
 
@@ -126,11 +128,13 @@ export class Renderer {
 
     for (let i = 0; i < dialogues.length; i++) {
       const dia = dialogues[i] as Dialogue;
-      const { alignment, start, end, style, margin, slices } = dia;
+      const { layer, alignment, start, end, style, margin, slices } = dia;
       this.ppass.push({
         start,
+        layer,
         end,
         style,
+        alignment,
         slices: this.processSlices(alignment, slices, computelayer, margin)
       });
     }
@@ -350,7 +354,30 @@ export class Renderer {
     });
   }
 
-  showDialogue(dialogue: Ppass) {}
+  showDialogue(d: Ppass) {
+    const layer = this.getLayer(d.layer);
+    if (layer) {
+      let font = this.computeStyle(d.style, d.alignment);
+      this.applyFont(font, layer);
+
+      d.slices.forEach((slice) => {
+        slice.forEach((line) => {
+          for (let i = 0; i < line.length; i++) {
+            const char = line[i] as Char;
+            font = this.computeStyle(char?.style, d.alignment);
+            this.applyFont(font, layer);
+            this.applyOverrideTag(char.tag, font);
+
+            const newX = (layer.canvas.width * char.pos.x) / this.playerResX;
+            const newY = (layer.canvas.height * char.pos.y) / this.playerResY;
+
+            layer.ctx.fillText(char.c, newX, newY);
+            // console.debug(char.c, char.pos, newX, newY);
+          }
+        });
+      });
+    }
+  }
 
   drawTextBackground(text: string, pos: Position, height: number, font: FontDescriptor) {
     const layer = this.layers[0] as Layer;

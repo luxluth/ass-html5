@@ -27,7 +27,7 @@ export type ASSOptions = {
   zIndex?: number;
 
   /**
-   * A Callback that is invoked when the preprocess of the assText by render is done
+   * A Callback that is invoked when the preprocess of the ass text by render is done
    */
   onReady?: () => void;
 
@@ -135,6 +135,7 @@ export default class ASS {
       this.logging,
       this.zIndex
     );
+    this.setCanvasSize();
     this.videoElement?.addEventListener('loadedmetadata', () => {
       this.setCanvasSize();
     });
