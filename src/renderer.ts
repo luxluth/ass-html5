@@ -1,15 +1,6 @@
 import type { CompiledASS, CompiledASSStyle, Dialogue, DialogueSlice } from 'ass-compiler';
 import type { CompiledTag } from 'ass-compiler/types/tags';
-import type {
-  FontDescriptor,
-  Override,
-  Styles,
-  Position,
-  OnInitSizes,
-  Layer,
-  Margin,
-  Char
-} from './types';
+import type { FontDescriptor, Styles, Position, OnInitSizes, Layer, Margin, Char } from './types';
 import { LOGTYPE } from './types';
 import {
   ruleOfThree,
@@ -26,6 +17,8 @@ type Ppass = {
   layer: number;
   end: number;
   style: string;
+  margin: Margin;
+  pos?: Position;
   alignment: number;
   slices: Array<Char[][]>;
 };
@@ -128,26 +121,23 @@ export class Renderer {
 
     for (let i = 0; i < dialogues.length; i++) {
       const dia = dialogues[i] as Dialogue;
-      const { layer, alignment, start, end, style, margin, slices } = dia;
+      const { layer, alignment, start, end, style, margin, slices, pos } = dia;
       this.ppass.push({
         start,
         layer,
         end,
         style,
+        margin,
         alignment,
-        slices: this.processSlices(alignment, slices, computelayer, margin)
+        pos,
+        slices: this.processSlices(alignment, slices, computelayer)
       });
     }
 
     this.log(LOGTYPE.DEBUG, this.ppass);
   }
 
-  processSlices(
-    alignment: number,
-    slices: DialogueSlice[],
-    layer: Layer,
-    margin: Margin
-  ): Array<Char[][]> {
+  processSlices(alignment: number, slices: DialogueSlice[], layer: Layer): Array<Char[][]> {
     let processValues: Array<Char[][]> = [];
     slices.forEach((slice) => {
       const { style, fragments } = slice;
@@ -159,20 +149,8 @@ export class Renderer {
         this.applyFont(font, layer);
 
         const text = frag.text.replace('\\N', '\n').split('');
-        const linesCount = text.filter((v) => v == '\n').length + 1;
-
-        const lineHeights = text.map(
-          (char) =>
-            layer.ctx.measureText(char).fontBoundingBoxAscent +
-            layer.ctx.measureText(char).fontBoundingBoxDescent
-        );
-
-        const lineHeight = Math.max(...lineHeights);
-        const totalHeight = lineHeight * linesCount;
 
         let currentLine = 0;
-        let cX = 0;
-        let cY = 0;
         let chars: Char[] = [];
         let lines: Char[][] = [];
 
@@ -182,19 +160,15 @@ export class Renderer {
             lines.push(chars);
             chars = [];
             currentLine += 1;
-            cX = 0;
-            cY += lineHeight;
           } else {
-            const w = layer.ctx.measureText(char).width + font.t.fsp;
             chars.push({
-              pos: new Vector2(cX, cY),
+              pos: new Vector2(0, 0),
               c: char,
               ln: currentLine,
-              w,
+              w: 0,
               style,
               tag: frag.tag
             });
-            cX += w;
           }
         }
 
@@ -203,65 +177,6 @@ export class Renderer {
           chars = [];
         }
 
-        lines.forEach((line) => {
-          let lineWidth = line.reduce((acc, char) => {
-            return acc + char.w;
-          }, 0);
-
-          switch (font.textAlign) {
-            case 'left':
-              line.forEach((char) => {
-                char.pos.x += margin.left;
-              });
-              break;
-            case 'center':
-              line.forEach((char) => {
-                char.pos.x += (layer.canvas.width - lineWidth) / 2;
-              });
-              break;
-            case 'right':
-              line.forEach((char) => {
-                char.pos.x += layer.canvas.width - lineWidth - margin.right;
-              });
-              break;
-            default:
-              line.forEach((char) => {
-                char.pos.x += margin.left;
-              });
-              break;
-          }
-
-          switch (font.textBaseline) {
-            case 'bottom':
-              line.forEach((char) => {
-                char.pos.y +=
-                  layer.canvas.height -
-                  (lines.length > 1 ? totalHeight / lines.length : 0) -
-                  margin.vertical;
-              });
-              break;
-            case 'middle':
-              line.forEach((char) => {
-                char.pos.y +=
-                  (layer.canvas.height - totalHeight) / 2 +
-                  (lines.length > 1 ? totalHeight / lines.length : lineHeight);
-              });
-              break;
-            case 'top':
-              line.forEach((char) => {
-                char.pos.y += margin.vertical + lineHeight;
-              });
-              break;
-            default:
-              line.forEach((char) => {
-                char.pos.y +=
-                  layer.canvas.height -
-                  (lines.length > 1 ? totalHeight / lines.length : 0) -
-                  margin.vertical;
-              });
-              break;
-          }
-        });
         processValues.push(lines);
       });
     });
@@ -274,13 +189,13 @@ export class Renderer {
       case LOGTYPE.DISABLE:
         break;
       case LOGTYPE.VERBOSE:
-        console.info(...message);
+        console.info(type, ...message);
         break;
       case LOGTYPE.DEBUG:
-        console.debug(...message);
+        console.debug(type, ...message);
         break;
       case LOGTYPE.WARN:
-        console.warn(...message);
+        console.warn(type, ...message);
         break;
     }
   }
@@ -360,20 +275,123 @@ export class Renderer {
       let font = this.computeStyle(d.style, d.alignment);
       this.applyFont(font, layer);
 
-      d.slices.forEach((slice) => {
-        slice.forEach((line) => {
-          for (let i = 0; i < line.length; i++) {
-            const char = line[i] as Char;
+      d.slices.forEach((lines) => {
+        const lineHeights = lines.reduce<number[]>((acc, line) => {
+          return acc.concat(
+            line.map(
+              (char) =>
+                layer.ctx.measureText(char.c).fontBoundingBoxAscent +
+                layer.ctx.measureText(char.c).fontBoundingBoxDescent
+            )
+          );
+        }, []);
+
+        const lineHeight = Math.max(...lineHeights);
+        const totalHeight = lineHeight * lines.length;
+        let cX = 0;
+        let cY = 0;
+        let customPosition = false;
+        // TODO: handle custom position
+        if (d.pos) {
+          customPosition = true;
+          const Xratio = layer.canvas.width / this.playerResX;
+          const Yratio = layer.canvas.height / this.playerResY;
+
+          cX = d.pos.x * Xratio;
+          cY = d.pos.y * Yratio;
+        }
+
+        lines.forEach((line) => {
+          line.forEach((char) => {
             font = this.computeStyle(char?.style, d.alignment);
-            this.applyFont(font, layer);
             this.applyOverrideTag(char.tag, font);
+            this.applyFont(font, layer);
+            const w = layer.ctx.measureText(char.c).width + font.t.fsp;
+            char.pos.x = cX;
+            char.pos.y = cY;
+            char.w = w;
+            cX += w;
+          });
+          cX = 0;
+          cY += lineHeight;
 
-            const newX = (layer.canvas.width * char.pos.x) / this.playerResX;
-            const newY = (layer.canvas.height * char.pos.y) / this.playerResY;
+          const margin = this.upscaleMargin(d.margin);
 
-            layer.ctx.fillText(char.c, newX, newY);
-            // console.debug(char.c, char.pos, newX, newY);
+          let lineWidth = line.reduce((acc, char) => {
+            return acc + char.w;
+          }, 0);
+
+          if (!customPosition) {
+            switch (font.textAlign) {
+              case 'left':
+                line.forEach((char) => {
+                  char.pos.x += margin.left;
+                });
+                break;
+              case 'center':
+                line.forEach((char) => {
+                  char.pos.x += (layer.canvas.width - lineWidth) / 2;
+                });
+                break;
+              case 'right':
+                line.forEach((char) => {
+                  char.pos.x += layer.canvas.width - lineWidth - margin.right;
+                });
+                break;
+              default:
+                line.forEach((char) => {
+                  char.pos.x += margin.left;
+                });
+                break;
+            }
+
+            switch (font.textBaseline) {
+              case 'bottom':
+                line.forEach((char) => {
+                  char.pos.y +=
+                    layer.canvas.height -
+                    (lines.length > 1 ? totalHeight / lines.length : 0) -
+                    margin.vertical;
+                });
+                break;
+              case 'middle':
+                line.forEach((char) => {
+                  char.pos.y +=
+                    (layer.canvas.height - totalHeight) / 2 +
+                    (lines.length > 1 ? totalHeight / lines.length : lineHeight);
+                });
+                break;
+              case 'top':
+                line.forEach((char) => {
+                  char.pos.y += margin.vertical + lineHeight / 2;
+                });
+                break;
+              default:
+                line.forEach((char) => {
+                  char.pos.y +=
+                    layer.canvas.height -
+                    (lines.length > 1 ? totalHeight / lines.length : 0) -
+                    margin.vertical;
+                });
+                break;
+            }
+          } else {
+            this.log(LOGTYPE.DEBUG, 'custom position');
           }
+
+          line.forEach((char) => {
+            let font = this.computeStyle(d.style, d.alignment);
+            this.applyOverrideTag(char.tag, font);
+            this.applyFont(font, layer);
+
+            if (font.borderStyle !== 3) {
+              if (font.xbord !== 0 || font.ybord !== 0) {
+                layer.ctx.strokeText(char.c, char.pos.x, char.pos.y);
+              }
+            }
+
+            layer.ctx.fillText(char.c, char.pos.x, char.pos.y);
+          });
         });
       });
     }
