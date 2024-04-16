@@ -139,12 +139,23 @@ export enum LOGTYPE {
   WARN = 'WARN'
 }
 
+export enum CHARKIND {
+  NEWLINE,
+  NORMAL
+}
+
 export type Margin = { left: number; right: number; vertical: number };
-export type Char = {
-  pos: Vector2;
-  c: string;
-  ln: number;
-  w: number;
-  tag: CompiledTag;
-  style: string;
-};
+export type Char =
+  | {
+      kind: CHARKIND.NORMAL;
+      pos: Vector2;
+      c: string;
+      ln: number;
+      w: number;
+      tag: CompiledTag;
+      style: string;
+      ord: number;
+    }
+  | {
+      kind: CHARKIND.NEWLINE;
+    };

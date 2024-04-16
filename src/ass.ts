@@ -93,6 +93,7 @@ export default class ASS {
   private video: HTMLVideoElement | string;
   videoElement: HTMLVideoElement | null = null;
   private renderer: Renderer | null = null;
+  private ro: ResizeObserver | null = null;
   private fonts?: Font[];
   private zIndex?: number;
   private onReady?: () => void;
@@ -128,40 +129,35 @@ export default class ASS {
       await this.loadFonts(this.fonts);
     }
 
-    this.renderer = new Renderer(
-      this.compiledAss,
-      sizes,
-      this.videoElement,
-      this.logging,
-      this.zIndex
-    );
-    this.setCanvasSize();
-    this.videoElement?.addEventListener('loadedmetadata', () => {
+    if (this.videoElement) {
+      this.renderer = new Renderer(
+        this.compiledAss,
+        sizes,
+        this.videoElement,
+        this.logging,
+        this.zIndex
+      );
       this.setCanvasSize();
-    });
+      this.videoElement.addEventListener('loadedmetadata', this.setCanvasSize.bind(this));
 
-    window.addEventListener('resize', () => {
-      this.setCanvasSize();
-    });
+      this.ro = new ResizeObserver(this.setCanvasSize.bind(this));
+      this.ro.observe(this.videoElement);
 
-    await this.renderer.warmup();
-    if (this.onReady) {
-      this.onReady();
+      await this.renderer.warmup();
+      if (this.onReady) {
+        this.onReady();
+      }
+
+      await this.renderer.startRendering();
     }
-
-    await this.renderer.startRendering();
   }
 
   /**
    * Stop the rendering
    */
   destroy() {
-    this.videoElement?.removeEventListener('loadedmetadata', () => {
-      this.setCanvasSize();
-    });
-    window.removeEventListener('resize', () => {
-      this.setCanvasSize();
-    });
+    this.videoElement?.removeEventListener('loadedmetadata', this.setCanvasSize.bind(this));
+    this.ro?.disconnect();
 
     this.renderer?.destroy();
     this.renderer = null;
