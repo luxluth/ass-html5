@@ -150,7 +150,6 @@ export type Char =
       kind: CHARKIND.NORMAL;
       pos: Vector2;
       c: string;
-      ln: number;
       w: number;
       tag: CompiledTag;
       style: string;
@@ -159,3 +158,8 @@ export type Char =
   | {
       kind: CHARKIND.NEWLINE;
     };
+
+export type Word = {
+  w: number;
+  value: Char[];
+};

@@ -1,6 +1,15 @@
 import type { CompiledASS, CompiledASSStyle, Dialogue, DialogueSlice } from 'ass-compiler';
 import type { CompiledTag } from 'ass-compiler/types/tags';
-import type { FontDescriptor, Styles, Position, OnInitSizes, Layer, Margin, Char } from './types';
+import type {
+  FontDescriptor,
+  Styles,
+  Position,
+  OnInitSizes,
+  Layer,
+  Margin,
+  Char,
+  Word
+} from './types';
 import { CHARKIND, LOGTYPE } from './types';
 import {
   ruleOfThree,
@@ -119,6 +128,9 @@ export class Renderer {
       canvas
     };
 
+    computelayer.canvas.width = this.playerResX;
+    computelayer.canvas.height = this.playerResY;
+
     for (let i = 0; i < dialogues.length; i++) {
       const dia = dialogues[i] as Dialogue;
       const { layer, alignment, start, end, style, margin, slices, pos } = dia;
@@ -130,23 +142,23 @@ export class Renderer {
         margin,
         alignment,
         pos,
-        chars: this.processSlices(alignment, slices, computelayer)
+        chars: this.processSlices(alignment, slices, computelayer, margin)
       });
     }
 
-    this.ppass.forEach((p) => {
-      console.debug(p, this.countLines(p.chars));
-    });
-
+    // this.ppass.forEach((p) => {
+    //   console.debug(p, this.countLines(p.chars));
+    // });
+    //
+    console.debug(this.styles);
     // this.stop = true;
   }
 
-  processSlices(alignment: number, slices: DialogueSlice[], layer: Layer): Char[] {
-    let processValues: Char[] = [];
+  processSlices(alignment: number, slices: DialogueSlice[], layer: Layer, margin: Margin): Char[] {
+    let chars: Char[] = [];
     slices.forEach((slice) => {
       const { style, fragments } = slice;
-      let font = this.computeStyle(style, alignment);
-      this.applyFont(font, layer);
+      let font = this.computeStyle(style, alignment, layer);
 
       let _frag: Char[] = [];
 
@@ -157,7 +169,6 @@ export class Renderer {
         //@ts-ignore
         const text = frag.text.replaceAll('\\N', '\n').split('');
 
-        let currentLine = 0;
         let ord = 0;
         let chars: Char[] = [];
 
@@ -167,14 +178,12 @@ export class Renderer {
             chars.push({
               kind: CHARKIND.NEWLINE
             });
-            currentLine += 1;
             ord = 0;
           } else {
             chars.push({
               kind: CHARKIND.NORMAL,
               pos: new Vector2(0, 0),
               c: char,
-              ln: currentLine,
               ord,
               w: 0,
               style,
@@ -188,11 +197,137 @@ export class Renderer {
         _frag = _frag.concat(chars);
       });
 
-      processValues = processValues.concat(_frag);
+      chars = chars.concat(_frag);
+      // chars = this.linesToChar(this.wrapLines(layer, this.lines(chars), font, margin));
+      // console.debug(chars);
     });
 
-    return processValues;
+    return chars;
   }
+
+  // splitByWord(chars: Char[]): Char[][] {
+  //   let words: Char[][] = [];
+  //   let buff: Char[] = [];
+  //
+  //   chars.forEach((char) => {
+  //     if (char.kind == CHARKIND.NORMAL) {
+  //       if (char.c === ' ') {
+  //         buff.push(char);
+  //         words.push(buff);
+  //         buff = [];
+  //       } else {
+  //         buff.push(char);
+  //       }
+  //     }
+  //   });
+  //
+  //   if (buff.length > 0) {
+  //     words.push(buff);
+  //     buff = [];
+  //   }
+  //
+  //   return words;
+  // }
+  //
+  // reshapeLineWidth(chars: Char[], layer: Layer, margin: Margin) {
+  //   const words = this.splitByWord(chars).map((word) => {
+  //     return {
+  //       w: this.lineWidth(layer, word),
+  //       value: word
+  //     } as Word;
+  //   });
+  //
+  //   let newChars: Char[] = [];
+  //   let bufWords: Word[] = [];
+  //
+  //   words.forEach((word) => {
+  //     bufWords.push(word);
+  //     console.debug(word);
+  //     if (this.wordsWidth(bufWords) > this.playerResX - margin.left - margin.right) {
+  //       const toAddBack = bufWords.pop() as Word;
+  //       newChars = newChars.concat(this.wordsToChar(bufWords));
+  //       newChars.push({
+  //         kind: CHARKIND.NEWLINE
+  //       });
+  //       console.debug(newChars, this.wordsWidth(bufWords));
+  //       bufWords = [];
+  //       bufWords.push(toAddBack);
+  //     }
+  //   });
+  //
+  //   if (bufWords.length > 0) {
+  //     newChars = newChars.concat(this.wordsToChar(bufWords));
+  //     bufWords = [];
+  //   }
+  //
+  //   return newChars;
+  // }
+  //
+  // linesToChar(lines: Char[][]) {
+  //   let chars: Char[] = [];
+  //   lines.forEach((line, i) => {
+  //     chars = chars.concat(line);
+  //     chars.push({
+  //       kind: CHARKIND.NEWLINE
+  //     });
+  //   });
+  //
+  //   chars.pop();
+  //
+  //   console.debug(lines, chars);
+  //   return chars;
+  // }
+  //
+  // wordsToChar(words: Word[]): Char[] {
+  //   let chars: Char[] = [];
+  //   words.forEach((word) => {
+  //     chars = chars.concat(word.value);
+  //   });
+  //
+  //   return chars;
+  // }
+  //
+  // wordsWidth(words: Word[]): number {
+  //   return words.reduce((acc, word) => {
+  //     return (acc += word.w);
+  //   }, 0);
+  // }
+  //
+  // wrapLines(layer: Layer, lines: Char[][], font: FontDescriptor, margin: Margin): Char[][] {
+  //   // console.debug(lines, font.t.q);
+  //   switch (font.t.q) {
+  //     case 0:
+  //       // smart-wrapping - top line longer
+  //       for (let i = 0; i < lines.length; i++) {
+  //         const line = lines[i] as Char[];
+  //         const w = this.lineWidth(layer, line);
+  //         if (w > this.playerResX - margin.left - margin.right) {
+  //           const newLine = this.reshapeLineWidth(line, layer, margin);
+  //           lines[i] = newLine;
+  //         }
+  //       }
+  //       break;
+  //     case 1:
+  //       // dumb-wrapping - simple overflow check
+  //       for (let i = 0; i < lines.length; i++) {
+  //         const line = lines[i] as Char[];
+  //         const w = this.lineWidth(layer, line);
+  //         if (w >= this.playerResX - margin.left - margin.right) {
+  //           const newLine = this.reshapeLineWidth(line, layer, margin);
+  //           lines[i] = newLine;
+  //         }
+  //       }
+  //       break;
+  //     case 2:
+  //       // no wrapping
+  //       break;
+  //     case 3:
+  //       // smart-wrapping - (bottom line longer)
+  //       break;
+  //   }
+  //
+  //   return lines;
+  // }
 
   sublog(type: LOGTYPE, ...message: any) {
     switch (type) {
@@ -271,31 +406,26 @@ export class Renderer {
     });
   }
 
-  getOverrideStyle(time: number, dialogues: Dialogue[]) {
-    return dialogues.filter((dialogue) => {
-      return dialogue.start <= time && dialogue.end >= time;
-    });
-  }
-
-  getLineHeights(layer: Layer, chars: Char[]): number[] {
+  getLineHeights(layer: Layer, lines: Char[][]): number[] {
     let heights: number[] = [];
 
     let currentMaxHeight = 0;
-    chars.forEach((char) => {
-      switch (char.kind) {
-        case CHARKIND.NEWLINE:
-          heights.push(currentMaxHeight);
-          currentMaxHeight = 0;
-          break;
-        case CHARKIND.NORMAL:
+    lines.forEach((line) => {
+      line.forEach((char) => {
+        if (char.kind === CHARKIND.NORMAL) {
+          let font = this.computeStyle(char.style, 1, layer);
+          this.applyOverrideTag(char.tag, font);
+          this.applyFont(font, layer);
           let calc =
             layer.ctx.measureText(char.c).fontBoundingBoxAscent +
             layer.ctx.measureText(char.c).fontBoundingBoxDescent;
           if (calc > currentMaxHeight) {
             currentMaxHeight = calc;
           }
-          break;
-      }
+        }
+      });
+      heights.push(currentMaxHeight);
+      currentMaxHeight = 0;
     });
 
     return heights;
@@ -309,26 +439,34 @@ export class Renderer {
     let w = 0;
     chars.forEach((char) => {
       if (char.kind === CHARKIND.NORMAL) {
-        w += layer.ctx.measureText(char.c).width;
+        let font = this.computeStyle(char.style, 1, layer);
+        this.applyOverrideTag(char.tag, font);
+        this.applyFont(font, layer);
+        w += layer.ctx.measureText(char.c).width + font.t.fsp;
       }
     });
 
     return w;
   }
 
-  lines(chars: Char[], count: number): Char[][] {
+  lines(chars: Char[]): Char[][] {
     let lines: Char[][] = [];
-    for (let i = 0; i < count; i++) {
-      let line: Char[] = [];
-      chars.forEach((char) => {
-        if (char.kind === CHARKIND.NORMAL) {
-          if (char.ln === i) {
-            line.push(char);
-          }
-        }
-      });
+    let buff: Char[] = [];
 
-      lines.push(line);
+    chars.forEach((char) => {
+      switch (char.kind) {
+        case CHARKIND.NEWLINE:
+          lines.push(buff);
+          buff = [];
+          break;
+        case CHARKIND.NORMAL:
+          buff.push(char);
+          break;
+      }
+    });
+
+    if (buff.length > 0) {
+      lines.push(buff);
     }
 
     return lines;
@@ -337,10 +475,10 @@ export class Renderer {
   showDialogue(d: Ppass) {
     const layer = this.getLayer(d.layer);
     if (layer) {
-      let font = this.computeStyle(d.style, d.alignment);
-      this.applyFont(font, layer);
+      let font = this.computeStyle(d.style, d.alignment, layer);
 
-      const lineHeights = this.getLineHeights(layer, d.chars);
+      const lines = this.lines(d.chars);
+      const lineHeights = this.getLineHeights(layer, lines);
       const lineHeight = Math.max(...lineHeights);
       const linesCount = this.countLines(d.chars);
       const totalHeight = lineHeight * linesCount;
@@ -364,7 +502,7 @@ export class Renderer {
             cY += lineHeight;
             break;
           case CHARKIND.NORMAL:
-            font = this.computeStyle(char?.style, d.alignment);
+            font = this.computeStyle(char.style, d.alignment, layer);
             this.applyOverrideTag(char.tag, font);
             this.applyFont(font, layer);
             const w = layer.ctx.measureText(char.c).width + font.t.fsp;
@@ -377,8 +515,6 @@ export class Renderer {
       });
 
       const margin = this.upscaleMargin(d.margin);
-
-      let lines = this.lines(d.chars, linesCount);
 
       lines.forEach((line) => {
         // WARN: To debug
@@ -452,9 +588,9 @@ export class Renderer {
               });
               break;
             case 'right':
-              line.forEach((char) => {
-                if (char.kind == CHARKIND.NORMAL) char.pos.x -= lineWidth;
-              });
+              // line.forEach((char) => {
+              //   if (char.kind == CHARKIND.NORMAL) char.pos.x += lineWidth;
+              // });
               break;
             default:
               break;
@@ -464,9 +600,10 @@ export class Renderer {
 
       d.chars.forEach((char) => {
         if (char.kind == CHARKIND.NORMAL) {
-          let font = this.computeStyle(d.style, d.alignment);
+          let font = this.computeStyle(char.style, d.alignment, layer);
           this.applyOverrideTag(char.tag, font);
           this.applyFont(font, layer);
+          // console.debug(layer.ctx.font, char.c, char.tag);
 
           if (font.borderStyle !== 3) {
             if (font.xbord !== 0 || font.ybord !== 0) {
@@ -641,6 +778,7 @@ export class Renderer {
     if (tag.u !== undefined) font.underline = tag.u === 1;
     if (tag.s !== undefined) font.strikeout = tag.s === 1;
     if (tag.fn !== undefined) font.fontname = tag.fn;
+    if (tag.q !== undefined) font.t.q = tag.q;
     if (tag.fs !== undefined)
       font.fontsize = this.upscale(tag.fs, this.playerResY, this.layers[0]?.canvas.height || 0);
     if (tag.fscx !== undefined) font.t.fscx = tag.fscx;
@@ -657,76 +795,17 @@ export class Renderer {
         this.layers[0]?.canvas.width || this.playerResX
       );
     }
-    for (let i = 0; i < this.layers.length; i++) {
-      const layer = this.layers[i] as Layer;
-      // layer.ctx.letterSpacing = '0px';
-      if (tag.c1 !== undefined) {
-        font.colors.c1 = swapBBGGRR(tag.c1);
-        layer.ctx.fillStyle = font.colors.c1;
-      }
-      if (tag.a1 !== undefined) {
-        font.colors.a1 = parseFloat(tag.a1);
-        layer.ctx.fillStyle = blendAlpha(layer.ctx.fillStyle as string, font.colors.a1);
-      }
-      if (tag.c3 !== undefined) {
-        font.colors.c3 = swapBBGGRR(tag.c3);
-        layer.ctx.strokeStyle = font.colors.c3;
-      }
-      if (tag.a3 !== undefined) {
-        font.colors.a3 = parseFloat(tag.a3);
-        layer.ctx.strokeStyle = blendAlpha(layer.ctx.strokeStyle as string, font.colors.a3);
-      }
-      if (tag.c4 !== undefined) {
-        font.colors.c4 = swapBBGGRR(tag.c4);
-        layer.ctx.shadowColor = font.colors.c4;
-      }
-      if (tag.a4 !== undefined) {
-        font.colors.a4 = parseFloat(tag.a4);
-        layer.ctx.shadowColor = blendAlpha(layer.ctx.shadowColor as string, font.colors.a4);
-      }
-      if (tag.xshad !== undefined) {
-        layer.ctx.shadowOffsetX = this.upscale(
-          tag.xshad,
-          this.playerResX,
-          this.layers[0]?.canvas.width || this.playerResX
-        );
-        font.xshad = tag.xshad;
-      }
-      if (tag.yshad !== undefined) {
-        layer.ctx.shadowOffsetY = this.upscale(
-          tag.yshad,
-          this.playerResY,
-          this.layers[0]?.canvas.height || this.playerResY
-        );
-        font.yshad = tag.yshad;
-      }
-      if (tag.xbord !== undefined) {
-        layer.ctx.lineWidth = this.upscale(
-          tag.xbord,
-          this.playerResX,
-          this.layers[0]?.canvas.width || this.playerResX
-        );
-        font.xbord = tag.xbord;
-      }
-      if (tag.ybord !== undefined) {
-        layer.ctx.lineWidth = this.upscale(
-          tag.ybord,
-          this.playerResY,
-          this.layers[0]?.canvas.height || 0
-        );
-        font.ybord = tag.ybord;
-      }
-      if (tag.blur !== undefined) {
-        layer.ctx.shadowBlur = this.upscale(
-          tag.blur,
-          this.playerResY,
-          this.layers[0]?.canvas.height || 0
-        );
-        font.blur = tag.blur;
-      }
-      layer.ctx.font = this.fontDecriptorString(font);
-    }
-    // console.debug("font", font, this.fontDecriptorString(font), "->", this.ctx.font)
+    if (tag.c1 !== undefined) font.colors.c1 = swapBBGGRR(tag.c1);
+    if (tag.a1 !== undefined) font.colors.a1 = parseFloat(tag.a1);
+    if (tag.c3 !== undefined) font.colors.c3 = swapBBGGRR(tag.c3);
+    if (tag.a3 !== undefined) font.colors.a3 = parseFloat(tag.a3);
+    if (tag.c4 !== undefined) font.colors.c4 = swapBBGGRR(tag.c4);
+    if (tag.a4 !== undefined) font.colors.a4 = parseFloat(tag.a4);
+    if (tag.xshad !== undefined) font.xshad = tag.xshad;
+    if (tag.yshad !== undefined) font.yshad = tag.yshad;
+    if (tag.xbord !== undefined) font.xbord = tag.xbord;
+    if (tag.ybord !== undefined) font.ybord = tag.ybord;
+    if (tag.blur !== undefined) font.blur = tag.blur;
   }
 
   upscale(x: number, firstcomp: number, secondcomp: number) {
@@ -739,7 +818,7 @@ export class Renderer {
     )}px "${font.fontname}"`;
   }
 
-  computeStyle(name: string, alignment: number): FontDescriptor {
+  computeStyle(name: string, alignment: number, layer: Layer): FontDescriptor {
     const style = this.styles[name] as CompiledASSStyle;
     if (style === undefined) {
       // TODO: fallbackFont when there is no style
@@ -794,7 +873,7 @@ export class Renderer {
         frz: frz,
         frx: 0,
         fry: 0,
-        fsp: this.upscale(fsp, this.playerResX, this.layers[0]?.canvas.width || this.playerResX),
+        fsp: this.upscale(fsp, this.playerResX, layer.canvas.width),
         q: q
       },
       xbord: xbord,
@@ -809,10 +888,7 @@ export class Renderer {
       textBaseline: this.getBaseLine(alignment)
     };
 
-    for (let i = 0; i < this.layers.length; i++) {
-      const layer = this.layers[i] as Layer;
-      this.applyFont(font, layer);
-    }
+    this.applyFont(font, layer);
 
     return font;
   }
