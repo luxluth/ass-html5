@@ -2,9 +2,9 @@
   "name": "ass-html5",
   "version": "0.4.1",
   "description": "Display ASS/SSA subtitles on html5 videos",
-  "main": "./dist/ass.mjs",
+  "main": "dist/ass.mjs",
   "module": "dist/ass.mjs",
-  "types": "dist/ass.d.ts",
+  "types": "ass.d.mts",
   "browser": "dist/ass.min.js",
   "scripts": {
     "build": "pnpm run build:normal && pnpm run build:minify",
