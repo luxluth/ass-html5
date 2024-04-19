@@ -6,10 +6,10 @@ export default defineConfig({
   dts: false,
   platform: 'browser',
   target: 'esnext',
-  noExternal: ['ass-compiler'],
+  noExternal: ['ass-compiler', 'renderer'],
   name: 'ASS',
   globalName: 'ass',
-  format: ['esm', 'cjs'],
+  format: ['esm'],
   async onSuccess() {
     console.log('      END ' + Date().split(' ')[4]);
   }
