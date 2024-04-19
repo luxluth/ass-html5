@@ -9,6 +9,20 @@ export type OnInitSizes = {
   y: number;
 };
 
+export enum Baseline {
+  Bottom,
+  Middle,
+  Top,
+  Alphabetic
+}
+
+export enum Align {
+  Left,
+  Center,
+  Right,
+  Start
+}
+
 export type FontDescriptor = {
   fontname: string;
   fontsize: number;
@@ -31,8 +45,8 @@ export type FontDescriptor = {
   fe?: number;
   borderStyle: number;
   opacity: number;
-  textAlign: 'left' | 'center' | 'right' | 'start';
-  textBaseline: 'bottom' | 'middle' | 'top' | 'alphabetic';
+  textAlign: Align;
+  textBaseline: Baseline;
 };
 
 export type Layer = {

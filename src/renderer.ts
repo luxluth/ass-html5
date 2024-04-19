@@ -1,5 +1,6 @@
 import type { CompiledASS, CompiledASSStyle, Dialogue, DialogueSlice } from 'ass-compiler';
 import type { CompiledTag } from 'ass-compiler/types/tags';
+
 import type {
   FontDescriptor,
   Styles,
@@ -10,7 +11,7 @@ import type {
   Char,
   Word
 } from './types';
-import { CHARKIND, LOGTYPE } from './types';
+import { CHARKIND, LOGTYPE, Align, Baseline } from './types';
 import {
   ruleOfThree,
   blendAlpha,
@@ -522,18 +523,18 @@ export class Renderer {
 
         if (!customPosition) {
           switch (font.textAlign) {
-            case 'left':
+            case Align.Left:
               line.forEach((char) => {
                 if (char.kind == CHARKIND.NORMAL) char.pos.x += margin.left;
               });
               break;
-            case 'center':
+            case Align.Center:
               line.forEach((char) => {
                 if (char.kind == CHARKIND.NORMAL)
                   char.pos.x += (layer.canvas.width - lineWidth) / 2;
               });
               break;
-            case 'right':
+            case Align.Right:
               line.forEach((char) => {
                 if (char.kind == CHARKIND.NORMAL)
                   char.pos.x += layer.canvas.width - lineWidth - margin.right;
@@ -546,7 +547,7 @@ export class Renderer {
               break;
           }
           switch (font.textBaseline) {
-            case 'bottom':
+            case Baseline.Bottom:
               line.forEach((char) => {
                 if (char.kind == CHARKIND.NORMAL)
                   char.pos.y +=
@@ -555,7 +556,7 @@ export class Renderer {
                     margin.vertical;
               });
               break;
-            case 'middle':
+            case Baseline.Middle:
               line.forEach((char) => {
                 if (char.kind == CHARKIND.NORMAL)
                   char.pos.y +=
@@ -563,7 +564,7 @@ export class Renderer {
                     (lines.length > 1 ? totalHeight / lines.length : lineHeight);
               });
               break;
-            case 'top':
+            case Baseline.Top:
               line.forEach((char) => {
                 if (char.kind == CHARKIND.NORMAL) char.pos.y += margin.vertical + lineHeight / 2;
               });
@@ -580,14 +581,14 @@ export class Renderer {
           }
         } else {
           switch (font.textAlign) {
-            case 'left':
+            case Align.Left:
               break;
-            case 'center':
+            case Align.Center:
               line.forEach((char) => {
                 if (char.kind == CHARKIND.NORMAL) char.pos.x -= lineWidth / 2;
               });
               break;
-            case 'right':
+            case Align.Right:
               // line.forEach((char) => {
               //   if (char.kind == CHARKIND.NORMAL) char.pos.x += lineWidth;
               // });
@@ -936,17 +937,17 @@ export class Renderer {
       case 1:
       case 4:
       case 7:
-        return 'left';
+        return Align.Left;
       case 2:
       case 5:
       case 8:
-        return 'center';
+        return Align.Center;
       case 3:
       case 6:
       case 9:
-        return 'right';
+        return Align.Right;
       default:
-        return 'start';
+        return Align.Start;
     }
   }
 
@@ -964,17 +965,17 @@ export class Renderer {
       case 1:
       case 2:
       case 3:
-        return 'bottom';
+        return Baseline.Bottom;
       case 4:
       case 5:
       case 6:
-        return 'middle';
+        return Baseline.Bottom;
       case 7:
       case 8:
       case 9:
-        return 'top';
+        return Baseline.Top;
       default:
-        return 'alphabetic';
+        return Baseline.Alphabetic;
     }
   }
 }
