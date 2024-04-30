@@ -47,6 +47,8 @@ export class Renderer {
   ppass: Ppass[] = [];
   styles: Styles;
   collisions: 'Normal' | 'Reverse' = 'Normal';
+  dt = 0;
+  previous = 0;
 
   constructor(
     ass: CompiledASS,
@@ -367,16 +369,21 @@ export class Renderer {
   }
 
   async startRendering() {
-    this.animationHandle = requestAnimationFrame(this.render.bind(this));
+    window.requestAnimationFrame((timestamp) => {
+      this.previous = timestamp;
+      this.animationHandle = requestAnimationFrame(this.render.bind(this));
+    });
   }
 
-  render() {
+  render(timestamp: number) {
     if (this.stop === true) {
       if (this.animationHandle) {
         this.renderDiv.remove();
         cancelAnimationFrame(this.animationHandle);
       }
     } else {
+      this.dt = (timestamp - this.previous) / 1000.0;
+      this.previous = timestamp;
       this.display(this.video.currentTime);
       this.animationHandle = requestAnimationFrame(this.render.bind(this));
     }
