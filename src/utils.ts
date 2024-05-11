@@ -148,19 +148,6 @@ export function randomId(parts: number, separator = '-', prefix = '', ln = 10) {
   return prefix + partsArray.join(separator);
 }
 
-export function hashString(str: string) {
-  let hash = 0;
-  if (str.length == 0) {
-    return hash;
-  }
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash; // Convert to 32bit integer
-  }
-  return hash;
-}
-
 export function newRender(
   top: number,
   left: number,
@@ -237,94 +224,6 @@ export function uuidgen() {
   });
 }
 
-export function makeLines(frags: DialogueFragment[]) {
-  /*
-	`[ "On a notre nouvelle reine\\Ndes ", "scream queens", "." ]` -> `["On a notre nouvelle reine", "des scream queens."]`
-	`[ "Bunch of ", "winners", "." ]` -> `["Bunch of winners."]`
-	`[ "Bunch of ", "coders", "\\Nand ", "nerds", "." ]` ->  `["Bunch of coders", "and nerds."]`
-	A special case is when after the first parse we have a line that ends with \N, in that case we remove the \N and add an empty string to the result array
-	[ "ÉPISODE", "25", "\\N", "\\N", "TRÉSOR", "CACHÉ" ] -> [ "ÉPISODE 25\\N", "TRÉSOR CACHÉ" ] -> [ "ÉPISODE 25", "", "TRÉSOR CACHÉ" ]
-	(empty line is added to the result array)
-	*/
-  let result = [];
-  let line = '';
-  for (let i = 0; i < frags.length; i++) {
-    line += frags[i]?.text as string;
-    if (frags[i]?.text.includes('\\N')) {
-      let split = frags[i]?.text.split('\\N') as string[];
-      line = line.replace('\\N' + split[1], '');
-      result.push(line);
-      line = split[1] as string;
-    }
-  }
-  result.push(line);
-
-  let newRes = [] as string[];
-  for (let i = 0; i < result.length; i++) {
-    if (result[i]?.endsWith('\\N')) {
-      let count = (result[i]?.match(/\\N/g) || []).length;
-      newRes.push(result[i]?.replace('\\N', '') as string);
-      for (let j = 0; j < count; j++) {
-        newRes.push('');
-      }
-    } else {
-      newRes.push(result[i] as string);
-    }
-  }
-
-  return newRes;
-}
-
-export function splitTextOnTheNextCharacter(text: string) {
-  // Hello world -> [ "Hello ", "world" ]
-  // Hello world! -> [ "Hello ", "world!" ]
-
-  let result = [] as string[];
-  let line = '';
-  let spaceEncountered = false;
-  let wordEncountered = false;
-  for (let i = 0; i < text.length; i++) {
-    if (text[i] === ' ') {
-      spaceEncountered = true;
-      wordEncountered = false;
-    } else {
-      wordEncountered = true;
-    }
-    if (spaceEncountered && wordEncountered) {
-      result.push(line);
-      line = '';
-      spaceEncountered = false;
-    }
-    line += text[i];
-  }
-
-  if (line.length > 0) {
-    result.push(line);
-  }
-  return result;
-}
-
-export function separateNewLine(words: string[]) {
-  // ["Hello ", "world!\Ntoday ", "is ", "a ", "good ", "day."] -> ["Hello ", "world!", "\N", "today ", "is ", "a ", "good ", "day."]
-  words = words.filter((word) => word !== '');
-  let wordsWithLineBreaks: string[] = [];
-  for (let i = 0; i < words.length; i++) {
-    let split = words[i]?.split('\\N') ?? [];
-    if (split?.length === 1) {
-      wordsWithLineBreaks.push(words[i] as string);
-    } else {
-      split.forEach((word, idx) => {
-        wordsWithLineBreaks.push(word);
-        if (idx < split.length - 1) {
-          wordsWithLineBreaks.push('\\N');
-        }
-      });
-    }
-  }
-
-  return wordsWithLineBreaks;
-}
-
 export function blendAlpha(color: string, alpha: number) {
   color = color.replace('#', '');
   // color = FFFFFF
@@ -371,11 +270,11 @@ export class Vector2 {
  * @param t a value between 0..1
  * start + (end - start) * t
  */
-export function linearInterpolation(start: Vector2, end: Vector2, t: number): Vector2 {
+export function Lerp(start: Vector2, end: Vector2, t: number): Vector2 {
   return Vector2.add(start, Vector2.mul(Vector2.sub(end, start), t));
 }
 
-export function liStep(
+export function LerpStep(
   step: Vector2,
   at: number,
   start: Vector2,
@@ -383,8 +282,8 @@ export function liStep(
   t: number
 ): Vector2 {
   if (at <= t) {
-    return linearInterpolation(start, step, at);
+    return Lerp(start, step, at);
   } else {
-    return linearInterpolation(step, end, t);
+    return Lerp(step, end, t);
   }
 }
