@@ -23,7 +23,7 @@ export enum Align {
   Start
 }
 
-export type FontDescriptor = {
+export type StyleDescriptor = {
   fontname: string;
   fontsize: number;
   bold: boolean;
@@ -175,5 +175,6 @@ export type Char =
 
 export type Word = {
   w: number;
+  font: StyleDescriptor;
   value: Char[];
 };

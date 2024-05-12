@@ -1,5 +1,4 @@
-import { DialogueFragment } from 'ass-compiler';
-import { type Tag } from './types';
+import { type Tag, type Char, CHARKIND } from './types';
 /**
  * Convert a color in RGBA format to Aegisub format
  * @param aegisubColor The color in Aegisub format
@@ -141,11 +140,49 @@ export function genRandomString(ln: number) {
 }
 
 export function randomId(parts: number, separator = '-', prefix = '', ln = 10) {
-  const partsArray = [];
+  let partsArray: string[] = [];
   for (let i = 0; i < parts; i++) {
     partsArray.push(genRandomString(ln));
   }
   return prefix + partsArray.join(separator);
+}
+
+export function stringHash(str: string) {
+  let hash = 0;
+
+  if (str.length == 0) return hash;
+
+  for (let i = 0; i < str.length; i++) {
+    let char = str.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash = hash & hash;
+  }
+
+  return hash;
+}
+
+export function chunkCharWidth(chars: Char[]) {
+  let w = 0;
+  for (let i = 0; i < chars.length; i++) {
+    let char = chars[i] as Char;
+    if (char.kind == CHARKIND.NORMAL) {
+      w += char.w;
+    }
+  }
+
+  return w;
+}
+
+export function chunkCharToString(chars: Char[]) {
+  let w = '';
+  for (let i = 0; i < chars.length; i++) {
+    let char = chars[i] as Char;
+    if (char.kind == CHARKIND.NORMAL) {
+      w += char.c;
+    }
+  }
+
+  return w;
 }
 
 export function newRender(

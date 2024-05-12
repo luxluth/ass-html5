@@ -2,7 +2,7 @@ import type { CompiledASS, CompiledASSStyle, Dialogue, DialogueSlice } from 'ass
 import type { CompiledTag } from 'ass-compiler/types/tags';
 
 import type {
-  FontDescriptor,
+  StyleDescriptor,
   Styles,
   Position,
   OnInitSizes,
@@ -19,7 +19,10 @@ import {
   swapBBGGRR,
   newCanvas,
   newRender,
-  Vector2
+  Vector2,
+  stringHash,
+  chunkCharWidth,
+  chunkCharToString
 } from './utils';
 
 type Ppass = {
@@ -49,6 +52,7 @@ export class Renderer {
   collisions: 'Normal' | 'Reverse' = 'Normal';
   dt = 0;
   previous = 0;
+  currentTime = 0;
 
   constructor(
     ass: CompiledASS,
@@ -153,7 +157,7 @@ export class Renderer {
     //   console.debug(p, this.countLines(p.chars));
     // });
     //
-    console.debug(this.styles);
+    // console.debug(this.styles);
     // this.stop = true;
   }
 
@@ -390,11 +394,12 @@ export class Renderer {
   }
 
   destroy() {
-    console.debug('STOPPED::');
+    // console.debug('STOPPED::');
     this.stop = true;
   }
 
   display(time: number) {
+    this.currentTime = time;
     this.clear();
     const slicesToDisplay = this.getSlices(time);
     slicesToDisplay.forEach((dialogue) => {
@@ -492,6 +497,8 @@ export class Renderer {
       const totalHeight = lineHeight * linesCount;
       let cX = 0;
       let cY = 0;
+      let baseX = 0;
+
       let customPosition = false;
 
       if (d.pos) {
@@ -499,14 +506,15 @@ export class Renderer {
         const Xratio = layer.canvas.width / this.playerResX;
         const Yratio = layer.canvas.height / this.playerResY;
 
-        cX = d.pos.x * Xratio;
+        baseX = d.pos.x * Xratio;
+        cX = baseX;
         cY = d.pos.y * Yratio;
       }
 
       d.chars.forEach((char) => {
         switch (char.kind) {
           case CHARKIND.NEWLINE:
-            cX = 0;
+            cX = baseX;
             cY += lineHeight;
             break;
           case CHARKIND.NORMAL:
@@ -606,127 +614,165 @@ export class Renderer {
         }
       });
 
+      let currentWord: Char[] = [];
+      let currentFont: StyleDescriptor | null = null;
+      let words: Word[] = [];
+
+      let currentHash = 0;
+
       d.chars.forEach((char) => {
         if (char.kind == CHARKIND.NORMAL) {
           let font = this.computeStyle(char.style, d.alignment, layer);
           this.applyOverrideTag(char.tag, font);
-          this.applyFont(font, layer);
-          // console.debug(layer.ctx.font, char.c, char.tag);
 
-          if (font.borderStyle !== 3) {
-            if (font.xbord !== 0 || font.ybord !== 0) {
-              layer.ctx.strokeText(char.c, char.pos.x, char.pos.y);
+          let fHash = this.getFontHash(font);
+
+          if (currentHash !== fHash) {
+            if (currentWord.length > 0) {
+              if (currentFont !== null) {
+                words.push({
+                  font: currentFont,
+                  value: currentWord,
+                  w: chunkCharWidth(currentWord)
+                });
+
+                currentWord = [char];
+                currentFont = null;
+                currentHash = fHash;
+              }
+            } else {
+              currentFont = font;
+              currentWord.push(char);
+              currentHash = fHash;
             }
+          } else {
+            currentFont = font;
+            currentWord.push(char);
+            currentHash = fHash;
           }
+        } else {
+          if (currentFont !== null) {
+            words.push({
+              font: currentFont,
+              value: currentWord,
+              w: chunkCharWidth(currentWord)
+            });
 
-          layer.ctx.fillText(char.c, char.pos.x, char.pos.y);
+            currentWord = [];
+            currentFont = null;
+          }
         }
+      });
+
+      if (currentWord.length > 0) {
+        if (currentFont !== null) {
+          words.push({
+            font: currentFont,
+            value: currentWord,
+            w: chunkCharWidth(currentWord)
+          });
+
+          currentWord = [];
+          currentFont = null;
+        }
+      }
+
+      words.forEach((word) => {
+        this.drawWord(word, layer);
       });
     }
   }
 
-  drawTextBackground(text: string, pos: Position, height: number, font: FontDescriptor) {
+  getFontHash(font: StyleDescriptor): number {
+    return stringHash(JSON.stringify(font));
+  }
+
+  drawWord(word: Word, layer: Layer, debug = false) {
+    let str = chunkCharToString(word.value);
+    this.applyFont(word.font, layer);
+
+    const wordHead = word.value[0] as Char;
+
+    if (wordHead.kind === CHARKIND.NORMAL) {
+      if (word.font.borderStyle !== 3) {
+        if (word.font.xbord !== 0 || word.font.ybord !== 0) {
+          layer.ctx.strokeText(str, wordHead.pos.x, wordHead.pos.y);
+        }
+      }
+
+      let metrics = layer.ctx.measureText(str);
+
+      layer.ctx.fillText(str, wordHead.pos.x, wordHead.pos.y);
+
+      if (word.font.underline) {
+        const y = wordHead.pos.y + metrics.emHeightDescent;
+        layer.ctx.fillRect(wordHead.pos.x, y, metrics.width, (layer.canvas.height * 0.2) / 100);
+      }
+      if (word.font.strikeout) {
+        const y = wordHead.pos.y - metrics.hangingBaseline / 2;
+        layer.ctx.shadowOffsetX = 0;
+        layer.ctx.shadowOffsetY = 0;
+        layer.ctx.fillRect(wordHead.pos.x, y, metrics.width, (layer.canvas.height * 0.2) / 100);
+      }
+
+      if (word.font.borderStyle === 3) {
+        this.drawTextBackground(
+          wordHead.pos,
+          metrics.actualBoundingBoxAscent + metrics.fontBoundingBoxDescent,
+          metrics.width,
+          word.font
+        );
+      }
+    }
+  }
+
+  drawChar(char: Char, layer: Layer, alignment: number, debug = false) {
+    if (char.kind == CHARKIND.NORMAL) {
+      let font = this.computeStyle(char.style, alignment, layer);
+      this.applyOverrideTag(char.tag, font);
+      this.applyFont(font, layer);
+      // console.debug(layer.ctx.font, char.c, char.tag);
+
+      if (font.borderStyle !== 3) {
+        if (font.xbord !== 0 || font.ybord !== 0) {
+          layer.ctx.strokeText(char.c, char.pos.x, char.pos.y);
+        }
+      }
+
+      let metrics = layer.ctx.measureText(char.c);
+
+      layer.ctx.fillText(char.c, char.pos.x, char.pos.y);
+
+      if (font.underline) {
+        const y = char.pos.y + metrics.emHeightDescent;
+        layer.ctx.fillRect(char.pos.x, y, metrics.width, (layer.canvas.height * 0.2) / 100);
+      }
+      if (font.strikeout) {
+        const y = char.pos.y - metrics.hangingBaseline / 2;
+        layer.ctx.shadowOffsetX = 0;
+        layer.ctx.shadowOffsetY = 0;
+        layer.ctx.fillRect(char.pos.x, y, metrics.width, (layer.canvas.height * 0.2) / 100);
+      }
+
+      if (font.borderStyle === 3) {
+        this.drawTextBackground(
+          char.pos,
+          metrics.actualBoundingBoxAscent + metrics.fontBoundingBoxDescent,
+          metrics.width,
+          font
+        );
+      }
+    }
+  }
+
+  drawTextBackground(pos: Vector2, height: number, width: number, font: StyleDescriptor) {
     const layer = this.layers[0] as Layer;
     layer.ctx.save();
     layer.ctx.beginPath();
     layer.ctx.fillStyle = font.colors.c2;
-    layer.ctx.fillRect(pos.x, pos.y - height, layer.ctx.measureText(text).width, height);
+    layer.ctx.fillRect(pos.x, pos.y - height, width, height);
     layer.ctx.closePath();
     layer.ctx.restore();
-  }
-
-  drawWord(
-    word: string,
-    x: number,
-    y: number,
-    font: FontDescriptor,
-    ctx: CanvasRenderingContext2D
-  ) {
-    const debug = false;
-    // console.debug(`${this.ctx.font} ===?=== ${this.fontDecriptorString(font)}`)
-    let baseY = y;
-    let yChanged = false;
-    ctx.save();
-    ctx.beginPath();
-    if (font.t.fscy !== 100 && font.t.fscx == 100) {
-      // console.debug("stretch-y by", font.t.fscy / 100)
-      y -= ctx.measureText(word).fontBoundingBoxAscent * (font.t.fscy / 100 - 1);
-      ctx.scale(1, font.t.fscy / 100);
-      yChanged = true;
-    } else if (font.t.fscx !== 100 && font.t.fscy == 100) {
-      // console.debug("stretch-x by", font.t.fscx / 100)
-      x -= ctx.measureText(word).width * (font.t.fscx / 100 - 1);
-      ctx.scale(font.t.fscx / 100, 1);
-    } else if (font.t.fscx !== 100 && font.t.fscy !== 100) {
-      // console.debug("stretch-x-y", font.t.fscx / 100, font.t.fscy / 100)
-      x -= ctx.measureText(word).width * (font.t.fscx / 100 - 1);
-      y -= ctx.measureText(word).fontBoundingBoxAscent * (font.t.fscy / 100 - 1);
-      ctx.scale(font.t.fscx / 100, font.t.fscy / 100);
-      yChanged = true;
-    }
-
-    // console.debug(word, x, y, this.textAlign, this.textBaseline)
-
-    // font rotation
-    // if (font.t.frz !== 0) {
-    // 	let rotate = font.t.frz * (Math.PI / 180)
-    // 	// rotate around the start of the word
-    // 	this.ctx.translate(x, y)
-    // 	// transformation matrix
-    // 	this.ctx.transform(1, 0, Math.tan(rotate), 1, 0, 0)
-    // }
-
-    // Solution: Drawing the text on buffer canvas and then add it to the main canvas
-    // That way, the font background is drawn on the buffer canvas and not on the main canvas
-    // so the background doesn't overlap the other text
-    if (font.borderStyle !== 3) {
-      if (font.xbord !== 0 || font.ybord !== 0) {
-        ctx.strokeText(word, x, y);
-      }
-    } // else {
-    // 	// a border style of 3 is a filled box
-    // 	this.ctx.save()
-    // 	this.ctx.fillStyle = this.ctx.strokeStyle
-    // 	this.ctx.fillRect(x, y - this.ctx.measureText(word).fontBoundingBoxAscent, this.ctx.measureText(word).width, this.ctx.measureText(word).fontBoundingBoxAscent + this.ctx.measureText(word).fontBoundingBoxDescent)
-    // 	this.ctx.restore()
-    // }
-
-    ctx.fillText(word, x, y);
-
-    if (debug) {
-      // debug bounding box
-      ctx.strokeStyle = 'red';
-      ctx.strokeRect(
-        x,
-        y - ctx.measureText(word).actualBoundingBoxAscent,
-        ctx.measureText(word).width,
-        ctx.measureText(word).actualBoundingBoxAscent + ctx.measureText(word).fontBoundingBoxDescent
-      );
-    }
-
-    if (font.borderStyle === 3) {
-      // a border style of 3 is a filled box
-      this.drawTextBackground(
-        word,
-        { x: x, y: y },
-        ctx.measureText(word).actualBoundingBoxAscent +
-          ctx.measureText(word).fontBoundingBoxDescent,
-        font
-      );
-    }
-
-    ctx.stroke();
-    ctx.fill();
-    ctx.closePath();
-    ctx.restore();
-
-    // return the height added by the word in more from the passed y
-    return yChanged
-      ? y -
-          baseY +
-          ctx.measureText(word).fontBoundingBoxAscent +
-          ctx.measureText(word).fontBoundingBoxDescent
-      : 0;
   }
 
   upscaleY(y: number, baseCanvasHeight: number) {
@@ -780,7 +826,7 @@ export class Renderer {
     };
   }
 
-  applyOverrideTag(tag: CompiledTag, font: FontDescriptor) {
+  applyOverrideTag(tag: CompiledTag, font: StyleDescriptor) {
     if (tag.b !== undefined) font.bold = tag.b === 1;
     if (tag.i !== undefined) font.italic = tag.i === 1;
     if (tag.u !== undefined) font.underline = tag.u === 1;
@@ -820,13 +866,13 @@ export class Renderer {
     return (ruleOfThree(firstcomp, secondcomp) * x) / 100;
   }
 
-  fontDecriptorString(font: FontDescriptor) {
+  fontDecriptorString(font: StyleDescriptor) {
     return `${font.bold ? 'bold ' : ''}${font.italic ? 'italic ' : ''}${font.fontsize.toFixed(
       3
     )}px "${font.fontname}"`;
   }
 
-  computeStyle(name: string, alignment: number, layer: Layer): FontDescriptor {
+  computeStyle(name: string, alignment: number, layer: Layer): StyleDescriptor {
     const style = this.styles[name] as CompiledASSStyle;
     if (style === undefined) {
       // TODO: fallbackFont when there is no style
@@ -858,7 +904,7 @@ export class Renderer {
 
     const { PrimaryColour, OutlineColour, SecondaryColour, BorderStyle } = style.style;
 
-    const font: FontDescriptor = {
+    const font: StyleDescriptor = {
       fontsize: this.upscale(fs, this.playerResY, this.layers[0]?.canvas.height || this.playerResY),
       fontname: fn,
       bold: b === 1,
@@ -901,11 +947,11 @@ export class Renderer {
     return font;
   }
 
-  applyFont(font: FontDescriptor, layer: Layer) {
+  applyFont(font: StyleDescriptor, layer: Layer) {
     layer.ctx.font = this.fontDecriptorString(font);
     layer.ctx.fillStyle = blendAlpha(font.colors.c1, font.colors.a1);
     layer.ctx.strokeStyle = blendAlpha(font.colors.c3, font.colors.a3);
-    // layer.ctx.letterSpacing = `${font.t.fsp}px`;
+    layer.ctx.letterSpacing = `${font.t.fsp}px`;
     layer.ctx.shadowOffsetX = this.upscale(
       font.xshad,
       this.playerResX,
@@ -976,7 +1022,7 @@ export class Renderer {
       case 4:
       case 5:
       case 6:
-        return Baseline.Bottom;
+        return Baseline.Middle;
       case 7:
       case 8:
       case 9:
