@@ -1,61 +1,84 @@
-import { compile, type CompiledASS } from 'ass-compiler'
-import { Renderer } from './renderer'
-import type { OnInitSizes } from './types'
+import { compile, type CompiledASS } from 'ass-compiler';
+import { Renderer } from './renderer';
+import type { OnInitSizes } from './types';
 
 export type ASSOptions = {
-	/**
-	 * The ass text string
-	 */
-	assText: string
+  /**
+   * The ass text
+   */
+  assText: string;
 
-	/**
-	 * The video to display the subtile on.
-	 * Can be either an `HTMLVideoElement` or `string` (html query selector )
-	 */
-	video: HTMLVideoElement | string
+  /**
+   * The video to display the subtile on.
+   * Can be either an `HTMLVideoElement` or `string` (html query selector)
+   */
+  video: HTMLVideoElement | string;
 
-	/**
-	 * Fonts to load
-	 */
-	fonts?: Font[]
+  /**
+   * List of fonts to load. This ensures that all the fonts
+   * needed for the rendering are present and loaded into the document
+   */
+  fonts?: Font[];
 
-	/**
-	 * Corresponds to the `z-index` to placed the Canvas renderer
-	 */
-	zIndex?: number
+  /**
+   * Corresponds to the `z-index` to placed the Canvas renderer
+   * > The renderer will always be added right after the `video` element
+   */
+  zIndex?: number;
+
+  /**
+   * A Callback that is invoked when the preprocess of the ass text by render is done
+   */
+  onReady?: () => void;
+
+  /**
+   * Type of logging
+   * - `DEBUG` only debug type log will be displayed
+   * - `DISABLE` no logging will be emitted (default)
+   * - `VERBOSE` every log will be shown
+   * - `WARN` only warning will be shown
+   */
+  logging?: LOGTYPE;
+};
+
+export enum LOGTYPE {
+  DISABLE = 'DISABLE',
+  VERBOSE = 'VERBOSE',
+  DEBUG = 'DEBUG',
+  WARN = 'WARN'
 }
 
 export type FontStyle = {
-	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/ascentOverride) */
-	ascentOverride: string
-	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/descentOverride) */
-	descentOverride: string
-	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/display) */
-	display: FontDisplay
-	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/family) */
-	family: string
-	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/featureSettings) */
-	featureSettings: string
-	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/lineGapOverride) */
-	lineGapOverride: string
-	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/stretch) */
-	stretch: string
-	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/style) */
-	style: string
-	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/unicodeRange) */
-	unicodeRange: string
-	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/variant) */
-	variant: string
-	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/weight) */
-	weight: string
-	/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/load) */
-}
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/ascentOverride) */
+  ascentOverride: string;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/descentOverride) */
+  descentOverride: string;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/display) */
+  display: FontDisplay;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/family) */
+  family: string;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/featureSettings) */
+  featureSettings: string;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/lineGapOverride) */
+  lineGapOverride: string;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/stretch) */
+  stretch: string;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/style) */
+  style: string;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/unicodeRange) */
+  unicodeRange: string;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/variant) */
+  variant: string;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/weight) */
+  weight: string;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/load) */
+};
 
 export type Font = {
-	family: string
-	url: string
-	descriptors?: Partial<FontStyle>
-}
+  family: string;
+  url: string;
+  descriptors?: Partial<FontStyle>;
+};
 
 /**
  * @class ASS
@@ -66,166 +89,161 @@ export type Font = {
  * the targeted video element
  * */
 export default class ASS {
-	assText: string
-	private video: HTMLVideoElement | string
-	videoElement: HTMLVideoElement | null = null
-	canvas: HTMLCanvasElement | null = null
-	private renderer: Renderer | null = null
-	private fonts?: Font[]
-	private zIndex?: number
-	private compiledAss: CompiledASS
+  assText: string;
+  private video: HTMLVideoElement | string;
+  videoElement: HTMLVideoElement | null = null;
+  private renderer: Renderer | null = null;
+  private ro: ResizeObserver | null = null;
+  private fonts?: Font[];
+  private zIndex?: number;
+  private onReady?: () => void;
+  private logging: LOGTYPE = LOGTYPE.DISABLE;
+  private compiledAss: CompiledASS;
 
-	constructor(options: ASSOptions) {
-		this.assText = options.assText
-		this.compiledAss = compile(this.assText, {})
-		this.video = options.video
-		this.fonts = options.fonts
-		this.zIndex = options.zIndex
-	}
+  constructor(options: ASSOptions) {
+    this.assText = options.assText;
+    this.compiledAss = compile(this.assText, {});
+    this.video = options.video;
+    this.fonts = options.fonts;
+    this.zIndex = options.zIndex;
+    this.onReady = options.onReady;
+    if (options.logging) this.logging = options.logging;
+  }
 
-	/**
-	 * Initialize a new ASS Canvas renderer
-	 */
-	async init() {
-		if (typeof this.video == 'string') {
-			this.videoElement = document.querySelector(this.video)
-			if (this.videoElement === null) {
-				throw new Error('Unable to find the video element')
-			}
-		} else {
-			this.videoElement = this.video
-		}
+  /**
+   * Start the ass rendering process
+   */
+  async render() {
+    if (typeof this.video == 'string') {
+      this.videoElement = document.querySelector(this.video);
+      if (this.videoElement === null) {
+        throw new Error('Unable to find the video element');
+      }
+    } else {
+      this.videoElement = this.video;
+    }
 
-		const sizes = this.setCanvasSize()
+    const sizes = this.setCanvasSize();
 
-		if (typeof this.fonts !== 'undefined') {
-			await this.loadFonts(this.fonts)
-		}
+    if (typeof this.fonts !== 'undefined') {
+      await this.loadFonts(this.fonts);
+    }
 
-		this.renderer = new Renderer(this.compiledAss, sizes, this.videoElement, this.zIndex)
-		this.videoElement?.addEventListener('loadedmetadata', () => {
-			this.setCanvasSize()
-		})
+    if (this.videoElement) {
+      this.renderer = new Renderer(
+        this.compiledAss,
+        sizes,
+        this.videoElement,
+        this.logging,
+        this.zIndex
+      );
+      this.setCanvasSize();
+      this.videoElement.addEventListener('loadedmetadata', this.setCanvasSize.bind(this));
 
-		window.addEventListener('resize', () => {
-			this.setCanvasSize()
-			this.renderer?.redraw()
-		})
+      this.ro = new ResizeObserver(this.setCanvasSize.bind(this));
+      this.ro.observe(this.videoElement);
 
-		this.renderer.render()
-	}
+      await this.renderer.warmup();
+      if (this.onReady) {
+        this.onReady();
+      }
 
-	/**
-	 * Re-initialize the ASS Canvas renderer
-	 * @param options The ASS options
-	 * @deprecated Do not use this
-	 */
-	async reinit(options: ASSOptions) {
-		this.destroy()
-		this.assText = options.assText
-		this.video = options.video
-		this.fonts = options.fonts
-		this.zIndex = options.zIndex
-		await this.init()
-	}
+      await this.renderer.startRendering();
+    }
+  }
 
-	/**
-	 * Destroy the ASS `canvas`
-	 *
-	 * It removes events bind to the video and the canvas renderer
-	 */
-	destroy() {
-		this.videoElement?.removeEventListener('loadedmetadata', () => {
-			this.setCanvasSize()
-		})
-		window.removeEventListener('resize', () => {
-			this.setCanvasSize()
-			this.renderer?.redraw()
-		})
+  /**
+   * Stop the rendering
+   */
+  destroy() {
+    this.videoElement?.removeEventListener('loadedmetadata', this.setCanvasSize.bind(this));
+    this.ro?.disconnect();
 
-		this.canvas?.remove()
-		this.canvas = null
+    this.renderer?.destroy();
+    this.renderer = null;
+  }
 
-		this.renderer?.destroy()
-		this.renderer = null
-	}
+  private setCanvasSize() {
+    const { videoWidth, videoHeight, offsetTop, offsetLeft } = this
+      .videoElement as HTMLVideoElement;
+    const aspectRatio = videoWidth / videoHeight;
 
-	private setCanvasSize() {
-		const { videoWidth, videoHeight, offsetTop, offsetLeft } = this.videoElement as HTMLVideoElement
-		const aspectRatio = videoWidth / videoHeight
+    const maxWidth = this.videoElement?.clientWidth || 0;
+    const maxHeight = this.videoElement?.clientHeight || 0;
 
-		const maxWidth = this.videoElement?.clientWidth || 0
-		const maxHeight = this.videoElement?.clientHeight || 0
+    let width = maxWidth;
+    let height = maxHeight;
+    let x = offsetLeft;
+    let y = offsetTop;
 
-		let width = maxWidth
-		let height = maxHeight
-		let x = offsetLeft
-		let y = offsetTop
+    if (maxHeight * aspectRatio > maxWidth) {
+      width = maxWidth;
+      height = width / aspectRatio;
+      y += (maxHeight - height) / 2;
+    } else {
+      height = maxHeight;
+      width = height * aspectRatio;
+      x += (maxWidth - width) / 2;
+    }
 
-		if (maxHeight * aspectRatio > maxWidth) {
-			width = maxWidth
-			height = width / aspectRatio
-			y += (maxHeight - height) / 2
-		} else {
-			height = maxHeight
-			width = height * aspectRatio
-			x += (maxWidth - width) / 2
-		}
+    const sizes = {
+      width,
+      height,
+      x,
+      y
+    } as OnInitSizes;
 
-		const sizes = {
-			width,
-			height,
-			x,
-			y
-		} as OnInitSizes
+    if (this.renderer?.renderDiv) {
+      this.renderer.renderDiv.style.width = width + 'px';
+      this.renderer.renderDiv.style.height = height + 'px';
+      this.renderer.renderDiv.style.top = y + 'px';
+      this.renderer.renderDiv.style.left = x + 'px';
+    }
 
-		if (this.renderer?.renderDiv) {
-			this.renderer.renderDiv.style.width = width + 'px'
-			this.renderer.renderDiv.style.height = height + 'px'
-			this.renderer.renderDiv.style.top = y + 'px'
-			this.renderer.renderDiv.style.left = x + 'px'
-		}
+    this.renderer?.layers.forEach((layer) => {
+      layer.canvas.width = width;
+      layer.canvas.height = height;
+    });
 
-		this.renderer?.layers.forEach((layer) => {
-			layer.canvas.width = width
-			layer.canvas.height = height
-		})
+    return sizes;
+  }
 
-		return sizes
-	}
+  private async loadFonts(fonts: Font[]) {
+    for (const font of fonts) {
+      try {
+        const loaded = await this.loadFont(font);
+        if (loaded) {
+          if (this.logging == LOGTYPE.VERBOSE)
+            console.info(`Font ${font.family} loaded from ${font.url}`);
+        } else {
+          if (this.logging == LOGTYPE.VERBOSE || this.logging == LOGTYPE.WARN)
+            console.warn(`Unable to load font ${font.family} from ${font.url}`);
+        }
+      } catch (e) {
+        if (this.logging == LOGTYPE.VERBOSE || this.logging == LOGTYPE.WARN) {
+          console.warn(`Unable to load font ${font.family} from ${font.url}`);
+          console.warn(e);
+        }
+      }
+    }
+  }
 
-	private async loadFonts(fonts: Font[]) {
-		for (const font of fonts) {
-			try {
-				const loaded = await this.loadFont(font)
-				if (loaded) {
-					console.info(`Font ${font.family} loaded from ${font.url}`)
-				} else {
-					console.warn(`Unable to load font ${font.family} from ${font.url}`)
-				}
-			} catch (e) {
-				console.warn(`Unable to load font ${font.family} from ${font.url}`)
-				console.warn(e)
-			}
-		}
-	}
+  private async getFontUrl(fontUrl: string) {
+    const response = await fetch(fontUrl);
+    const blob = await response.blob();
+    return this.newBlobUrl(blob);
+  }
 
-	private async getFontUrl(fontUrl: string) {
-		const response = await fetch(fontUrl)
-		const blob = await response.blob()
-		return this.newBlobUrl(blob)
-	}
+  private newBlobUrl(blob: Blob) {
+    return URL.createObjectURL(blob);
+  }
 
-	private newBlobUrl(blob: Blob) {
-		return URL.createObjectURL(blob)
-	}
-
-	private async loadFont(font: Font) {
-		const url = await this.getFontUrl(font.url)
-		const fontFace = new FontFace(font.family, `url(${url})`, font.descriptors || {})
-		const loadedFace = await fontFace.load()
-		// @ts-ignore
-		document.fonts.add(loadedFace)
-		return fontFace.status === 'loaded'
-	}
+  private async loadFont(font: Font) {
+    const url = await this.getFontUrl(font.url);
+    const fontFace = new FontFace(font.family, `url(${url})`, font.descriptors || {});
+    const loadedFace = await fontFace.load();
+    // @ts-ignore
+    document.fonts.add(loadedFace);
+    return fontFace.status === 'loaded';
+  }
 }

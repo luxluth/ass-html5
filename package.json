@@ -1,51 +1,50 @@
 {
-	"name": "ass-html5",
-	"version": "0.4.1",
-	"description": "Display ASS/SSA subtitles on html5 videos",
-	"main": "dist/ass.js",
-	"module": "dist/ass.mjs",
-	"types": "dist/ass.d.ts",
-	"browser": "dist/ass.min.js",
-	"scripts": {
-		"build": "pnpm run build:normal && pnpm run build:minify",
-		"build:normal": "tsup --dts",
-		"build:minify": "rollup -c --bundleConfigAsCjs",
-		"build:simple": "tsup",
-		"dev": "tsup --watch",
-		"release": "pnpm run build && changeset publish",
-		"lint": "tsc",
-		"format": "prettier --write ."
-	},
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/luxluth/ass-html5.git"
-	},
-	"keywords": [
-		"ASS",
-		"SSA",
-		"subtitles",
-		"aegisub",
-		"libass"
-	],
-	"author": "luxluth",
-	"license": "MIT",
-	"bugs": {
-		"url": "https://github.com/luxluth/ass-html5/issues"
-	},
-	"homepage": "https://github.com/luxluth/ass-html5#readme",
-	"devDependencies": {
-		"@changesets/cli": "^2.27.1",
-		"@rollup/plugin-commonjs": "^25.0.7",
-		"@rollup/plugin-node-resolve": "^15.2.3",
-		"@rollup/plugin-terser": "^0.4.4",
-		"@rollup/plugin-typescript": "^11.1.6",
-		"@types/node": "^20.11.28",
-		"ass-compiler": "^0.1.11",
-		"prettier": "^3.2.5",
-		"rollup": "^4.13.0",
-		"terser": "^5.29.2",
-		"tslib": "^2.6.2",
-		"tsup": "^8.0.2",
-		"typescript": "^5.4.2"
-	}
+  "name": "ass-html5",
+  "version": "0.4.1",
+  "description": "Display ASS/SSA subtitles on html5 videos",
+  "main": "dist/ass.js",
+  "module": "dist/ass.mjs",
+  "types": "dist/ass.d.ts",
+  "browser": "dist/ass.min.js",
+  "scripts": {
+    "build": "pnpm run build:normal && pnpm run build:minify",
+    "build:normal": "tsup",
+    "build:minify": "rollup -c --bundleConfigAsCjs",
+    "dev": "tsup --watch",
+    "release": "pnpm run build && changeset publish",
+    "lint": "tsc",
+    "format": "prettier --write ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/luxluth/ass-html5.git"
+  },
+  "keywords": [
+    "ASS",
+    "SSA",
+    "subtitles",
+    "aegisub",
+    "libass"
+  ],
+  "author": "luxluth",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/luxluth/ass-html5/issues"
+  },
+  "homepage": "https://github.com/luxluth/ass-html5#readme",
+  "devDependencies": {
+    "@changesets/cli": "^2.27.1",
+    "@rollup/plugin-commonjs": "^25.0.7",
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-terser": "^0.4.4",
+    "@rollup/plugin-typescript": "^11.1.6",
+    "@types/node": "^20.12.11",
+    "ass-compiler": "^0.1.11",
+    "prettier": "^3.2.5",
+    "rollup": "^4.17.2",
+    "terser": "^5.31.0",
+    "tslib": "^2.6.2",
+    "tsup": "^8.0.2",
+    "typescript": "^5.4.5"
+  }
 }
