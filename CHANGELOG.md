@@ -1,5 +1,17 @@
 # ass-html5
 
+## 0.4.1
+
+### Patch Changes
+
+- 90a8f29: removing `tsup` from dependencies
+
+## 0.4.0
+
+### Minor Changes
+
+- 3197954: Rendering encapsulation
+
 ## 0.3.6
 
 ### Patch Changes
