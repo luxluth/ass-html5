@@ -1,5 +1,11 @@
 # ass-html5
 
+## 0.5.0
+
+### Minor Changes
+
+- 5d95b6a: Ass engine renderer rewrite
+
 ## 0.4.1
 
 ### Patch Changes
