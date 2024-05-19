@@ -38,8 +38,10 @@ pnpm add ass-html5
 | :-----: | :---------------------------------------------------------------------------------------------------------: | :------: | :---------------------------: | :-------------------: |
 | assText |                                             The ass text string                                             |    ✅    |           `string`            |      `undefined`      |
 |  video  | The video to display the subtile on. Can be either an `HTMLVideoElement` or `string` (html query selector ) |    ✅    | `HTMLVideoElement` / `string` |      `undefined`      |
-|  fonts  |                                            Custom fonts to load                                             |    🚫    |  [`Font[]`](src/ass.ts#L54)   |      `undefined`      |
+|  fonts  |                                            Custom fonts to load                                             |    🚫    |  [`Font[]`](src/ass.ts#L77)   |      `undefined`      |
 | zIndex  |                                        zIndex of the rendering frame                                        |    🚫    |           `number`            | Drawn after the video |
+| onReady |              A Callback that is invoked when the preprocess of the ass text by render is done               |    🚫    |         `() => void`          |      `undefined`      |
+| logging |                                       Type of logging (experimental)                                        |    🚫    |  [`LOGTYPE`](src/ass.ts#L44)  |   `LOGTYPE.DISABLE`   |
 
 ### Simple HTML
 
@@ -67,7 +69,7 @@ pnpm add ass-html5
       assText: assSubs,
       video: document.getElementById('video')
     });
-    await ass.init();
+    await ass.render();
   });
 </script>
 ```
@@ -91,7 +93,7 @@ pnpm add ass-html5
     let player: Plyr
     onMount(async () => {
         player = new Plyr(vidElement)
-        await ass.init()
+        await ass.render()
     })
 
 </script>
@@ -153,7 +155,7 @@ In the `script` tag :
         assText: assSubs,
         video: videoElement
       });
-      await ass.init();
+      await ass.render();
     });
   });
 </script>
