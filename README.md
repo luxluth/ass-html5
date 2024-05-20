@@ -65,7 +65,7 @@ pnpm add ass-html5
     let res = await fetch('/assets/video.ass');
     let assSubs = await res.text();
 
-    const ass = new ASS({
+    const ass = new ASS.default({
       assText: assSubs,
       video: document.getElementById('video')
     });
@@ -151,7 +151,7 @@ In the `script` tag :
     player.ready(async () => {
       // Get the video element from the player
       var videoElement = player.el().getElementsByTagName('video')[0];
-      const ass = new ASS({
+      const ass = new ASS.default({
         assText: assSubs,
         video: videoElement
       });
