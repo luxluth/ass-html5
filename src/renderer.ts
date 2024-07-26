@@ -22,18 +22,33 @@ import {
   Vector2,
   stringHash,
   chunkCharWidth,
-  chunkCharToString
+  chunkCharToString,
+  lerp
 } from './utils';
 
-type Ppass = {
+type PreProceesedAss = {
   start: number;
   layer: number;
   end: number;
   style: string;
   margin: Margin;
   pos?: Position;
+  move?: MoveAnimation;
   alignment: number;
   chars: Char[];
+};
+
+type MoveAnimation = {
+  // x1: number;
+  // y1: number;
+  from: Vector2;
+  // x2: number;
+  //y2: number;
+  to: Vector2;
+  // t1: number;
+  start: number;
+  //t2: number;
+  end: number;
 };
 
 export class Renderer {
@@ -47,7 +62,7 @@ export class Renderer {
   stop: boolean = false;
   animationHandle: number | null = null;
   _log: LOGTYPE;
-  ppass: Ppass[] = [];
+  ppass: PreProceesedAss[] = [];
   styles: Styles;
   collisions: 'Normal' | 'Reverse' = 'Normal';
   dt = 0;
@@ -140,7 +155,18 @@ export class Renderer {
 
     for (let i = 0; i < dialogues.length; i++) {
       const dia = dialogues[i] as Dialogue;
-      const { layer, alignment, start, end, style, margin, slices, pos } = dia;
+      const { layer, alignment, start, end, style, margin, slices, pos, move } = dia;
+      let movAnim: MoveAnimation | undefined;
+
+      if (move) {
+        movAnim = {
+          from: new Vector2(move.x1, move.y1),
+          to: new Vector2(move.x2, move.y2),
+          start: move.t1,
+          end: move.t2
+        };
+      }
+
       this.ppass.push({
         start,
         layer,
@@ -149,19 +175,13 @@ export class Renderer {
         margin,
         alignment,
         pos,
-        chars: this.processSlices(alignment, slices, computelayer, margin)
+        move: movAnim,
+        chars: this.processSlices(alignment, slices, computelayer)
       });
     }
-
-    // this.ppass.forEach((p) => {
-    //   console.debug(p, this.countLines(p.chars));
-    // });
-    //
-    // console.debug(this.styles);
-    // this.stop = true;
   }
 
-  processSlices(alignment: number, slices: DialogueSlice[], layer: Layer, margin: Margin): Char[] {
+  processSlices(alignment: number, slices: DialogueSlice[], layer: Layer): Char[] {
     let chars: Char[] = [];
     slices.forEach((slice) => {
       const { style, fragments } = slice;
@@ -189,7 +209,7 @@ export class Renderer {
           } else {
             chars.push({
               kind: CHARKIND.NORMAL,
-              pos: new Vector2(0, 0),
+              pos: new Vector2(),
               c: char,
               ord,
               w: 0,
@@ -205,136 +225,10 @@ export class Renderer {
       });
 
       chars = chars.concat(_frag);
-      // chars = this.linesToChar(this.wrapLines(layer, this.lines(chars), font, margin));
-      // console.debug(chars);
     });
 
     return chars;
   }
-
-  // splitByWord(chars: Char[]): Char[][] {
-  //   let words: Char[][] = [];
-  //   let buff: Char[] = [];
-  //
-  //   chars.forEach((char) => {
-  //     if (char.kind == CHARKIND.NORMAL) {
-  //       if (char.c === ' ') {
-  //         buff.push(char);
-  //         words.push(buff);
-  //         buff = [];
-  //       } else {
-  //         buff.push(char);
-  //       }
-  //     }
-  //   });
-  //
-  //   if (buff.length > 0) {
-  //     words.push(buff);
-  //     buff = [];
-  //   }
-  //
-  //   return words;
-  // }
-  //
-  // reshapeLineWidth(chars: Char[], layer: Layer, margin: Margin) {
-  //   const words = this.splitByWord(chars).map((word) => {
-  //     return {
-  //       w: this.lineWidth(layer, word),
-  //       value: word
-  //     } as Word;
-  //   });
-  //
-  //   let newChars: Char[] = [];
-  //   let bufWords: Word[] = [];
-  //
-  //   words.forEach((word) => {
-  //     bufWords.push(word);
-  //     console.debug(word);
-  //     if (this.wordsWidth(bufWords) > this.playerResX - margin.left - margin.right) {
-  //       const toAddBack = bufWords.pop() as Word;
-  //       newChars = newChars.concat(this.wordsToChar(bufWords));
-  //       newChars.push({
-  //         kind: CHARKIND.NEWLINE
-  //       });
-  //       console.debug(newChars, this.wordsWidth(bufWords));
-  //       bufWords = [];
-  //       bufWords.push(toAddBack);
-  //     }
-  //   });
-  //
-  //   if (bufWords.length > 0) {
-  //     newChars = newChars.concat(this.wordsToChar(bufWords));
-  //     bufWords = [];
-  //   }
-  //
-  //   return newChars;
-  // }
-  //
-  // linesToChar(lines: Char[][]) {
-  //   let chars: Char[] = [];
-  //   lines.forEach((line, i) => {
-  //     chars = chars.concat(line);
-  //     chars.push({
-  //       kind: CHARKIND.NEWLINE
-  //     });
-  //   });
-  //
-  //   chars.pop();
-  //
-  //   console.debug(lines, chars);
-  //   return chars;
-  // }
-  //
-  // wordsToChar(words: Word[]): Char[] {
-  //   let chars: Char[] = [];
-  //   words.forEach((word) => {
-  //     chars = chars.concat(word.value);
-  //   });
-  //
-  //   return chars;
-  // }
-  //
-  // wordsWidth(words: Word[]): number {
-  //   return words.reduce((acc, word) => {
-  //     return (acc += word.w);
-  //   }, 0);
-  // }
-  //
-  // wrapLines(layer: Layer, lines: Char[][], font: FontDescriptor, margin: Margin): Char[][] {
-  //   // console.debug(lines, font.t.q);
-  //   switch (font.t.q) {
-  //     case 0:
-  //       // smart-wrapping - top line longer
-  //       for (let i = 0; i < lines.length; i++) {
-  //         const line = lines[i] as Char[];
-  //         const w = this.lineWidth(layer, line);
-  //         if (w > this.playerResX - margin.left - margin.right) {
-  //           const newLine = this.reshapeLineWidth(line, layer, margin);
-  //           lines[i] = newLine;
-  //         }
-  //       }
-  //       break;
-  //     case 1:
-  //       // dumb-wrapping - simple overflow check
-  //       for (let i = 0; i < lines.length; i++) {
-  //         const line = lines[i] as Char[];
-  //         const w = this.lineWidth(layer, line);
-  //         if (w >= this.playerResX - margin.left - margin.right) {
-  //           const newLine = this.reshapeLineWidth(line, layer, margin);
-  //           lines[i] = newLine;
-  //         }
-  //       }
-  //       break;
-  //     case 2:
-  //       // no wrapping
-  //       break;
-  //     case 3:
-  //       // smart-wrapping - (bottom line longer)
-  //       break;
-  //   }
-  //
-  //   return lines;
-  // }
 
   sublog(type: LOGTYPE, ...message: any) {
     switch (type) {
@@ -403,7 +297,7 @@ export class Renderer {
     this.clear();
     const slicesToDisplay = this.getSlices(time);
     slicesToDisplay.forEach((dialogue) => {
-      this.showDialogue(dialogue);
+      this.showDialogue(dialogue, time);
     });
   }
 
@@ -413,7 +307,7 @@ export class Renderer {
     }, '');
   }
 
-  getSlices(time: number): Ppass[] {
+  getSlices(time: number): PreProceesedAss[] {
     return this.ppass.filter((dialogue) => {
       return dialogue.start <= time && dialogue.end >= time;
     });
@@ -485,7 +379,7 @@ export class Renderer {
     return lines;
   }
 
-  showDialogue(d: Ppass) {
+  showDialogue(d: PreProceesedAss, time: number) {
     const layer = this.getLayer(d.layer);
     if (layer) {
       let font = this.computeStyle(d.style, d.alignment, layer);
@@ -509,6 +403,20 @@ export class Renderer {
         baseX = d.pos.x * Xratio;
         cX = baseX;
         cY = d.pos.y * Yratio;
+      }
+
+      if (d.move) {
+        customPosition = true;
+        const Xratio = layer.canvas.width / this.playerResX;
+        const Yratio = layer.canvas.height / this.playerResY;
+
+        let startPosition = new Vector2(d.move.from.x * Xratio, d.move.from.y * Yratio);
+        let endPosition = new Vector2(d.move.to.x * Xratio, d.move.to.y * Yratio);
+        let actualPosition = lerp(startPosition, endPosition, (time - d.start) / (d.end - d.start));
+
+        baseX = actualPosition.x;
+        cX = baseX;
+        cY = actualPosition.y;
       }
 
       d.chars.forEach((char) => {
@@ -876,6 +784,7 @@ export class Renderer {
     const style = this.styles[name] as CompiledASSStyle;
     if (style === undefined) {
       // TODO: fallbackFont when there is no style
+      // Fallbacks most of the time to Arial
       this.log(LOGTYPE.WARN, `[ass-html5:renderer] no corresponding style "${name}" found`);
     }
     const {

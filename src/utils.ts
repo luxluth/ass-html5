@@ -275,28 +275,19 @@ export function blendAlpha(color: string, alpha: number) {
 export class Vector2 {
   x: number;
   y: number;
-  constructor(x: number, y: number) {
+  constructor(x: number = 0, y: number = 0) {
     this.x = x;
     this.y = y;
   }
 
-  static add(lhs: Vector2, rhs: Vector2): Vector2 {
-    return {
-      x: lhs.x + rhs.x,
-      y: lhs.y + rhs.y
-    };
+  add(rhs: Vector2): Vector2 {
+    return new Vector2(this.x + rhs.x, this.y + rhs.y);
   }
-  static sub(lhs: Vector2, rhs: Vector2): Vector2 {
-    return {
-      x: lhs.x - rhs.x,
-      y: lhs.y - rhs.y
-    };
+  sub(rhs: Vector2): Vector2 {
+    return new Vector2(this.x - rhs.x, this.y - rhs.y);
   }
-  static mul(lhs: Vector2, i: number): Vector2 {
-    return {
-      x: lhs.x * i,
-      y: lhs.y * i
-    };
+  mul(i: number): Vector2 {
+    return new Vector2(this.x * i, this.y * i);
   }
 }
 
@@ -304,14 +295,15 @@ export class Vector2 {
  * Interpolate a vector2 between tow vector2
  * @param start - starting point
  * @param end - the end point
- * @param t a value between 0..1
- * start + (end - start) * t
+ * @param t a value between 0 and 1
+ * @returns A new Vector2 representing the interpolated point
  */
-export function Lerp(start: Vector2, end: Vector2, t: number): Vector2 {
-  return Vector2.add(start, Vector2.mul(Vector2.sub(end, start), t));
+export function lerp(start: Vector2, end: Vector2, t: number): Vector2 {
+  // start + (end - start) * t
+  return start.add(end.sub(start).mul(t));
 }
 
-export function LerpStep(
+export function lerpStep(
   step: Vector2,
   at: number,
   start: Vector2,
@@ -319,8 +311,8 @@ export function LerpStep(
   t: number
 ): Vector2 {
   if (at <= t) {
-    return Lerp(start, step, at);
+    return lerp(start, step, at);
   } else {
-    return Lerp(step, end, t);
+    return lerp(step, end, t);
   }
 }
