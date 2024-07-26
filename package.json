@@ -33,18 +33,18 @@
   },
   "homepage": "https://github.com/luxluth/ass-html5#readme",
   "devDependencies": {
-    "@changesets/cli": "^2.27.1",
-    "@rollup/plugin-commonjs": "^25.0.7",
+    "@changesets/cli": "^2.27.7",
+    "@rollup/plugin-commonjs": "^26.0.1",
     "@rollup/plugin-node-resolve": "^15.2.3",
     "@rollup/plugin-terser": "^0.4.4",
     "@rollup/plugin-typescript": "^11.1.6",
-    "@types/node": "^20.12.11",
+    "@types/node": "^20.14.12",
     "ass-compiler": "^0.1.11",
-    "prettier": "^3.2.5",
-    "rollup": "^4.17.2",
-    "terser": "^5.31.0",
-    "tslib": "^2.6.2",
-    "tsup": "^8.0.2",
-    "typescript": "^5.4.5"
+    "prettier": "^3.3.3",
+    "rollup": "^4.19.0",
+    "terser": "^5.31.3",
+    "tslib": "^2.6.3",
+    "tsup": "^8.2.3",
+    "typescript": "^5.5.4"
   }
 }
