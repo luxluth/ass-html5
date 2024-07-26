@@ -231,10 +231,6 @@ export default class ASS {
   private async getFontUrl(fontUrl: string) {
     const response = await fetch(fontUrl);
     const blob = await response.blob();
-    return this.newBlobUrl(blob);
-  }
-
-  private newBlobUrl(blob: Blob) {
     return URL.createObjectURL(blob);
   }
 
