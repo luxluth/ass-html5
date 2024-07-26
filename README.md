@@ -38,7 +38,7 @@ pnpm add ass-html5
 | :-----: | :---------------------------------------------------------------------------------------------------------: | :------: | :---------------------------: | :-------------------: |
 | assText |                                             The ass text string                                             |    ✅    |           `string`            |      `undefined`      |
 |  video  | The video to display the subtile on. Can be either an `HTMLVideoElement` or `string` (html query selector ) |    ✅    | `HTMLVideoElement` / `string` |      `undefined`      |
-|  fonts  |                                            Custom fonts to load                                             |    🚫    |  [`Font[]`](src/ass.ts#L77)   |      `undefined`      |
+|  fonts  |                                            Custom fonts to load                                             |    🚫    |  [`Font[]`](src/ass.ts#L72)   |      `undefined`      |
 | zIndex  |                                        zIndex of the rendering frame                                        |    🚫    |           `number`            | Drawn after the video |
 | onReady |              A Callback that is invoked when the preprocess of the ass text by render is done               |    🚫    |         `() => void`          |      `undefined`      |
 | logging |                                       Type of logging (experimental)                                        |    🚫    |  [`LOGTYPE`](src/ass.ts#L44)  |   `LOGTYPE.DISABLE`   |
@@ -46,13 +46,13 @@ pnpm add ass-html5
 ### Simple HTML
 
 > [!NOTE]
-> The simple `video` tag element, on fullscreen mode, the position of the video is absoluty on top of any element.
+> The simple `video` tag element, in fullscreen mode, the position of the video is absolutely on top of any element.
 > No other element can go on top of it.
 >
-> It's therefore recommanded to use a third party player rather than the native one. You can see an example with [plry](https://github.com/sampotts/plyr) [here](#svelte-and-plry).
+> It's therefore recommended to use a third party player rather than the native one. You can see an example with [plry](https://github.com/sampotts/plyr) [here](#svelte-and-plry).
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/ass-html5@0.5.0/dist/ass.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/ass-html5@0.5.1/dist/ass.min.js"></script>
 ```
 
 ```html
@@ -117,7 +117,7 @@ pnpm add ass-html5
 In the `head` :
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/ass-html5@<VERSION>/dist/ass.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/ass-html5@0.5.1/dist/ass.min.js" defer></script>
 <script src="https://vjs.zencdn.net/8.3.0/video.min.js" defer></script>
 <link href="https://vjs.zencdn.net/8.3.0/video-js.css" rel="stylesheet" />
 ```
@@ -165,4 +165,4 @@ In the `script` tag :
 
 # Credits
 
-Thanks to the [ass-compiler](https://github.com/weizhenye/ass-compiler/) from weizhenye.
+Thanks to the [ass-compiler](https://github.com/weizhenye/ass-compiler/) by weizhenye.
