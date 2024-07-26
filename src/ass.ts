@@ -41,12 +41,7 @@ export type ASSOptions = {
   logging?: LOGTYPE;
 };
 
-export enum LOGTYPE {
-  DISABLE = 'DISABLE',
-  VERBOSE = 'VERBOSE',
-  DEBUG = 'DEBUG',
-  WARN = 'WARN'
-}
+export type LOGTYPE = 'DISABLE' | 'VERBOSE' | 'DEBUG' | 'WARN';
 
 export type FontStyle = {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/ascentOverride) */
@@ -97,7 +92,7 @@ export default class ASS {
   private fonts?: Font[];
   private zIndex?: number;
   private onReady?: () => void;
-  private logging: LOGTYPE = LOGTYPE.DISABLE;
+  private logging: LOGTYPE = 'DISABLE';
   private compiledAss: CompiledASS;
 
   constructor(options: ASSOptions) {
@@ -213,14 +208,14 @@ export default class ASS {
       try {
         const loaded = await this.loadFont(font);
         if (loaded) {
-          if (this.logging == LOGTYPE.VERBOSE)
+          if (this.logging == 'VERBOSE')
             console.info(`Font ${font.family} loaded from ${font.url}`);
         } else {
-          if (this.logging == LOGTYPE.VERBOSE || this.logging == LOGTYPE.WARN)
+          if (this.logging == 'VERBOSE' || this.logging == 'WARN')
             console.warn(`Unable to load font ${font.family} from ${font.url}`);
         }
       } catch (e) {
-        if (this.logging == LOGTYPE.VERBOSE || this.logging == LOGTYPE.WARN) {
+        if (this.logging == 'VERBOSE' || this.logging == 'WARN') {
           console.warn(`Unable to load font ${font.family} from ${font.url}`);
           console.warn(e);
         }

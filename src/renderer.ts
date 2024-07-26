@@ -80,8 +80,8 @@ export class Renderer {
     this.compiledASS = ass;
     this.styles = ass.styles;
     this.collisions = ass.collisions;
-    if (this._log === LOGTYPE.DEBUG) {
-      this.log(LOGTYPE.DEBUG, this.compiledASS);
+    if (this._log === 'DEBUG') {
+      this.log('DEBUG', this.compiledASS);
     }
     this.playerResX = this.compiledASS.width;
     this.playerResY = this.compiledASS.height;
@@ -232,15 +232,15 @@ export class Renderer {
 
   sublog(type: LOGTYPE, ...message: any) {
     switch (type) {
-      case LOGTYPE.DISABLE:
+      case 'DISABLE':
         break;
-      case LOGTYPE.VERBOSE:
+      case 'VERBOSE':
         console.info(type, ...message);
         break;
-      case LOGTYPE.DEBUG:
+      case 'DEBUG':
         console.debug(type, ...message);
         break;
-      case LOGTYPE.WARN:
+      case 'WARN':
         console.warn(type, ...message);
         break;
     }
@@ -248,18 +248,18 @@ export class Renderer {
 
   log(type: LOGTYPE, ...message: any) {
     switch (this._log) {
-      case LOGTYPE.DISABLE:
+      case 'DISABLE':
         break;
-      case LOGTYPE.VERBOSE:
+      case 'VERBOSE':
         this.sublog(type, message);
         break;
-      case LOGTYPE.DEBUG:
-        if (type == LOGTYPE.DEBUG) {
+      case 'DEBUG':
+        if (type == 'DEBUG') {
           this.sublog(type, message);
         }
         break;
-      case LOGTYPE.WARN:
-        if (type == LOGTYPE.WARN) {
+      case 'WARN':
+        if (type == 'WARN') {
           this.sublog(type, message);
         }
         break;
@@ -785,7 +785,7 @@ export class Renderer {
     if (style === undefined) {
       // TODO: fallbackFont when there is no style
       // Fallbacks most of the time to Arial
-      this.log(LOGTYPE.WARN, `[ass-html5:renderer] no corresponding style "${name}" found`);
+      this.log('WARN', `[ass-html5:renderer] no corresponding style "${name}" found`);
     }
     const {
       fn, // font name

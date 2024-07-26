@@ -146,12 +146,7 @@ export type Position = {
   y: number;
 };
 
-export enum LOGTYPE {
-  DISABLE = 'DISABLE',
-  VERBOSE = 'VERBOSE',
-  DEBUG = 'DEBUG',
-  WARN = 'WARN'
-}
+export type LOGTYPE = 'DISABLE' | 'VERBOSE' | 'DEBUG' | 'WARN';
 
 export enum CHARKIND {
   NEWLINE,
