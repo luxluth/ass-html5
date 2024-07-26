@@ -1,5 +1,13 @@
 # ass-html5
 
+## 0.5.1
+
+### Patch Changes
+
+- 309ba25: NEW: Move Animation implemented
+
+  BREAKING: Changing `LOGTYPE` from an emun to a bar simple type
+
 ## 0.5.0
 
 ### Minor Changes
