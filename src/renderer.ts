@@ -23,7 +23,8 @@ import {
   stringHash,
   chunkCharWidth,
   chunkCharToString,
-  lerp
+  vectorLerp,
+  getOpacity
 } from './utils';
 
 type PreProceesedAss = {
@@ -34,9 +35,25 @@ type PreProceesedAss = {
   margin: Margin;
   pos?: Position;
   move?: MoveAnimation;
+  fade?: FadeAnimation;
+  rotationOrigin?: Vector2;
   alignment: number;
   chars: Char[];
 };
+
+enum FadeKind {
+  Simple,
+  Complex
+}
+type FadeAnimation =
+  | {
+      type: FadeKind.Simple;
+      fadein: number;
+      fadeout: number;
+    }
+  | {
+      type: FadeKind.Complex;
+    };
 
 type MoveAnimation = {
   // x1: number;
@@ -155,8 +172,10 @@ export class Renderer {
 
     for (let i = 0; i < dialogues.length; i++) {
       const dia = dialogues[i] as Dialogue;
-      const { layer, alignment, start, end, style, margin, slices, pos, move } = dia;
+      const { layer, alignment, start, end, style, margin, slices, pos, move, org, fade } = dia;
       let movAnim: MoveAnimation | undefined;
+      let rotOrg: Vector2 | undefined;
+      let fadeAnim: FadeAnimation | undefined;
 
       if (move) {
         movAnim = {
@@ -165,6 +184,20 @@ export class Renderer {
           start: move.t1,
           end: move.t2
         };
+      }
+
+      if (org) {
+        rotOrg = new Vector2(org.x, org.y);
+      }
+
+      if (fade) {
+        switch (fade.type) {
+          case 'fad':
+            fadeAnim = { type: FadeKind.Simple, fadein: fade.t1, fadeout: fade.t2 };
+            break;
+          case 'fade':
+            break;
+        }
       }
 
       this.ppass.push({
@@ -176,6 +209,8 @@ export class Renderer {
         alignment,
         pos,
         move: movAnim,
+        fade: fadeAnim,
+        rotationOrigin: rotOrg,
         chars: this.processSlices(alignment, slices, computelayer)
       });
     }
@@ -392,14 +427,15 @@ export class Renderer {
       let cX = 0;
       let cY = 0;
       let baseX = 0;
+      let currentOpacity = 1;
 
       let customPosition = false;
+      let rotationOrigin: Vector2 | undefined;
+      const Xratio = layer.canvas.width / this.playerResX;
+      const Yratio = layer.canvas.height / this.playerResY;
 
       if (d.pos) {
         customPosition = true;
-        const Xratio = layer.canvas.width / this.playerResX;
-        const Yratio = layer.canvas.height / this.playerResY;
-
         baseX = d.pos.x * Xratio;
         cX = baseX;
         cY = d.pos.y * Yratio;
@@ -407,16 +443,37 @@ export class Renderer {
 
       if (d.move) {
         customPosition = true;
-        const Xratio = layer.canvas.width / this.playerResX;
-        const Yratio = layer.canvas.height / this.playerResY;
 
         let startPosition = new Vector2(d.move.from.x * Xratio, d.move.from.y * Yratio);
         let endPosition = new Vector2(d.move.to.x * Xratio, d.move.to.y * Yratio);
-        let actualPosition = lerp(startPosition, endPosition, (time - d.start) / (d.end - d.start));
+        let actualPosition = vectorLerp(
+          startPosition,
+          endPosition,
+          (time - d.start) / (d.end - d.start)
+        );
 
         baseX = actualPosition.x;
         cX = baseX;
         cY = actualPosition.y;
+      }
+
+      if (d.rotationOrigin)
+        rotationOrigin = new Vector2(d.rotationOrigin.x * Xratio, d.rotationOrigin.y * Yratio);
+
+      if (d.fade) {
+        switch (d.fade.type) {
+          case FadeKind.Simple:
+            currentOpacity = getOpacity(
+              d.fade.fadein,
+              d.fade.fadeout,
+              d.start * 1000,
+              d.end * 1000,
+              time * 1000
+            );
+            break;
+          case FadeKind.Complex:
+            break;
+        }
       }
 
       d.chars.forEach((char) => {
@@ -586,7 +643,10 @@ export class Renderer {
       }
 
       words.forEach((word) => {
+        word.font.opacity = currentOpacity;
+        layer.ctx.save();
         this.drawWord(word, layer);
+        layer.ctx.restore();
       });
     }
   }
@@ -629,45 +689,6 @@ export class Renderer {
           metrics.actualBoundingBoxAscent + metrics.fontBoundingBoxDescent,
           metrics.width,
           word.font
-        );
-      }
-    }
-  }
-
-  drawChar(char: Char, layer: Layer, alignment: number, debug = false) {
-    if (char.kind == CHARKIND.NORMAL) {
-      let font = this.computeStyle(char.style, alignment, layer);
-      this.applyOverrideTag(char.tag, font);
-      this.applyFont(font, layer);
-      // console.debug(layer.ctx.font, char.c, char.tag);
-
-      if (font.borderStyle !== 3) {
-        if (font.xbord !== 0 || font.ybord !== 0) {
-          layer.ctx.strokeText(char.c, char.pos.x, char.pos.y);
-        }
-      }
-
-      let metrics = layer.ctx.measureText(char.c);
-
-      layer.ctx.fillText(char.c, char.pos.x, char.pos.y);
-
-      if (font.underline) {
-        const y = char.pos.y + metrics.emHeightDescent;
-        layer.ctx.fillRect(char.pos.x, y, metrics.width, (layer.canvas.height * 0.2) / 100);
-      }
-      if (font.strikeout) {
-        const y = char.pos.y - metrics.hangingBaseline / 2;
-        layer.ctx.shadowOffsetX = 0;
-        layer.ctx.shadowOffsetY = 0;
-        layer.ctx.fillRect(char.pos.x, y, metrics.width, (layer.canvas.height * 0.2) / 100);
-      }
-
-      if (font.borderStyle === 3) {
-        this.drawTextBackground(
-          char.pos,
-          metrics.actualBoundingBoxAscent + metrics.fontBoundingBoxDescent,
-          metrics.width,
-          font
         );
       }
     }

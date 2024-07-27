@@ -298,21 +298,47 @@ export class Vector2 {
  * @param t a value between 0 and 1
  * @returns A new Vector2 representing the interpolated point
  */
-export function lerp(start: Vector2, end: Vector2, t: number): Vector2 {
+export function vectorLerp(start: Vector2, end: Vector2, t: number): Vector2 {
   // start + (end - start) * t
   return start.add(end.sub(start).mul(t));
 }
 
-export function lerpStep(
-  step: Vector2,
-  at: number,
-  start: Vector2,
-  end: Vector2,
-  t: number
-): Vector2 {
-  if (at <= t) {
-    return lerp(start, step, at);
+export function lerp(start: number, end: number, t: number): number {
+  return start + (end - start) * t;
+}
+
+export function getOpacity(
+  fadein: number,
+  fadeout: number,
+  startTime: number,
+  endTime: number,
+  time: number
+): number {
+  const fadeIn = startTime + fadein;
+  const fadeOut = endTime - fadeout;
+  if (time < fadeIn) {
+    let t = (time - startTime) / (fadeIn - startTime);
+    return lerp(0, 1, t);
+  } else if (time >= fadeIn && time < fadeOut) {
+    return 1;
+  } else if (time >= fadeOut && time <= endTime) {
+    let t = (time - fadeOut) / (endTime - fadeOut);
+    return lerp(1, 0, t);
   } else {
-    return lerp(step, end, t);
+    return -1;
   }
 }
+
+// export function lerpStep(
+//   step: Vector2,
+//   at: number,
+//   start: Vector2,
+//   end: Vector2,
+//   t: number
+// ): Vector2 {
+//   if (at <= t) {
+//     return lerp(start, step, at);
+//   } else {
+//     return lerp(step, end, t);
+//   }
+// }
