@@ -1,4 +1,4 @@
-import { type Tag, type Char, CHARKIND } from './types';
+import { type Tag, type Char, CHARKIND, FadeAnimation, FadeKind } from './types';
 /**
  * Convert a color in RGBA format to Aegisub format
  * @param aegisubColor The color in Aegisub format
@@ -307,15 +307,19 @@ export function lerp(start: number, end: number, t: number): number {
   return start + (end - start) * t;
 }
 
+/**
+ * Produce a fade-in and fade-out effect. The fadein and fadeout times are
+ * given in milliseconds, ie. 1000 means one second. You can specify fadein or
+ * fadeout as 0 (zero) to not have any fade effect on that end.
+ */
 export function getOpacity(
-  fadein: number,
-  fadeout: number,
+  fade: Extract<FadeAnimation, { type: FadeKind.Simple }>,
   startTime: number,
   endTime: number,
   time: number
 ): number {
-  const fadeIn = startTime + fadein;
-  const fadeOut = endTime - fadeout;
+  const fadeIn = startTime + fade.fadein;
+  const fadeOut = endTime - fade.fadeout;
   if (time < fadeIn) {
     let t = (time - startTime) / (fadeIn - startTime);
     return lerp(0, 1, t);
@@ -329,16 +333,47 @@ export function getOpacity(
   }
 }
 
-// export function lerpStep(
-//   step: Vector2,
-//   at: number,
-//   start: Vector2,
-//   end: Vector2,
-//   t: number
-// ): Vector2 {
-//   if (at <= t) {
-//     return lerp(start, step, at);
-//   } else {
-//     return lerp(step, end, t);
-//   }
-// }
+/**
+ * Perform a five-part fade using three alpha values a1, a2 and a3 and four
+ * times t1, t2, t3 and t4.
+ *
+ * The alpha values are given in decimal and are between 0 and 255, with 0
+ * being fully visible and 255 being invisible. The time values are given in
+ * milliseconds after the start of the line. All seven parameters are
+ * required. (For most common fade effects the `\fad` tag works fine.)
+ *
+ * - Before t1, the line has alpha a1.
+ * - Between t1 and t2 the line fades from alpha a1 to alpha a2.
+ * - Between t2 and t3 the line has alpha a2 constantly.
+ * - Between t3 and t4 the line fades from alpha a2 to alpha a3.
+ * - After t4 the line has alpha a3.
+ */
+export function getOpacityComplex(
+  fade: Extract<FadeAnimation, { type: FadeKind.Complex }>,
+  startTime: number,
+  endTime: number,
+  time: number
+): number {
+  console.debug(fade);
+
+  const t1 = startTime + fade.t1;
+  const t2 = startTime + fade.t2;
+  const t3 = startTime + fade.t3;
+  const t4 = startTime + fade.t4;
+
+  if (time < t1) {
+    return fade.a1;
+  } else if (time >= t1 && time < t2) {
+    let t = (time - t1) / (t2 - t1);
+    return lerp(fade.a1, fade.a2, t);
+  } else if (time >= t2 && time < t3) {
+    return fade.a2;
+  } else if (time >= t3 && time < t4) {
+    let t = (time - t3) / (t4 - t3);
+    return lerp(fade.a2, fade.a3, t);
+  } else if (time >= t4 && time <= endTime) {
+    return fade.a3;
+  } else {
+    return -1;
+  }
+}

@@ -173,3 +173,24 @@ export type Word = {
   font: StyleDescriptor;
   value: Char[];
 };
+
+export enum FadeKind {
+  Simple,
+  Complex
+}
+export type FadeAnimation =
+  | {
+      type: FadeKind.Simple;
+      fadein: number;
+      fadeout: number;
+    }
+  | {
+      type: FadeKind.Complex;
+      a1: number;
+      a2: number;
+      a3: number;
+      t1: number;
+      t2: number;
+      t3: number;
+      t4: number;
+    };

@@ -9,9 +9,10 @@ import type {
   Layer,
   Margin,
   Char,
-  Word
+  Word,
+  FadeAnimation
 } from './types';
-import { CHARKIND, LOGTYPE, Align, Baseline } from './types';
+import { CHARKIND, LOGTYPE, Align, Baseline, FadeKind } from './types';
 import {
   ruleOfThree,
   blendAlpha,
@@ -24,7 +25,8 @@ import {
   chunkCharWidth,
   chunkCharToString,
   vectorLerp,
-  getOpacity
+  getOpacity,
+  getOpacityComplex
 } from './utils';
 
 type PreProceesedAss = {
@@ -40,20 +42,6 @@ type PreProceesedAss = {
   alignment: number;
   chars: Char[];
 };
-
-enum FadeKind {
-  Simple,
-  Complex
-}
-type FadeAnimation =
-  | {
-      type: FadeKind.Simple;
-      fadein: number;
-      fadeout: number;
-    }
-  | {
-      type: FadeKind.Complex;
-    };
 
 type MoveAnimation = {
   // x1: number;
@@ -169,6 +157,7 @@ export class Renderer {
 
     computelayer.canvas.width = this.playerResX;
     computelayer.canvas.height = this.playerResY;
+    console.debug(dialogues);
 
     for (let i = 0; i < dialogues.length; i++) {
       const dia = dialogues[i] as Dialogue;
@@ -196,6 +185,8 @@ export class Renderer {
             fadeAnim = { type: FadeKind.Simple, fadein: fade.t1, fadeout: fade.t2 };
             break;
           case 'fade':
+            let { a1, a2, a3, t1, t2, t3, t4 } = fade;
+            fadeAnim = { type: FadeKind.Complex, a1, a2, a3, t1, t2, t3, t4 };
             break;
         }
       }
@@ -463,15 +454,10 @@ export class Renderer {
       if (d.fade) {
         switch (d.fade.type) {
           case FadeKind.Simple:
-            currentOpacity = getOpacity(
-              d.fade.fadein,
-              d.fade.fadeout,
-              d.start * 1000,
-              d.end * 1000,
-              time * 1000
-            );
+            currentOpacity = getOpacity(d.fade, d.start * 1000, d.end * 1000, time * 1000);
             break;
           case FadeKind.Complex:
+            currentOpacity = getOpacityComplex(d.fade, d.start * 1000, d.end * 1000, time * 1000);
             break;
         }
       }
