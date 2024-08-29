@@ -658,14 +658,18 @@ export class Renderer {
             case 'a1':
             case 'a3':
             case 'a4':
-              word.font.colors[field] = lerp(255, parseAlpha(ca.tag[field] as string) - 255, t);
+              word.font.colors[field] = lerp(
+                255,
+                Math.abs(parseAlpha(ca.tag[field] as string) - 255),
+                t
+              );
               break;
             case 'blur':
             case 'xshad':
             case 'yshad':
             case 'xbord':
             case 'ybord':
-              word.font.blur = lerp(0, ca.tag[field] as number, t);
+              word.font[field] = lerp(0, ca.tag[field] as number, t);
               break;
             case 'fax':
             case 'fay':
@@ -817,7 +821,7 @@ export class Renderer {
         this.layers[0]?.canvas.width || this.playerResX
       );
     }
-    // TODO: upscale custom animation data
+
     if (tag.t !== undefined) font.customAnimations = tag.t;
 
     if (tag.c1 !== undefined) font.colors.c1 = swapBBGGRR(tag.c1);
