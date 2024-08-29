@@ -1,5 +1,11 @@
 # ass-html5
 
+## 0.5.2
+
+### Patch Changes
+
+- a325cfb: Custom animation support
+
 ## 0.5.1
 
 ### Patch Changes
