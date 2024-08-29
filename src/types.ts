@@ -23,6 +23,13 @@ export enum Align {
   Start
 }
 
+export type CustomAnimation = {
+  t1: number;
+  t2: number;
+  accel: number;
+  tag: CompiledTag;
+};
+
 export type StyleDescriptor = {
   fontname: string;
   fontsize: number;
@@ -33,6 +40,7 @@ export type StyleDescriptor = {
   colors: Colors;
   /** font transformation */
   t: FontTransfomation;
+  customAnimations: CustomAnimation[];
   /** x border */
   xbord: number;
   /** y border */

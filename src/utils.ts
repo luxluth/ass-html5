@@ -114,15 +114,6 @@ export function insertTags(tags: Tag[], tag: Tag) {
   return tag;
 }
 
-export function getAlphaFromTag(tags: Tag) {
-  let alpha = 1;
-  if (typeof tags.alpha !== 'undefined') {
-    alpha = parseFloat(tags.alpha);
-  }
-  // console.debug(`Alpha: ${alpha}`);
-  return alpha;
-}
-
 export function ruleOfThree(value: number, valueMin: number) {
   return (valueMin * 100) / value;
 }
@@ -261,15 +252,20 @@ export function uuidgen() {
   });
 }
 
+export function parseAlpha(of: string) {
+  const a = `0x${of}`;
+  return parseInt(a, 16);
+}
+
 export function blendAlpha(color: string, alpha: number) {
   color = color.replace('#', '');
   // color = FFFFFF
-  // alpha = 80
+  // alpha = 0x80
   // return rgba(255, 255, 255, 0.5)
   const red = parseInt(color.substring(0, 2), 16);
   const green = parseInt(color.substring(2, 4), 16);
   const blue = parseInt(color.substring(4, 6), 16);
-  return `rgba(${red}, ${green}, ${blue}, ${alpha == 0 ? 1 : alpha / 160})`;
+  return `rgba(${red}, ${green}, ${blue}, ${alpha == 0 ? 1 : alpha / 255})`;
 }
 
 export class Vector2 {

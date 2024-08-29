@@ -10,7 +10,8 @@ import type {
   Margin,
   Char,
   Word,
-  FadeAnimation
+  FadeAnimation,
+  CustomAnimation
 } from './types';
 import { CHARKIND, LOGTYPE, Align, Baseline, FadeKind } from './types';
 import {
@@ -26,7 +27,9 @@ import {
   chunkCharToString,
   vectorLerp,
   getOpacity,
-  getOpacityComplex
+  getOpacityComplex,
+  lerp,
+  parseAlpha
 } from './utils';
 
 type PreProceesedAss = {
@@ -631,7 +634,7 @@ export class Renderer {
       words.forEach((word) => {
         word.font.opacity = currentOpacity;
         layer.ctx.save();
-        this.drawWord(word, layer);
+        this.drawWord(word, time, d.start, layer);
         layer.ctx.restore();
       });
     }
@@ -641,10 +644,60 @@ export class Renderer {
     return stringHash(JSON.stringify(font));
   }
 
-  drawWord(word: Word, layer: Layer, debug = false) {
+  drawWord(word: Word, time: number, startTime: number, layer: Layer, debug = false) {
     let str = chunkCharToString(word.value);
-    this.applyFont(word.font, layer);
+    for (let i = 0; i < word.font.customAnimations.length; i++) {
+      const ca = word.font.customAnimations[i] as CustomAnimation;
+      if (startTime * 1000 + ca.t1 <= time * 1000 && time * 1000 <= startTime * 1000 + ca.t2) {
+        const end = startTime * 1000 + ca.t2;
+        const start = startTime * 1000 + ca.t1;
+        const t = (time * 1000 - start) / (end - start);
 
+        for (const field in ca.tag) {
+          switch (field) {
+            case 'a1':
+            case 'a3':
+            case 'a4':
+              word.font.colors[field] = lerp(255, parseAlpha(ca.tag[field] as string) - 255, t);
+              break;
+            case 'blur':
+            case 'xshad':
+            case 'yshad':
+            case 'xbord':
+            case 'ybord':
+              word.font.blur = lerp(0, ca.tag[field] as number, t);
+              break;
+            case 'fax':
+            case 'fay':
+            case 'frx':
+            case 'fry':
+            case 'frz':
+            case 'fscx':
+            case 'fscy':
+              word.font.t[field] = lerp(0, ca.tag[field] as number, t);
+              break;
+            case 'fs':
+              word.font.fontsize = this.upscale(
+                lerp(0, ca.tag[field] as number, t),
+                this.playerResY,
+                this.layers[0]?.canvas.height || 0
+              );
+              break;
+            case 'fsp':
+              word.font.t.fsp = this.upscale(
+                lerp(0, ca.tag[field] as number, t),
+                this.playerResX,
+                this.layers[0]?.canvas.width || this.playerResX
+              );
+              break;
+            default:
+              break;
+          }
+        }
+      }
+    }
+
+    this.applyFont(word.font, layer);
     const wordHead = word.value[0] as Char;
 
     if (wordHead.kind === CHARKIND.NORMAL) {
@@ -764,12 +817,15 @@ export class Renderer {
         this.layers[0]?.canvas.width || this.playerResX
       );
     }
+    // TODO: upscale custom animation data
+    if (tag.t !== undefined) font.customAnimations = tag.t;
+
     if (tag.c1 !== undefined) font.colors.c1 = swapBBGGRR(tag.c1);
-    if (tag.a1 !== undefined) font.colors.a1 = parseFloat(tag.a1);
     if (tag.c3 !== undefined) font.colors.c3 = swapBBGGRR(tag.c3);
-    if (tag.a3 !== undefined) font.colors.a3 = parseFloat(tag.a3);
     if (tag.c4 !== undefined) font.colors.c4 = swapBBGGRR(tag.c4);
-    if (tag.a4 !== undefined) font.colors.a4 = parseFloat(tag.a4);
+    if (tag.a1 !== undefined) font.colors.a1 = parseAlpha(tag.a1);
+    if (tag.a3 !== undefined) font.colors.a3 = parseAlpha(tag.a3);
+    if (tag.a4 !== undefined) font.colors.a4 = parseAlpha(tag.a4);
     if (tag.xshad !== undefined) font.xshad = tag.xshad;
     if (tag.yshad !== undefined) font.yshad = tag.yshad;
     if (tag.xbord !== undefined) font.xbord = tag.xbord;
@@ -832,10 +888,10 @@ export class Renderer {
         c2: convertAegisubColorToHex(SecondaryColour),
         c3: convertAegisubColorToHex(OutlineColour),
         c4,
-        a1: parseFloat(a1),
-        a2: parseFloat(a2),
-        a3: parseFloat(a3),
-        a4: parseFloat(a4)
+        a1: parseAlpha(a1),
+        a2: parseAlpha(a2),
+        a3: parseAlpha(a3),
+        a4: parseAlpha(a4)
       },
       t: {
         fscx: fscx,
@@ -846,6 +902,7 @@ export class Renderer {
         fsp: this.upscale(fsp, this.playerResX, layer.canvas.width),
         q: q
       },
+      customAnimations: [],
       xbord: xbord,
       ybord: ybord,
       xshad: xshad,
