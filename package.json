@@ -7,7 +7,7 @@
   "types": "dist/ass.d.ts",
   "browser": "dist/ass.min.js",
   "scripts": {
-    "build": "pnpm run build:normal && pnpm run build:minify",
+    "build": "pnpm lint && pnpm run build:normal && pnpm run build:minify",
     "build:normal": "tsup",
     "build:minify": "rollup -c --bundleConfigAsCjs",
     "dev": "tsup --watch",
@@ -48,3 +48,4 @@
     "typescript": "^5.5.4"
   }
 }
+
