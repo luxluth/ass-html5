@@ -1,5 +1,11 @@
 # ass-html5
 
+## 0.5.3
+
+### Patch Changes
+
+- b1053bf: [fix] single character color alternating not displayed
+
 ## 0.5.2
 
 ### Patch Changes
