@@ -591,7 +591,7 @@ export class Renderer {
                 });
 
                 currentWord = [char];
-                currentFont = null;
+                currentFont = font;
                 currentHash = fHash;
               }
             } else {
