@@ -46,5 +46,10 @@
     "tslib": "^2.8.1",
     "tsup": "^8.3.6",
     "typescript": "^5.7.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }
