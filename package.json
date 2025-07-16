@@ -8,9 +8,9 @@
   "browser": "dist/ass.min.js",
   "scripts": {
     "build": "pnpm lint && pnpm run build:normal && pnpm run build:minify",
-    "build:normal": "tsup",
+    "build:normal": "tsdown",
     "build:minify": "rollup -c --bundleConfigAsCjs",
-    "dev": "tsup --watch",
+    "dev": "tsdown --watch",
     "release": "pnpm run build && changeset publish",
     "lint": "tsc",
     "format": "prettier --write ."
@@ -33,23 +33,24 @@
   },
   "homepage": "https://github.com/luxluth/ass-html5#readme",
   "devDependencies": {
-    "@changesets/cli": "^2.27.12",
-    "@rollup/plugin-commonjs": "^28.0.2",
-    "@rollup/plugin-node-resolve": "^16.0.0",
+    "@changesets/cli": "^2.29.5",
+    "@rollup/plugin-commonjs": "^28.0.6",
+    "@rollup/plugin-node-resolve": "^16.0.1",
     "@rollup/plugin-terser": "^0.4.4",
-    "@rollup/plugin-typescript": "^12.1.2",
-    "@types/node": "^22.13.0",
+    "@rollup/plugin-typescript": "^12.1.4",
+    "@types/node": "^22.16.4",
     "ass-compiler": "^0.1.15",
-    "prettier": "^3.4.2",
-    "rollup": "^4.34.1",
-    "terser": "^5.37.0",
+    "prettier": "^3.6.2",
+    "rollup": "^4.45.1",
+    "terser": "^5.43.1",
     "tslib": "^2.8.1",
-    "tsup": "^8.3.6",
-    "typescript": "^5.7.3"
+    "tsdown": "^0.12.9",
+    "typescript": "^5.8.3"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild"
     ]
-  }
+  },
+  "type": "module"
 }

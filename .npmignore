@@ -1,7 +1,7 @@
 .changeset
 pnpm-lock.yaml
 tsconfig.json
-tsup.config.ts
+tsdown.config.ts
 CHANGELOG.md
 .github
 src
