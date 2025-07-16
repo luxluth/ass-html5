@@ -9,8 +9,5 @@ export default defineConfig({
   noExternal: ['ass-compiler'],
   name: 'ASS',
   globalName: 'ass',
-  format: ['esm', 'cjs'],
-  async onSuccess() {
-    console.log('      END ' + Date().split(' ')[4]);
-  }
+  format: ['esm', 'cjs']
 });

@@ -51,6 +51,5 @@
     "onlyBuiltDependencies": [
       "esbuild"
     ]
-  },
-  "type": "module"
+  }
 }
