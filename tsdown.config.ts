@@ -9,5 +9,5 @@ export default defineConfig({
   noExternal: ['ass-compiler'],
   name: 'ASS',
   globalName: 'ass',
-  format: ['esm', 'cjs']
+  format: ['esm']
 });
