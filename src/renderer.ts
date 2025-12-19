@@ -378,7 +378,7 @@ export class Renderer {
         let font = this.computeStyle(char.style, 1, layer);
         this.applyOverrideTag(char.tag, font);
         this.applyFont(font, layer);
-        w += layer.ctx.measureText(char.c).width + font.t.fsp;
+        w += layer.ctx.measureText(char.c).width;
       }
     });
 
@@ -475,7 +475,7 @@ export class Renderer {
             font = this.computeStyle(char.style, d.alignment, layer);
             this.applyOverrideTag(char.tag, font);
             this.applyFont(font, layer);
-            const w = layer.ctx.measureText(char.c).width + font.t.fsp;
+            const w = layer.ctx.measureText(char.c).width;
             char.pos.x = cX;
             char.pos.y = cY;
             char.w = w;
