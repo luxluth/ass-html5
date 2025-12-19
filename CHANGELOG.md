@@ -1,5 +1,11 @@
 # ass-html5
 
+## 0.5.4
+
+### Patch Changes
+
+- 2ecc79e: Fix letter spacing
+
 ## 0.5.3
 
 ### Patch Changes
@@ -61,7 +67,6 @@
 ### Patch Changes
 
 - a45de93: - Font Vertical and Horizontal Transformation Support
-
   - Re-writing Core Part (Simplify)
 
 ## 0.3.2
