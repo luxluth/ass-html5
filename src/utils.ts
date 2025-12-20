@@ -158,6 +158,8 @@ export function chunkCharWidth(chars: Char[]) {
     let char = chars[i] as Char;
     if (char.kind == CHARKIND.NORMAL) {
       w += char.w;
+    } else if (char.kind == CHARKIND.DRAWING) {
+      w += char.w;
     }
   }
 

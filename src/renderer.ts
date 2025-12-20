@@ -12,7 +12,8 @@ import type {
   Word,
   FadeAnimation,
   CustomAnimation,
-  Karaoke
+  Karaoke,
+  Drawing
 } from './types';
 import { CHARKIND, LOGTYPE, Align, Baseline, FadeKind } from './types';
 import {
@@ -112,7 +113,7 @@ export class Renderer {
     this.video = video;
   }
 
-  insertLayers(sizes: OnInitSizes, insertAfter: HTMLCanvasElement) {
+  private insertLayers(sizes: OnInitSizes, insertAfter: HTMLCanvasElement) {
     for (let i = 0; i < this.numberOfLayers; i++) {
       const canvas = newCanvas(sizes.width, sizes.height, i, 'frame', undefined, insertAfter);
       const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
@@ -130,7 +131,7 @@ export class Renderer {
     }
   }
 
-  getLayer(l: number): Layer | null {
+  private getLayer(l: number): Layer | null {
     for (let i = 1; i < this.layers.length; i++) {
       if (this.layers[i]?.canvas.dataset.layer == l.toString()) {
         return this.layers[i] as Layer;
@@ -139,7 +140,7 @@ export class Renderer {
     return null;
   }
 
-  findTotalLayers(ass: CompiledASS) {
+  private findTotalLayers(ass: CompiledASS) {
     let maxLayer = 1;
     ass.dialogues.forEach((dialogue) => {
       if (dialogue.layer >= maxLayer) maxLayer++;
@@ -211,7 +212,7 @@ export class Renderer {
     }
   }
 
-  processSlices(alignment: number, slices: DialogueSlice[], layer: Layer): Char[] {
+  private processSlices(alignment: number, slices: DialogueSlice[], layer: Layer): Char[] {
     let chars: Char[] = [];
     let currentKaraokeTime = 0;
     slices.forEach((slice) => {
@@ -254,30 +255,64 @@ export class Renderer {
 
         //@ts-ignore
         const text = frag.text.replaceAll('\\N', '\n').split('');
+        const drawing = (frag as any).drawing as Drawing | undefined;
 
         let ord = 0;
         let chars: Char[] = [];
 
-        for (let i = 0; i < text.length; i++) {
-          const char = text[i] as string;
-          if (char == '\n') {
+        if (drawing) {
+          const scale = (frag.tag as any).p || 0;
+          // If scale is 0, it's not a drawing (usually disabled), but if drawing object exists, it might be.
+          // However, ass-compiler usually returns drawing object only if valid.
+          // But p0 disables drawing. So check scale != 0.
+          if (scale > 0) {
+            const cachedPath = new Path2D(drawing.d);
             chars.push({
-              kind: CHARKIND.NEWLINE
-            });
-            ord = 0;
-          } else {
-            chars.push({
-              kind: CHARKIND.NORMAL,
+              kind: CHARKIND.DRAWING,
               pos: new Vector2(),
-              c: char,
-              ord,
-              w: 0,
-              style,
+              w: drawing.width * Math.pow(2, -(scale - 1)), // Approximate width for layout?
+              // Actually layout for drawing is tricky. It usually acts as a shape at current cursor.
+              // But width in 'drawing' is raw width. We need to scale it.
+              // Scale: 1 -> 1:1. 2 -> 1:2. 4 -> 1:8.
+              // Wait, p1: 1 coord = 1 pixel. p2: 1 coord = 0.5 pixel? Or p2: 1 coord = 2 pixels?
+              // Documentation: "Scale is 2^(scale-1)".
+              // If scale=1 => 2^0 = 1.
+              // If scale=4 => 2^3 = 8.
+              // Meaning coordinates are DIVIDED by 8? Or MULTIPLIED?
+              // "The scale is the power of 2 to which the coordinates are scaled."
+              // Usually high resolution drawings use p4 or p8 to have integer coordinates but draw small.
+              // So we DIVIDE coordinates by 2^(scale-1).
+              h: drawing.height * Math.pow(2, -(scale - 1)),
               tag: frag.tag,
-              karaoke
+              style,
+              drawing,
+              scale,
+              path: cachedPath
             });
+            console.debug('drawing', chars[chars.length - 1]);
+          }
+        } else {
+          for (let i = 0; i < text.length; i++) {
+            const char = text[i] as string;
+            if (char == '\n') {
+              chars.push({
+                kind: CHARKIND.NEWLINE
+              });
+              ord = 0;
+            } else {
+              chars.push({
+                kind: CHARKIND.NORMAL,
+                pos: new Vector2(),
+                c: char,
+                ord,
+                w: 0,
+                style,
+                tag: frag.tag,
+                karaoke
+              });
 
-            ord += 1;
+              ord += 1;
+            }
           }
         }
 
@@ -290,7 +325,7 @@ export class Renderer {
     return chars;
   }
 
-  sublog(type: LOGTYPE, ...message: any) {
+  private sublog(type: LOGTYPE, ...message: any) {
     switch (type) {
       case 'DISABLE':
         break;
@@ -306,7 +341,7 @@ export class Renderer {
     }
   }
 
-  log(type: LOGTYPE, ...message: any) {
+  private log(type: LOGTYPE, ...message: any) {
     switch (this._log) {
       case 'DISABLE':
         break;
@@ -333,7 +368,7 @@ export class Renderer {
     });
   }
 
-  render(timestamp: number) {
+  private render(timestamp: number) {
     if (this.stop === true) {
       if (this.animationHandle) {
         this.renderDiv.remove();
@@ -352,7 +387,7 @@ export class Renderer {
     this.stop = true;
   }
 
-  display(time: number) {
+  private display(time: number) {
     this.currentTime = time;
     this.clear();
     const slicesToDisplay = this.getSlices(time);
@@ -361,48 +396,51 @@ export class Renderer {
     });
   }
 
-  charsToString(chars: Char[]): string {
-    return chars.reduce((acc, v) => {
-      return (acc += v.kind == CHARKIND.NEWLINE ? '\n' : v.c);
-    }, '');
-  }
+  // private charsToString(chars: Char[]): string {
+  //   return chars.reduce((acc, v) => {
+  //     if (v.kind === CHARKIND.NEWLINE) return acc + '\n';
+  //     if (v.kind === CHARKIND.NORMAL) return acc + v.c;
+  //     return acc;
+  //   }, '');
+  // }
 
-  getSlices(time: number): PreProceesedAss[] {
+  private getSlices(time: number): PreProceesedAss[] {
     return this.ppass.filter((dialogue) => {
       return dialogue.start <= time && dialogue.end >= time;
     });
   }
 
-  getLineHeights(layer: Layer, lines: Char[][]): number[] {
-    let heights: number[] = [];
+  private getLineMetrics(layer: Layer, lines: Char[][]) {
+    return lines.map((line) => {
+      let maxAscent = 0;
+      let maxDescent = 0;
 
-    let currentMaxHeight = 0;
-    lines.forEach((line) => {
       line.forEach((char) => {
         if (char.kind === CHARKIND.NORMAL) {
           let font = this.computeStyle(char.style, 1, layer);
           this.applyOverrideTag(char.tag, font);
           this.applyFont(font, layer);
-          let calc =
-            layer.ctx.measureText(char.c).fontBoundingBoxAscent +
-            layer.ctx.measureText(char.c).fontBoundingBoxDescent;
-          if (calc > currentMaxHeight) {
-            currentMaxHeight = calc;
-          }
+
+          const m = layer.ctx.measureText(char.c);
+          if (m.fontBoundingBoxAscent > maxAscent) maxAscent = m.fontBoundingBoxAscent;
+          if (m.fontBoundingBoxDescent > maxDescent) maxDescent = m.fontBoundingBoxDescent;
+        } else if (char.kind === CHARKIND.DRAWING) {
+          const Yratio = layer.canvas.height / this.playerResY;
+          const pScale = Math.pow(2, -(char.scale - 1));
+          const h = char.drawing.height * pScale * Yratio;
+
+          if (h > maxAscent) maxAscent = h;
         }
       });
-      heights.push(currentMaxHeight);
-      currentMaxHeight = 0;
+
+      return {
+        ascent: maxAscent,
+        height: maxAscent + maxDescent
+      };
     });
-
-    return heights;
   }
 
-  countLines(chars: Char[]): number {
-    return chars.filter((c) => c.kind === CHARKIND.NEWLINE).length + 1;
-  }
-
-  lineWidth(layer: Layer, chars: Char[]) {
+  private lineWidth(layer: Layer, chars: Char[]) {
     let w = 0;
     chars.forEach((char) => {
       if (char.kind === CHARKIND.NORMAL) {
@@ -410,13 +448,15 @@ export class Renderer {
         this.applyOverrideTag(char.tag, font);
         this.applyFont(font, layer);
         w += layer.ctx.measureText(char.c).width;
+      } else if (char.kind === CHARKIND.DRAWING) {
+        w += char.w;
       }
     });
 
     return w;
   }
 
-  lines(chars: Char[]): Char[][] {
+  private lines(chars: Char[]): Char[][] {
     let lines: Char[][] = [];
     let buff: Char[] = [];
 
@@ -427,6 +467,7 @@ export class Renderer {
           buff = [];
           break;
         case CHARKIND.NORMAL:
+        case CHARKIND.DRAWING:
           buff.push(char);
           break;
       }
@@ -439,195 +480,210 @@ export class Renderer {
     return lines;
   }
 
-  showDialogue(d: PreProceesedAss, time: number) {
+  private showDialogue(d: PreProceesedAss, time: number) {
     const layer = this.getLayer(d.layer);
-    if (layer) {
-      let font = this.computeStyle(d.style, d.alignment, layer);
+    if (!layer) return;
 
-      const lines = this.lines(d.chars);
-      const lineHeights = this.getLineHeights(layer, lines);
-      const lineHeight = Math.max(...lineHeights);
-      const linesCount = this.countLines(d.chars);
-      const totalHeight = lineHeight * linesCount;
-      let cX = 0;
-      let cY = 0;
-      let baseX = 0;
-      let currentOpacity = 1;
+    let font = this.computeStyle(d.style, d.alignment, layer);
 
-      let customPosition = false;
-      let rotationOrigin: Vector2 | undefined;
-      const Xratio = layer.canvas.width / this.playerResX;
-      const Yratio = layer.canvas.height / this.playerResY;
+    const lines = this.lines(d.chars);
+    const lineMetrics = this.getLineMetrics(layer, lines);
+    const totalHeight = lineMetrics.reduce((acc, m) => acc + m.height, 0);
 
-      if (d.pos) {
-        customPosition = true;
-        baseX = d.pos.x * Xratio;
-        cX = baseX;
-        cY = d.pos.y * Yratio;
+    let cX = 0;
+    let cY = 0;
+    let baseX = 0;
+    let currentOpacity = 1;
+
+    let customPosition = false;
+    let rotationOrigin: Vector2 | undefined;
+    const Xratio = layer.canvas.width / this.playerResX;
+    const Yratio = layer.canvas.height / this.playerResY;
+
+    if (d.pos) {
+      customPosition = true;
+      baseX = d.pos.x * Xratio;
+      cX = baseX;
+      cY = d.pos.y * Yratio;
+    }
+
+    if (d.move) {
+      customPosition = true;
+
+      let startPosition = new Vector2(d.move.from.x * Xratio, d.move.from.y * Yratio);
+      let endPosition = new Vector2(d.move.to.x * Xratio, d.move.to.y * Yratio);
+      let actualPosition = vectorLerp(
+        startPosition,
+        endPosition,
+        (time - d.start) / (d.end - d.start)
+      );
+
+      baseX = actualPosition.x;
+      cX = baseX;
+      cY = actualPosition.y;
+    }
+
+    if (d.rotationOrigin)
+      rotationOrigin = new Vector2(d.rotationOrigin.x * Xratio, d.rotationOrigin.y * Yratio);
+
+    if (d.fade) {
+      switch (d.fade.type) {
+        case FadeKind.Simple:
+          currentOpacity = getOpacity(d.fade, d.start * 1000, d.end * 1000, time * 1000);
+          break;
+        case FadeKind.Complex:
+          currentOpacity = getOpacityComplex(d.fade, d.start * 1000, d.end * 1000, time * 1000);
+          break;
       }
+    }
 
-      if (d.move) {
-        customPosition = true;
+    let currentLineIndex = 0;
 
-        let startPosition = new Vector2(d.move.from.x * Xratio, d.move.from.y * Yratio);
-        let endPosition = new Vector2(d.move.to.x * Xratio, d.move.to.y * Yratio);
-        let actualPosition = vectorLerp(
-          startPosition,
-          endPosition,
-          (time - d.start) / (d.end - d.start)
-        );
-
-        baseX = actualPosition.x;
-        cX = baseX;
-        cY = actualPosition.y;
-      }
-
-      if (d.rotationOrigin)
-        rotationOrigin = new Vector2(d.rotationOrigin.x * Xratio, d.rotationOrigin.y * Yratio);
-
-      if (d.fade) {
-        switch (d.fade.type) {
-          case FadeKind.Simple:
-            currentOpacity = getOpacity(d.fade, d.start * 1000, d.end * 1000, time * 1000);
-            break;
-          case FadeKind.Complex:
-            currentOpacity = getOpacityComplex(d.fade, d.start * 1000, d.end * 1000, time * 1000);
-            break;
-        }
-      }
-
-      d.chars.forEach((char) => {
-        switch (char.kind) {
-          case CHARKIND.NEWLINE:
-            cX = baseX;
-            cY += lineHeight;
-            break;
-          case CHARKIND.NORMAL:
-            font = this.computeStyle(char.style, d.alignment, layer);
-            this.applyOverrideTag(char.tag, font);
-            this.applyFont(font, layer);
-            const w = layer.ctx.measureText(char.c).width;
-            char.pos.x = cX;
-            char.pos.y = cY;
-            char.w = w;
-            cX += w;
-            break;
-        }
-      });
-
-      const margin = this.upscaleMargin(d.margin);
-
-      lines.forEach((line) => {
-        // WARN: To debug
-        const lineWidth = this.lineWidth(layer, line);
-
-        if (!customPosition) {
-          switch (font.textAlign) {
-            case Align.Left:
-              line.forEach((char) => {
-                if (char.kind == CHARKIND.NORMAL) char.pos.x += margin.left;
-              });
-              break;
-            case Align.Center:
-              line.forEach((char) => {
-                if (char.kind == CHARKIND.NORMAL)
-                  char.pos.x += (layer.canvas.width - lineWidth) / 2;
-              });
-              break;
-            case Align.Right:
-              line.forEach((char) => {
-                if (char.kind == CHARKIND.NORMAL)
-                  char.pos.x += layer.canvas.width - lineWidth - margin.right;
-              });
-              break;
-            default:
-              line.forEach((char) => {
-                if (char.kind == CHARKIND.NORMAL) char.pos.x += margin.left;
-              });
-              break;
+    d.chars.forEach((char) => {
+      switch (char.kind) {
+        case CHARKIND.NEWLINE:
+          cX = baseX;
+          if (currentLineIndex < lineMetrics.length) {
+            cY += lineMetrics[currentLineIndex]!.height;
           }
-          switch (font.textBaseline) {
-            case Baseline.Bottom:
-              line.forEach((char) => {
-                if (char.kind == CHARKIND.NORMAL)
-                  char.pos.y +=
-                    layer.canvas.height -
-                    (lines.length > 1 ? totalHeight / lines.length : 0) -
-                    margin.vertical;
-              });
-              break;
-            case Baseline.Middle:
-              line.forEach((char) => {
-                if (char.kind == CHARKIND.NORMAL)
-                  char.pos.y +=
-                    (layer.canvas.height - totalHeight) / 2 +
-                    (lines.length > 1 ? totalHeight / lines.length : lineHeight);
-              });
-              break;
-            case Baseline.Top:
-              line.forEach((char) => {
-                if (char.kind == CHARKIND.NORMAL) char.pos.y += margin.vertical + lineHeight / 2;
-              });
-              break;
-            default:
-              line.forEach((char) => {
-                if (char.kind == CHARKIND.NORMAL)
-                  char.pos.y +=
-                    layer.canvas.height -
-                    (lines.length > 1 ? totalHeight / lines.length : 0) -
-                    margin.vertical;
-              });
-              break;
-          }
-        } else {
-          switch (font.textAlign) {
-            case Align.Left:
-              break;
-            case Align.Center:
-              line.forEach((char) => {
-                if (char.kind == CHARKIND.NORMAL) char.pos.x -= lineWidth / 2;
-              });
-              break;
-            case Align.Right:
-              // line.forEach((char) => {
-              //   if (char.kind == CHARKIND.NORMAL) char.pos.x += lineWidth;
-              // });
-              break;
-            default:
-              break;
-          }
-        }
-      });
-
-      let currentWord: Char[] = [];
-      let currentFont: StyleDescriptor | null = null;
-      let words: Word[] = [];
-
-      let currentHash = 0;
-
-      d.chars.forEach((char) => {
-        if (char.kind == CHARKIND.NORMAL) {
-          let font = this.computeStyle(char.style, d.alignment, layer);
+          currentLineIndex++;
+          break;
+        case CHARKIND.NORMAL:
+          font = this.computeStyle(char.style, d.alignment, layer);
           this.applyOverrideTag(char.tag, font);
+          this.applyFont(font, layer);
+          const metrics = layer.ctx.measureText(char.c);
+          const w = metrics.width;
+          char.pos.x = cX;
 
-          let fHash = this.getFontHash(font);
+          const baseline = cY + lineMetrics[currentLineIndex]!.ascent;
+          char.pos.y = baseline;
 
-          if (currentHash !== fHash) {
-            if (currentWord.length > 0) {
-              if (currentFont !== null) {
-                words.push({
-                  font: currentFont,
-                  value: currentWord,
-                  w: chunkCharWidth(currentWord)
-                });
+          char.w = w;
+          cX += w;
+          break;
+        case CHARKIND.DRAWING:
+          const pScale = Math.pow(2, -(char.scale - 1));
+          const dw = char.drawing.width * pScale * Xratio;
+          const dh = char.drawing.height * pScale * Yratio;
+          char.pos.x = cX;
 
-                currentWord = [char];
-                currentFont = font;
-                currentHash = fHash;
-              }
-            } else {
+          const drawingBaseline = cY + lineMetrics[currentLineIndex]!.ascent;
+          char.pos.y = drawingBaseline - dh;
+
+          char.w = dw;
+          cX += dw;
+          break;
+      }
+    });
+
+    const margin = this.upscaleMargin(d.margin);
+
+    let offsetY = 0; // vertical offset based on Alignment (Top/Middle/Bottom)
+    if (!customPosition) {
+      switch (font.textBaseline) {
+        case Baseline.Bottom:
+          // Shift UP from bottom: CanvasHeight - Margin - TotalHeight
+          offsetY = layer.canvas.height - margin.vertical - totalHeight;
+          break;
+        case Baseline.Middle:
+          // Shift to Middle: (CanvasHeight/2) - (TotalHeight/2)
+          offsetY = (layer.canvas.height - totalHeight) / 2;
+          break;
+        case Baseline.Top:
+          // Shift Down: Margin
+          offsetY = margin.vertical;
+          break;
+        default:
+          offsetY = layer.canvas.height - margin.vertical - totalHeight;
+          break;
+      }
+    } else {
+      switch (font.textBaseline) {
+        case Baseline.Bottom:
+          offsetY = -totalHeight;
+          break;
+        case Baseline.Middle:
+          offsetY = -totalHeight / 2;
+          break;
+        default:
+          offsetY = 0;
+          break;
+      }
+    }
+
+    let lineIdx = 0;
+
+    lines.forEach((line) => {
+      const lineWidth = this.lineWidth(layer, line);
+      let offsetX = 0;
+
+      if (!customPosition) {
+        switch (font.textAlign) {
+          case Align.Left:
+            offsetX = margin.left;
+            break;
+          case Align.Center:
+            offsetX = (layer.canvas.width - lineWidth) / 2;
+            break;
+          case Align.Right:
+            offsetX = layer.canvas.width - lineWidth - margin.right;
+            break;
+          default:
+            offsetX = margin.left;
+        }
+      } else {
+        // Alignment relative to \pos coordinates
+        switch (font.textAlign) {
+          case Align.Center:
+            offsetX = -lineWidth / 2;
+            break;
+          case Align.Right:
+            offsetX = -lineWidth;
+            break;
+          default:
+            offsetX = 0;
+            break;
+        }
+      }
+
+      line.forEach((char) => {
+        if (char.kind === CHARKIND.NORMAL || char.kind === CHARKIND.DRAWING) {
+          char.pos.x += offsetX;
+
+          if (customPosition) {
+            char.pos.y += offsetY;
+          } else {
+            char.pos.y += offsetY;
+          }
+        }
+      });
+      lineIdx++;
+    });
+
+    let currentWord: Char[] = [];
+    let currentFont: StyleDescriptor | null = null;
+    let words: Word[] = [];
+    let currentHash = 0;
+
+    d.chars.forEach((char) => {
+      if (char.kind == CHARKIND.NORMAL || char.kind == CHARKIND.DRAWING) {
+        let font = this.computeStyle(char.style, d.alignment, layer);
+        this.applyOverrideTag(char.tag, font);
+
+        let fHash = this.getFontHash(font);
+
+        if (currentHash !== fHash) {
+          if (currentWord.length > 0) {
+            if (currentFont !== null) {
+              words.push({
+                font: currentFont,
+                value: currentWord,
+                w: chunkCharWidth(currentWord)
+              });
+
+              currentWord = [char];
               currentFont = font;
-              currentWord.push(char);
               currentHash = fHash;
             }
           } else {
@@ -636,20 +692,11 @@ export class Renderer {
             currentHash = fHash;
           }
         } else {
-          if (currentFont !== null) {
-            words.push({
-              font: currentFont,
-              value: currentWord,
-              w: chunkCharWidth(currentWord)
-            });
-
-            currentWord = [];
-            currentFont = null;
-          }
+          currentFont = font;
+          currentWord.push(char);
+          currentHash = fHash;
         }
-      });
-
-      if (currentWord.length > 0) {
+      } else {
         if (currentFont !== null) {
           words.push({
             font: currentFont,
@@ -661,21 +708,29 @@ export class Renderer {
           currentFont = null;
         }
       }
+    });
 
-      words.forEach((word) => {
-        word.font.opacity = currentOpacity;
-        layer.ctx.save();
-        this.drawWord(word, time, d.start, layer);
-        layer.ctx.restore();
+    if (currentWord.length > 0 && currentFont !== null) {
+      words.push({
+        font: currentFont,
+        value: currentWord,
+        w: chunkCharWidth(currentWord)
       });
     }
+
+    words.forEach((word) => {
+      word.font.opacity = currentOpacity;
+      layer.ctx.save();
+      this.drawWord(word, time, d.start, layer);
+      layer.ctx.restore();
+    });
   }
 
-  getFontHash(font: StyleDescriptor): number {
+  private getFontHash(font: StyleDescriptor): number {
     return stringHash(JSON.stringify(font));
   }
 
-  drawWord(word: Word, time: number, startTime: number, layer: Layer, debug = false) {
+  private drawWord(word: Word, time: number, startTime: number, layer: Layer, debug = false) {
     let str = chunkCharToString(word.value);
     for (let i = 0; i < word.font.customAnimations.length; i++) {
       const ca = word.font.customAnimations[i] as CustomAnimation;
@@ -734,6 +789,11 @@ export class Renderer {
 
     this.applyFont(word.font, layer);
     const wordHead = word.value[0] as Char;
+
+    if (wordHead.kind === CHARKIND.DRAWING) {
+      this.drawDrawing(wordHead, layer);
+      return;
+    }
 
     if (wordHead.kind === CHARKIND.NORMAL) {
       let hasKaraoke = false;
@@ -818,7 +878,48 @@ export class Renderer {
     }
   }
 
-  drawTextBackground(pos: Vector2, height: number, width: number, font: StyleDescriptor) {
+  private drawDrawing(char: Extract<Char, { kind: CHARKIND.DRAWING }>, layer: Layer) {
+    const { pos, path, scale } = char;
+    const ctx = layer.ctx;
+
+    const Xratio = layer.canvas.width / this.playerResX;
+    const Yratio = layer.canvas.height / this.playerResY;
+    const scaleFactor = Math.pow(2, -(scale - 1));
+    const sx = scaleFactor * Xratio;
+    const sy = scaleFactor * Yratio;
+
+    ctx.save();
+    ctx.translate(pos.x, pos.y);
+
+    if (typeof DOMMatrix !== 'undefined') {
+      try {
+        const matrix = new DOMMatrix().scale(sx, sy);
+
+        const scaledPath = new Path2D();
+        scaledPath.addPath(path, matrix);
+
+        ctx.fill(scaledPath);
+        if (ctx.lineWidth > 0) ctx.stroke(scaledPath);
+      } catch (e) {
+        // NOTE: Fallback for very old browsers (rare nowadays)
+        this.fallbackDraw(ctx, path, sx, sy);
+      }
+    } else {
+      this.fallbackDraw(ctx, path, sx, sy);
+    }
+    ctx.restore();
+  }
+
+  private fallbackDraw(ctx: CanvasRenderingContext2D, path: Path2D, sx: number, sy: number) {
+    ctx.scale(sx, sy);
+    ctx.fill(path);
+    // NOTE: ctx.scale WILL distort the border thickness here.
+    // e.g. a vertical line might have a thicker border than a horizontal one
+    // if sx != sy.
+    if (ctx.lineWidth > 0) ctx.stroke(path);
+  }
+
+  private drawTextBackground(pos: Vector2, height: number, width: number, font: StyleDescriptor) {
     const layer = this.layers[0] as Layer;
     layer.ctx.save();
     layer.ctx.beginPath();
@@ -828,38 +929,13 @@ export class Renderer {
     layer.ctx.restore();
   }
 
-  upscaleY(y: number, baseCanvasHeight: number) {
-    const canvasHeight = this.layers[0]?.canvas.height || this.playerResY;
-    return (canvasHeight * y) / baseCanvasHeight;
-  }
-  upscaleX(x: number, baseCanvasWidth: number) {
-    const canvasWidth = this.layers[0]?.canvas.width || this.playerResX;
-    return (canvasWidth * x) / baseCanvasWidth;
-  }
-
-  clearLayer(layer: number) {
-    this.layers[layer]?.ctx.clearRect(
-      0,
-      0,
-      this.layers[layer]?.canvas.width as number,
-      this.layers[layer]?.canvas.height as number
-    );
-  }
-
-  clear() {
+  private clear() {
     this.layers.forEach((layer) => {
       layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
     });
   }
 
-  upscalePosition(pos: Position) {
-    return {
-      x: this.upscale(pos.x, this.playerResX, this.layers[0]?.canvas.width || this.playerResX),
-      y: this.upscale(pos.y, this.playerResY, this.layers[0]?.canvas.height || this.playerResY)
-    };
-  }
-
-  upscaleMargin(margin: Margin) {
+  private upscaleMargin(margin: Margin) {
     return {
       left: this.upscale(
         margin.left,
@@ -879,7 +955,7 @@ export class Renderer {
     };
   }
 
-  applyOverrideTag(tag: CompiledTag, font: StyleDescriptor) {
+  private applyOverrideTag(tag: CompiledTag, font: StyleDescriptor) {
     if (tag.b !== undefined) font.bold = tag.b === 1;
     if (tag.i !== undefined) font.italic = tag.i === 1;
     if (tag.u !== undefined) font.underline = tag.u === 1;
@@ -918,17 +994,17 @@ export class Renderer {
     if (tag.blur !== undefined) font.blur = tag.blur;
   }
 
-  upscale(x: number, firstcomp: number, secondcomp: number) {
+  private upscale(x: number, firstcomp: number, secondcomp: number) {
     return (ruleOfThree(firstcomp, secondcomp) * x) / 100;
   }
 
-  fontDecriptorString(font: StyleDescriptor) {
+  private fontDecriptorString(font: StyleDescriptor) {
     return `${font.bold ? 'bold ' : ''}${font.italic ? 'italic ' : ''}${font.fontsize.toFixed(
       3
     )}px "${font.fontname}"`;
   }
 
-  computeStyle(name: string, alignment: number, layer: Layer): StyleDescriptor {
+  private computeStyle(name: string, alignment: number, layer: Layer): StyleDescriptor {
     const style = this.styles[name] as CompiledASSStyle;
     if (style === undefined) {
       // TODO: fallbackFont when there is no style
@@ -1005,7 +1081,7 @@ export class Renderer {
     return font;
   }
 
-  applyFont(font: StyleDescriptor, layer: Layer) {
+  private applyFont(font: StyleDescriptor, layer: Layer) {
     layer.ctx.font = this.fontDecriptorString(font);
     layer.ctx.fillStyle = blendAlpha(font.colors.c1, font.colors.a1);
     layer.ctx.strokeStyle = blendAlpha(font.colors.c3, font.colors.a3);
@@ -1034,7 +1110,7 @@ export class Renderer {
     layer.ctx.globalAlpha = font.opacity;
   }
 
-  getAlignment(alignment: number) {
+  private getAlignment(alignment: number) {
     // 1 = (bottom) left
     // 2 = (bottom) center
     // 3 = (bottom) right
@@ -1062,7 +1138,7 @@ export class Renderer {
     }
   }
 
-  getBaseLine(alignment: number) {
+  private getBaseLine(alignment: number) {
     // 1 = (bottom) left
     // 2 = (bottom) center
     // 3 = (bottom) right

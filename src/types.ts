@@ -112,10 +112,25 @@ export type LOGTYPE = 'DISABLE' | 'VERBOSE' | 'DEBUG' | 'WARN';
 
 export enum CHARKIND {
   NEWLINE,
-  NORMAL
+  NORMAL,
+  DRAWING
 }
 
 export type Margin = { left: number; right: number; vertical: number };
+
+export type DrawingInstruction = {
+  type: 'M' | 'L' | 'B'; // Move, Line, Bezier (C in ASS)
+  points: { x: number; y: number }[];
+};
+
+export type Drawing = {
+  instructions: DrawingInstruction[];
+  d: string;
+  minX: number;
+  minY: number;
+  width: number;
+  height: number;
+};
 
 export type Karaoke = {
   start: number;
@@ -136,6 +151,17 @@ export type Char =
     }
   | {
       kind: CHARKIND.NEWLINE;
+    }
+  | {
+      kind: CHARKIND.DRAWING;
+      pos: Vector2;
+      w: number;
+      h: number; // Height is relevant for drawings
+      tag: CompiledTag;
+      style: string;
+      drawing: Drawing;
+      scale: number; // p tag value
+      path: Path2D;
     };
 
 export type Word = {
