@@ -11,7 +11,8 @@ import type {
   Char,
   Word,
   FadeAnimation,
-  CustomAnimation
+  CustomAnimation,
+  Karaoke
 } from './types';
 import { CHARKIND, LOGTYPE, Align, Baseline, FadeKind } from './types';
 import {
@@ -212,6 +213,7 @@ export class Renderer {
 
   processSlices(alignment: number, slices: DialogueSlice[], layer: Layer): Char[] {
     let chars: Char[] = [];
+    let currentKaraokeTime = 0;
     slices.forEach((slice) => {
       const { style, fragments } = slice;
       let font = this.computeStyle(style, alignment, layer);
@@ -221,6 +223,34 @@ export class Renderer {
       fragments.forEach((frag) => {
         this.applyOverrideTag(frag.tag, font);
         this.applyFont(font, layer);
+
+        // Karaoke Logic
+        const tag = frag.tag as any;
+        let kMode: 'k' | 'kf' | 'ko' | 'K' | null = null;
+        let kVal = 0;
+        if (tag.k !== undefined) {
+          kMode = 'k';
+          kVal = tag.k;
+        } else if (tag.kf !== undefined) {
+          kMode = 'kf';
+          kVal = tag.kf;
+        } else if (tag.ko !== undefined) {
+          kMode = 'ko';
+          kVal = tag.ko;
+        } else if (tag.K !== undefined) {
+          kMode = 'K';
+          kVal = tag.K;
+        }
+
+        let karaoke: Karaoke | undefined;
+        if (kMode !== null) {
+          karaoke = {
+            type: kMode,
+            start: currentKaraokeTime,
+            end: currentKaraokeTime + kVal / 100
+          };
+          currentKaraokeTime += kVal / 100;
+        }
 
         //@ts-ignore
         const text = frag.text.replaceAll('\\N', '\n').split('');
@@ -243,7 +273,8 @@ export class Renderer {
               ord,
               w: 0,
               style,
-              tag: frag.tag
+              tag: frag.tag,
+              karaoke
             });
 
             ord += 1;
@@ -705,6 +736,36 @@ export class Renderer {
     const wordHead = word.value[0] as Char;
 
     if (wordHead.kind === CHARKIND.NORMAL) {
+      let hasKaraoke = false;
+      let clipWidth = 0;
+
+      if (word.value.some((c) => c.kind === CHARKIND.NORMAL && c.karaoke)) {
+        hasKaraoke = true;
+        word.value.forEach((char) => {
+          if (char.kind === CHARKIND.NORMAL && char.karaoke) {
+            const relTime = time - startTime;
+            const kStart = char.karaoke.start;
+            const kEnd = char.karaoke.end;
+
+            if (relTime >= kEnd) {
+              clipWidth += char.w;
+            } else if (relTime > kStart) {
+              const dur = kEnd - kStart;
+              if (dur > 0) {
+                const p = (relTime - kStart) / dur;
+                if (char.karaoke.type === 'kf' || char.karaoke.type === 'K') {
+                  clipWidth += char.w * p;
+                } else {
+                  clipWidth += char.w;
+                }
+              }
+            }
+          } else if (char.kind === CHARKIND.NORMAL) {
+            clipWidth += char.w;
+          }
+        });
+      }
+
       if (word.font.borderStyle !== 3) {
         if (word.font.xbord !== 0 || word.font.ybord !== 0) {
           layer.ctx.strokeText(str, wordHead.pos.x, wordHead.pos.y);
@@ -713,7 +774,27 @@ export class Renderer {
 
       let metrics = layer.ctx.measureText(str);
 
-      layer.ctx.fillText(str, wordHead.pos.x, wordHead.pos.y);
+      if (hasKaraoke) {
+        layer.ctx.save();
+        layer.ctx.fillStyle = blendAlpha(word.font.colors.c2, word.font.colors.a2);
+        layer.ctx.fillText(str, wordHead.pos.x, wordHead.pos.y);
+        layer.ctx.restore();
+
+        layer.ctx.save();
+        layer.ctx.beginPath();
+        layer.ctx.rect(
+          wordHead.pos.x,
+          wordHead.pos.y - layer.canvas.height,
+          clipWidth,
+          layer.canvas.height * 2
+        );
+        layer.ctx.clip();
+
+        layer.ctx.fillText(str, wordHead.pos.x, wordHead.pos.y);
+        layer.ctx.restore();
+      } else {
+        layer.ctx.fillText(str, wordHead.pos.x, wordHead.pos.y);
+      }
 
       if (word.font.underline) {
         const y = wordHead.pos.y + metrics.emHeightDescent;

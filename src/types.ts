@@ -116,6 +116,13 @@ export enum CHARKIND {
 }
 
 export type Margin = { left: number; right: number; vertical: number };
+
+export type Karaoke = {
+  start: number;
+  end: number;
+  type: 'k' | 'kf' | 'ko' | 'K';
+};
+
 export type Char =
   | {
       kind: CHARKIND.NORMAL;
@@ -125,6 +132,7 @@ export type Char =
       tag: CompiledTag;
       style: string;
       ord: number;
+      karaoke?: Karaoke;
     }
   | {
       kind: CHARKIND.NEWLINE;
