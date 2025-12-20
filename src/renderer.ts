@@ -162,7 +162,6 @@ export class Renderer {
 
     computelayer.canvas.width = this.playerResX;
     computelayer.canvas.height = this.playerResY;
-    console.debug(dialogues);
 
     for (let i = 0; i < dialogues.length; i++) {
       const dia = dialogues[i] as Dialogue;
@@ -383,7 +382,6 @@ export class Renderer {
   }
 
   destroy() {
-    // console.debug('STOPPED::');
     this.stop = true;
   }
 
@@ -427,7 +425,9 @@ export class Renderer {
         } else if (char.kind === CHARKIND.DRAWING) {
           const Yratio = layer.canvas.height / this.playerResY;
           const pScale = Math.pow(2, -(char.scale - 1));
-          const h = char.drawing.height * pScale * Yratio;
+          const fscy = (char.tag?.fscy ?? 100) / 100;
+
+          const h = char.drawing.height * pScale * fscy * Yratio;
 
           if (h > maxAscent) maxAscent = h;
         }
@@ -563,7 +563,9 @@ export class Renderer {
           cX += w;
           break;
         case CHARKIND.DRAWING:
-          const pScale = Math.pow(2, -(char.scale - 1));
+          font = this.computeStyle(char.style, d.alignment, layer);
+          this.applyOverrideTag(char.tag, font);
+          const pScale = 1 / char.scale;
           const dw = char.drawing.width * pScale * Xratio;
           const dh = char.drawing.height * pScale * Yratio;
           char.pos.x = cX;
@@ -879,17 +881,21 @@ export class Renderer {
   }
 
   private drawDrawing(char: Extract<Char, { kind: CHARKIND.DRAWING }>, layer: Layer) {
-    const { pos, path, scale } = char;
+    const { pos, path, scale, drawing } = char;
     const ctx = layer.ctx;
+
+    const pScale = Math.pow(2, -(scale - 1));
+    const fscx = (char.tag?.fscx ?? 100) / 100;
+    const fscy = (char.tag?.fscy ?? 100) / 100;
 
     const Xratio = layer.canvas.width / this.playerResX;
     const Yratio = layer.canvas.height / this.playerResY;
-    const scaleFactor = Math.pow(2, -(scale - 1));
-    const sx = scaleFactor * Xratio;
-    const sy = scaleFactor * Yratio;
+
+    const sx = pScale * fscx * Xratio;
+    const sy = pScale * fscy * Yratio;
 
     ctx.save();
-    ctx.translate(pos.x, pos.y);
+    ctx.translate((pos.x + drawing.minX) * Xratio, (pos.y + drawing.minY) * Yratio);
 
     if (typeof DOMMatrix !== 'undefined') {
       try {
@@ -897,9 +903,8 @@ export class Renderer {
 
         const scaledPath = new Path2D();
         scaledPath.addPath(path, matrix);
-
         ctx.fill(scaledPath);
-        if (ctx.lineWidth > 0) ctx.stroke(scaledPath);
+        if ((char.tag?.xbord ?? 0) > 0 || (char.tag?.ybord ?? 0) > 0) ctx.stroke(scaledPath);
       } catch (e) {
         // NOTE: Fallback for very old browsers (rare nowadays)
         this.fallbackDraw(ctx, path, sx, sy);
@@ -907,6 +912,7 @@ export class Renderer {
     } else {
       this.fallbackDraw(ctx, path, sx, sy);
     }
+
     ctx.restore();
   }
 
