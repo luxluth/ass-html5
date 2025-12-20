@@ -13,7 +13,8 @@ import type {
   FadeAnimation,
   CustomAnimation,
   Karaoke,
-  Drawing
+  Drawing,
+  Clip
 } from './types';
 import { CHARKIND, LOGTYPE, Align, Baseline, FadeKind } from './types';
 import {
@@ -46,6 +47,7 @@ type PreProceesedAss = {
   rotationOrigin?: Vector2;
   alignment: number;
   chars: Char[];
+  clip?: Clip;
 };
 
 type MoveAnimation = {
@@ -166,6 +168,7 @@ export class Renderer {
     for (let i = 0; i < dialogues.length; i++) {
       const dia = dialogues[i] as Dialogue;
       const { layer, alignment, start, end, style, margin, slices, pos, move, org, fade } = dia;
+      const clip = (dia as any).clip as Clip | undefined;
       let movAnim: MoveAnimation | undefined;
       let rotOrg: Vector2 | undefined;
       let fadeAnim: FadeAnimation | undefined;
@@ -206,7 +209,8 @@ export class Renderer {
         move: movAnim,
         fade: fadeAnim,
         rotationOrigin: rotOrg,
-        chars: this.processSlices(alignment, slices, computelayer)
+        chars: this.processSlices(alignment, slices, computelayer),
+        clip
       });
     }
   }
@@ -270,17 +274,6 @@ export class Renderer {
               kind: CHARKIND.DRAWING,
               pos: new Vector2(),
               w: drawing.width * Math.pow(2, -(scale - 1)), // Approximate width for layout?
-              // Actually layout for drawing is tricky. It usually acts as a shape at current cursor.
-              // But width in 'drawing' is raw width. We need to scale it.
-              // Scale: 1 -> 1:1. 2 -> 1:2. 4 -> 1:8.
-              // Wait, p1: 1 coord = 1 pixel. p2: 1 coord = 0.5 pixel? Or p2: 1 coord = 2 pixels?
-              // Documentation: "Scale is 2^(scale-1)".
-              // If scale=1 => 2^0 = 1.
-              // If scale=4 => 2^3 = 8.
-              // Meaning coordinates are DIVIDED by 8? Or MULTIPLIED?
-              // "The scale is the power of 2 to which the coordinates are scaled."
-              // Usually high resolution drawings use p4 or p8 to have integer coordinates but draw small.
-              // So we DIVIDE coordinates by 2^(scale-1).
               h: drawing.height * Math.pow(2, -(scale - 1)),
               tag: frag.tag,
               style,
@@ -288,7 +281,6 @@ export class Renderer {
               scale,
               path: cachedPath
             });
-            console.debug('drawing', chars[chars.length - 1]);
           }
         } else {
           for (let i = 0; i < text.length; i++) {
@@ -483,6 +475,11 @@ export class Renderer {
   private showDialogue(d: PreProceesedAss, time: number) {
     const layer = this.getLayer(d.layer);
     if (!layer) return;
+
+    layer.ctx.save();
+    if (d.clip) {
+      this.applyClip(d.clip, layer);
+    }
 
     let font = this.computeStyle(d.style, d.alignment, layer);
 
@@ -726,13 +723,60 @@ export class Renderer {
       this.drawWord(word, time, d.start, layer);
       layer.ctx.restore();
     });
+
+    layer.ctx.restore();
+  }
+
+  private applyClip(clip: Clip, layer: Layer) {
+    const ctx = layer.ctx;
+    const Xratio = layer.canvas.width / this.playerResX;
+    const Yratio = layer.canvas.height / this.playerResY;
+
+    if (clip.dots) {
+      const { x1, y1, x2, y2 } = clip.dots;
+      const x = x1 * Xratio;
+      const y = y1 * Yratio;
+      const w = (x2 - x1) * Xratio;
+      const h = (y2 - y1) * Yratio;
+
+      ctx.beginPath();
+      if (clip.inverse) {
+        ctx.rect(0, 0, layer.canvas.width, layer.canvas.height);
+        ctx.rect(x, y, w, h);
+        ctx.clip('evenodd');
+      } else {
+        ctx.rect(x, y, w, h);
+        ctx.clip();
+      }
+    } else if (clip.drawing) {
+      const scaleFactor = Math.pow(2, -(clip.scale - 1));
+      const sx = scaleFactor * Xratio;
+      const sy = scaleFactor * Yratio;
+
+      const p = new Path2D(clip.drawing.d);
+
+      if (typeof DOMMatrix !== 'undefined') {
+        const matrix = new DOMMatrix().scale(sx, sy);
+        const transformedPath = new Path2D();
+        transformedPath.addPath(p, matrix);
+
+        if (clip.inverse) {
+          const finalPath = new Path2D();
+          finalPath.rect(0, 0, layer.canvas.width, layer.canvas.height);
+          finalPath.addPath(transformedPath);
+          ctx.clip(finalPath, 'evenodd');
+        } else {
+          ctx.clip(transformedPath);
+        }
+      }
+    }
   }
 
   private getFontHash(font: StyleDescriptor): number {
     return stringHash(JSON.stringify(font));
   }
 
-  private drawWord(word: Word, time: number, startTime: number, layer: Layer, debug = false) {
+  private drawWord(word: Word, time: number, startTime: number, layer: Layer) {
     let str = chunkCharToString(word.value);
     for (let i = 0; i < word.font.customAnimations.length; i++) {
       const ca = word.font.customAnimations[i] as CustomAnimation;

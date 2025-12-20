@@ -73,7 +73,7 @@ export function rgbaToHex(rgba: string) {
   return rgbHex;
 }
 
-export function hexToRgba(hex: string, defaultAlpha = 1) {
+export function hexToRgba(hex: string) {
   const hexValue = hex.replace('#', ''); // Remove '#' if present
   const isShortHex = hexValue.length === 3 || hexValue.length === 4;
 
@@ -352,8 +352,6 @@ export function getOpacityComplex(
   endTime: number,
   time: number
 ): number {
-  console.debug(fade);
-
   const t1 = startTime + fade.t1;
   const t2 = startTime + fade.t2;
   const t3 = startTime + fade.t3;

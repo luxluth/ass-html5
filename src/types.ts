@@ -132,6 +132,18 @@ export type Drawing = {
   height: number;
 };
 
+export type Clip = {
+  inverse: boolean;
+  scale: number;
+  drawing: Drawing | null;
+  dots: {
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+  } | null;
+};
+
 export type Karaoke = {
   start: number;
   end: number;
