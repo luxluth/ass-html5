@@ -50,6 +50,7 @@ type PreProceesedAss = {
   chars: Char[];
   clip?: Clip;
   q: number;
+  animated: boolean;
 };
 
 type MoveAnimation = {
@@ -67,8 +68,8 @@ type MoveAnimation = {
 
 export class Renderer {
   private compiledASS: CompiledASS;
-  private renderDiv: HTMLDivElement;
-  private layers: Layer[];
+  renderDiv: HTMLDivElement;
+  layers: Layer[];
   private numberOfLayers: number;
   private video: HTMLVideoElement;
   private playerResX: number;
@@ -79,8 +80,9 @@ export class Renderer {
   private ppass: PreProceesedAss[] = [];
   private styles: Styles;
   // private previous = 0;
-  // private currentTime = 0;
+  currentTime = 0;
   private occupiedRects: Map<number, Rect[]> = new Map();
+  private lastActiveDialogueHashes: Map<number, string> = new Map();
 
   constructor(
     ass: CompiledASS,
@@ -198,6 +200,11 @@ export class Renderer {
         }
       }
 
+      const chars = this.processSlices(alignment, slices, computelayer);
+      const isAnimated =
+        !!(movAnim || fadeAnim) ||
+        chars.some((c) => c.kind === CHARKIND.NORMAL && ((c.tag as any).t || c.karaoke));
+
       this.ppass.push({
         start,
         layer,
@@ -209,9 +216,10 @@ export class Renderer {
         move: movAnim,
         fade: fadeAnim,
         rotationOrigin: rotOrg,
-        chars: this.processSlices(alignment, slices, computelayer),
+        chars,
         clip,
-        q
+        q,
+        animated: isAnimated
       });
     }
   }
@@ -379,12 +387,38 @@ export class Renderer {
   }
 
   private display(time: number) {
-    // this.currentTime = time;
-    this.clear();
-    this.occupiedRects.clear();
+    this.currentTime = time;
     const slicesToDisplay = this.getSlices(time);
-    slicesToDisplay.forEach((dialogue) => {
-      this.showDialogue(dialogue, time);
+
+    // Group by layer
+    const layerGroups = new Map<number, PreProceesedAss[]>();
+    slicesToDisplay.forEach((d) => {
+      const group = layerGroups.get(d.layer) || [];
+      group.push(d);
+      layerGroups.set(d.layer, group);
+    });
+
+    this.layers.forEach((layer, index) => {
+      const layerNum = parseInt(layer.canvas.dataset.layer || '-1');
+      if (layerNum === -1) return; // background
+
+      const activeOnLayer = layerGroups.get(layerNum) || [];
+
+      // Generate state hash for this layer
+      const hasAnimated = activeOnLayer.some((d) => d.animated);
+      const dialogueIds = activeOnLayer.map((d) => this.ppass.indexOf(d)).join(',');
+      const stateHash = hasAnimated ? `animated-${time}` : `static-${dialogueIds}`;
+
+      const lastHash = this.lastActiveDialogueHashes.get(layerNum);
+
+      if (stateHash !== lastHash) {
+        this.clearLayer(index);
+        if (activeOnLayer.length > 0) {
+          this.occupiedRects.set(layerNum, []); // Reset collision rects for this layer
+          activeOnLayer.forEach((d) => this.showDialogue(d, time));
+        }
+        this.lastActiveDialogueHashes.set(layerNum, stateHash);
+      }
     });
   }
 
@@ -1117,7 +1151,16 @@ export class Renderer {
     layer.ctx.restore();
   }
 
-  private clear() {
+  private clearLayer(layer: number) {
+    this.layers[layer]?.ctx.clearRect(
+      0,
+      0,
+      this.layers[layer]?.canvas.width as number,
+      this.layers[layer]?.canvas.height as number
+    );
+  }
+
+  clear() {
     this.layers.forEach((layer) => {
       layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
     });
