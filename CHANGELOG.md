@@ -1,5 +1,11 @@
 # ass-html5
 
+## 0.6.0
+
+### Minor Changes
+
+- e8c46a1: Implementig most of the SSA features
+
 ## 0.5.4
 
 ### Patch Changes
