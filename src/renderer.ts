@@ -14,7 +14,8 @@ import type {
   CustomAnimation,
   Karaoke,
   Drawing,
-  Clip
+  Clip,
+  Rect
 } from './types';
 import { CHARKIND, LOGTYPE, Align, Baseline, FadeKind } from './types';
 import {
@@ -65,22 +66,21 @@ type MoveAnimation = {
 };
 
 export class Renderer {
-  compiledASS: CompiledASS;
-  renderDiv: HTMLDivElement;
-  layers: Layer[];
-  numberOfLayers: number;
-  video: HTMLVideoElement;
-  playerResX: number;
-  playerResY: number;
-  stop: boolean = false;
-  animationHandle: number | null = null;
-  _log: LOGTYPE;
-  ppass: PreProceesedAss[] = [];
-  styles: Styles;
-  collisions: 'Normal' | 'Reverse' = 'Normal';
-  dt = 0;
-  previous = 0;
-  currentTime = 0;
+  private compiledASS: CompiledASS;
+  private renderDiv: HTMLDivElement;
+  private layers: Layer[];
+  private numberOfLayers: number;
+  private video: HTMLVideoElement;
+  private playerResX: number;
+  private playerResY: number;
+  private stop: boolean = false;
+  private animationHandle: number | null = null;
+  private _log: LOGTYPE;
+  private ppass: PreProceesedAss[] = [];
+  private styles: Styles;
+  // private previous = 0;
+  // private currentTime = 0;
+  private occupiedRects: Map<number, Rect[]> = new Map();
 
   constructor(
     ass: CompiledASS,
@@ -92,7 +92,6 @@ export class Renderer {
     this._log = log;
     this.compiledASS = ass;
     this.styles = ass.styles;
-    this.collisions = ass.collisions;
     if (this._log === 'DEBUG') {
       this.log('DEBUG', this.compiledASS);
     }
@@ -259,7 +258,7 @@ export class Renderer {
         }
 
         //@ts-ignore
-        const text = frag.text.replaceAll('\\N', '\n').split('');
+        const text = frag.text.replaceAll('\\N', '\n').replaceAll('\\h', '\u00A0').split('');
         const drawing = (frag as any).drawing as Drawing | undefined;
 
         let ord = 0;
@@ -355,21 +354,21 @@ export class Renderer {
   }
 
   async startRendering() {
-    window.requestAnimationFrame((timestamp) => {
-      this.previous = timestamp;
+    window.requestAnimationFrame((_timestamp) => {
+      // this.previous = timestamp;
       this.animationHandle = requestAnimationFrame(this.render.bind(this));
     });
   }
 
-  private render(timestamp: number) {
+  private render(_timestamp: number) {
     if (this.stop === true) {
       if (this.animationHandle) {
         this.renderDiv.remove();
         cancelAnimationFrame(this.animationHandle);
       }
     } else {
-      this.dt = (timestamp - this.previous) / 1000.0;
-      this.previous = timestamp;
+      // this.dt = (timestamp - this.previous) / 1000.0;
+      // this.previous = timestamp;
       this.display(this.video.currentTime);
       this.animationHandle = requestAnimationFrame(this.render.bind(this));
     }
@@ -380,8 +379,9 @@ export class Renderer {
   }
 
   private display(time: number) {
-    this.currentTime = time;
+    // this.currentTime = time;
     this.clear();
+    this.occupiedRects.clear();
     const slicesToDisplay = this.getSlices(time);
     slicesToDisplay.forEach((dialogue) => {
       this.showDialogue(dialogue, time);
@@ -639,12 +639,40 @@ export class Renderer {
           offsetY = (layer.canvas.height - totalHeight) / 2;
           break;
         case Baseline.Top:
+          // Shift Down: Margin
           offsetY = margin.vertical;
           break;
         default:
           offsetY = layer.canvas.height - margin.vertical - totalHeight;
           break;
       }
+
+      // Collision Resolution
+      const layerRects = this.occupiedRects.get(d.layer) || [];
+      const rect: Rect = {
+        x: margin.left,
+        y: offsetY,
+        w: layer.canvas.width - margin.left - margin.right,
+        h: totalHeight
+      };
+
+      const direction = font.textBaseline === Baseline.Top ? 1 : -1;
+      let collision = true;
+      while (collision) {
+        collision = false;
+        for (const other of layerRects) {
+          if (this.intersects(rect, other)) {
+            collision = true;
+            break;
+          }
+        }
+        if (collision) {
+          rect.y += direction;
+        }
+      }
+      offsetY = rect.y;
+      layerRects.push(rect);
+      this.occupiedRects.set(d.layer, layerRects);
     } else {
       switch (font.textBaseline) {
         case Baseline.Bottom:
@@ -785,6 +813,10 @@ export class Renderer {
     });
 
     layer.ctx.restore();
+  }
+
+  private intersects(r1: Rect, r2: Rect): boolean {
+    return !(r2.x > r1.x + r1.w || r2.x + r2.w < r1.x || r2.y > r1.y + r1.h || r2.y + r2.h < r1.y);
   }
 
   private applyClip(clip: Clip, layer: Layer) {

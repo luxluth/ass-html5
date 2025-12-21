@@ -110,6 +110,13 @@ export type Position = {
   y: number;
 };
 
+export type Rect = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+};
+
 export type LOGTYPE = 'DISABLE' | 'VERBOSE' | 'DEBUG' | 'WARN';
 
 export enum CHARKIND {
