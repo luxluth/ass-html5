@@ -49,6 +49,8 @@ export type StyleDescriptor = {
   yshad: number;
   /** shadow blur */
   blur: number;
+  /** edge blur */
+  be: number;
   /** font encoding */
   fe?: number;
   borderStyle: number;
