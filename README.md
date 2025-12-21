@@ -17,6 +17,7 @@ Display ASS/SSA subtitles on html5 videos
 - [ass-html5](#ass-html5)
   - [Table of Contents](#table-of-contents)
   - [Installation](#installation)
+  - [Features](#features)
   - [Usage](#usage)
     - [Options](#options)
     - [Simple HTML](#simple-html)
@@ -30,18 +31,35 @@ Display ASS/SSA subtitles on html5 videos
 pnpm add ass-html5
 ```
 
+## Features
+
+- **Karaoke Support**: Full support for `\k`, `\kf`, `\ko`, and `\K` tags.
+- **Vector Drawings**: High-performance rendering of ASS vector paths (`\p`) using `Path2D`.
+- **Clipping**: Support for rectangular and vector clipping/masking (`\clip`, `\iclip`).
+- **Advanced Transformations**:
+  - Rotation around all axes (`\frz`, `\frx`, `\fry`).
+  - Scaling (`\fscx`, `\fscy`) and Shearing (`\fax`, `\fay`).
+  - Custom rotation origin (`\org`).
+- **Smart Wrapping**: Implementation of `\q` styles for optimal line breaking.
+- **Collision Handling**: Automatic vertical shifting to prevent overlapping subtitles.
+- **Blur Effects**: Edge blur (`\be`) and Gaussian blur (`\blur`) using Canvas filters.
+- **Performance Optimized**: Built-in layer caching to minimize redundant redraws.
+
 ## Usage
 
 ### Options
 
 | option  |                                                 description                                                 | required |             type              |        default        |
 | :-----: | :---------------------------------------------------------------------------------------------------------: | :------: | :---------------------------: | :-------------------: |
-| assText |                                             The ass text string                                             |    ✅    |           `string`            |      `undefined`      |
+| assText |                                             The ass text string                                             |    🚫    |           `string`            |      `undefined`      |
+| subUrl  |                                      URL to fetch the ASS content from                                      |    🚫    |           `string`            |      `undefined`      |
 |  video  | The video to display the subtile on. Can be either an `HTMLVideoElement` or `string` (html query selector ) |    ✅    | `HTMLVideoElement` / `string` |      `undefined`      |
-|  fonts  |                                            Custom fonts to load                                             |    🚫    |  [`Font[]`](src/ass.ts#L72)   |      `undefined`      |
+|  fonts  |                                            Custom fonts to load                                             |    🚫    |  [`Font[]`](src/ass.ts#L78)   |      `undefined`      |
 | zIndex  |                                        zIndex of the rendering frame                                        |    🚫    |           `number`            | Drawn after the video |
 | onReady |              A Callback that is invoked when the preprocess of the ass text by render is done               |    🚫    |         `() => void`          |      `undefined`      |
-| logging |                                       Type of logging (experimental)                                        |    🚫    |  [`LOGTYPE`](src/ass.ts#L44)  |   `LOGTYPE.DISABLE`   |
+| logging |                                               Type of logging                                               |    🚫    |  [`LOGTYPE`](src/ass.ts#L50)  |   `LOGTYPE.DISABLE`   |
+
+> One of `assText` or `subUrl` is required.
 
 ### Simple HTML
 
@@ -62,14 +80,17 @@ pnpm add ass-html5
 ```html
 <script>
   document.addEventListener('DOMContentLoaded', async () => {
-    let res = await fetch('/assets/video.ass');
-    let assSubs = await res.text();
-
+    // Using subUrl to fetch subtitle automatically
     const ass = new ASS.default({
-      assText: assSubs,
+      subUrl: '/assets/video.ass',
       video: document.getElementById('video')
     });
     await ass.render();
+
+    // You can switch subtitles dynamically:
+    // await ass.setSubUrl('/assets/other.ass');
+    // OR
+    // await ass.setAssText('[Script Info]...');
   });
 </script>
 ```

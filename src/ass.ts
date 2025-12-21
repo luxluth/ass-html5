@@ -4,9 +4,15 @@ import type { OnInitSizes } from './types';
 
 export type ASSOptions = {
   /**
-   * The ass text
+   * The ass text string.
+   * Can be omitted if `subUrl` is provided.
    */
-  assText: string;
+  assText?: string;
+
+  /**
+   * URL to fetch the ASS content from.
+   */
+  subUrl?: string;
 
   /**
    * The video to display the subtile on.
@@ -78,13 +84,23 @@ export type Font = {
 /**
  * @class ASS
  *
- * ASS is an ass/ssa subtitle renderer.
+ * ASS is an ass/ssa subtitle renderer for HTML5 video.
  *
- * It uses a `canvas` that is placed on top of
- * the targeted video element
+ * It creates a wrapper around the video element and overlays a canvas
+ * to draw the subtitles with high performance.
+ *
+ * Usage:
+ * ```javascript
+ * const ass = new ASS({
+ *   subUrl: '/path/to/subs.ass',
+ *   video: document.querySelector('video')
+ * });
+ * await ass.render();
+ * ```
  * */
 export default class ASS {
-  assText: string;
+  assText: string = '';
+  subUrl?: string;
   private video: HTMLVideoElement | string;
   videoElement: HTMLVideoElement | null = null;
   private renderer: Renderer | null = null;
@@ -93,11 +109,14 @@ export default class ASS {
   private zIndex?: number;
   private onReady?: () => void;
   private logging: LOGTYPE = 'DISABLE';
-  private compiledAss: CompiledASS;
+  private compiledAss: CompiledASS | null = null;
 
   constructor(options: ASSOptions) {
-    this.assText = options.assText;
-    this.compiledAss = compile(this.assText, {});
+    if (options.assText) {
+      this.assText = options.assText;
+      this.compiledAss = compile(this.assText, {});
+    }
+    this.subUrl = options.subUrl;
     this.video = options.video;
     this.fonts = options.fonts;
     this.zIndex = options.zIndex;
@@ -118,6 +137,17 @@ export default class ASS {
       this.videoElement = this.video;
     }
 
+    if (this.subUrl && !this.assText) {
+      await this.fetchAss(this.subUrl);
+    } else if (!this.compiledAss && this.assText) {
+      this.compiledAss = compile(this.assText, {});
+    }
+
+    if (!this.compiledAss) {
+      if (this.logging !== 'DISABLE') console.warn('ASS: No text to render');
+      return;
+    }
+
     const sizes = this.setCanvasSize();
 
     if (typeof this.fonts !== 'undefined') {
@@ -125,25 +155,76 @@ export default class ASS {
     }
 
     if (this.videoElement) {
-      this.renderer = new Renderer(
-        this.compiledAss,
-        sizes,
-        this.videoElement,
-        this.logging,
-        this.zIndex
-      );
-      this.setCanvasSize();
+      this.initRenderer(sizes);
+
       this.videoElement.addEventListener('loadedmetadata', this.setCanvasSize.bind(this));
 
       this.ro = new ResizeObserver(this.setCanvasSize.bind(this));
       this.ro.observe(this.videoElement);
+    }
+  }
 
-      await this.renderer.warmup();
-      if (this.onReady) {
-        this.onReady();
+  private async fetchAss(url: string) {
+    const response = await fetch(url);
+    this.assText = await response.text();
+    this.compiledAss = compile(this.assText, {});
+  }
+
+  private async initRenderer(sizes?: OnInitSizes) {
+    if (!this.videoElement || !this.compiledAss) return;
+
+    if (!sizes) sizes = this.setCanvasSize();
+
+    this.renderer = new Renderer(
+      this.compiledAss,
+      sizes,
+      this.videoElement,
+      this.logging,
+      this.zIndex
+    );
+
+    // Ensure canvas size is set correctly on init
+    this.setCanvasSize();
+
+    await this.renderer.warmup();
+    if (this.onReady) {
+      this.onReady();
+    }
+
+    await this.renderer.startRendering();
+  }
+
+  /**
+   * Switch the ASS text content dynamically.
+   * @param text The new ASS text content
+   */
+  async setAssText(text: string) {
+    this.assText = text;
+    this.compiledAss = compile(this.assText, {});
+
+    if (this.renderer) {
+      this.renderer.destroy();
+      this.renderer = null;
+      if (this.videoElement) {
+        await this.initRenderer();
       }
+    }
+  }
 
-      await this.renderer.startRendering();
+  /**
+   * Switch the ASS text content from a URL.
+   * @param url The URL to fetch the ASS content from
+   */
+  async setSubUrl(url: string) {
+    this.subUrl = url;
+    await this.fetchAss(url);
+
+    if (this.renderer) {
+      this.renderer.destroy();
+      this.renderer = null;
+      if (this.videoElement) {
+        await this.initRenderer();
+      }
     }
   }
 
