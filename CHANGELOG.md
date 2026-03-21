@@ -1,5 +1,11 @@
 # ass-html5
 
+## 0.6.1
+
+### Patch Changes
+
+- 68a4905: Update bundle output
+
 ## 0.6.0
 
 ### Minor Changes
