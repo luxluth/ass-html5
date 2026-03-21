@@ -6,8 +6,10 @@ export default defineConfig({
   dts: true,
   platform: 'browser',
   target: 'esnext',
-  noExternal: ['ass-compiler'],
   name: 'ASS',
   globalName: 'ass',
-  format: ['esm']
+  format: ['esm'],
+  deps: {
+    onlyBundle: ['ass-compiler']
+  }
 });
