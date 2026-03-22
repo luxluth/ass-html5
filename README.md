@@ -138,7 +138,7 @@ pnpm add ass-html5
 In the `head` :
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/ass-html5@0.6.0/dist/ass.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/ass-html5@0.6.2/dist/ass.min.js" defer></script>
 <script src="https://vjs.zencdn.net/8.3.0/video.min.js" defer></script>
 <link href="https://vjs.zencdn.net/8.3.0/video-js.css" rel="stylesheet" />
 ```

@@ -159,6 +159,8 @@ export class Renderer {
     canvas.height = this.playerResY;
     canvas.width = this.playerResX;
     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+    // @ts-ignore
+    ctx.textRendering = 'geometricPrecision';
     const computelayer: Layer = {
       ctx,
       canvas

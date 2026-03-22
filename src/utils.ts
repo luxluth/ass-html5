@@ -219,14 +219,17 @@ export function newCanvas(
   appendIn?: HTMLElement,
   insertAfter?: HTMLElement
 ) {
+  const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
   const canvas = document.createElement('canvas');
   canvas.id = randomId(2, '-', 'Canvas-', 5);
   canvas.style.position = 'absolute';
   canvas.style.top = '0px';
   canvas.style.left = '0px';
   canvas.style.pointerEvents = 'none';
-  canvas.width = width;
-  canvas.height = height;
+  canvas.width = Math.round(width * dpr);
+  canvas.height = Math.round(height * dpr);
+  canvas.style.width = width + 'px';
+  canvas.style.height = height + 'px';
   canvas.dataset.layer = dataLayer.toString();
   canvas.dataset.identifier = uuidgen();
 

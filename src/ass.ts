@@ -98,7 +98,7 @@ export type Font = {
  * await ass.render();
  * ```
  * */
-export default class ASS {
+export class ASS {
   assText: string = '';
   subUrl?: string;
   private video: HTMLVideoElement | string;
@@ -269,6 +269,8 @@ export default class ASS {
       y
     } as OnInitSizes;
 
+    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+
     if (this.renderer?.renderDiv) {
       this.renderer.renderDiv.style.width = width + 'px';
       this.renderer.renderDiv.style.height = height + 'px';
@@ -277,8 +279,12 @@ export default class ASS {
     }
 
     this.renderer?.layers.forEach((layer) => {
-      layer.canvas.width = width;
-      layer.canvas.height = height;
+      layer.canvas.width = Math.round(width * dpr);
+      layer.canvas.height = Math.round(height * dpr);
+      layer.canvas.style.width = width + 'px';
+      layer.canvas.style.height = height + 'px';
+      // @ts-ignore
+      layer.ctx.textRendering = 'geometricPrecision';
     });
 
     return sizes;
@@ -319,3 +325,5 @@ export default class ASS {
     return fontFace.status === 'loaded';
   }
 }
+
+export default ASS;
