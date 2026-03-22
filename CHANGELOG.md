@@ -1,5 +1,11 @@
 # ass-html5
 
+## 0.6.2
+
+### Patch Changes
+
+- 1f10428: dynamic pixel ratio + fix package json definition
+
 ## 0.6.1
 
 ### Patch Changes
