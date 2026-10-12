@@ -64,10 +64,9 @@ pnpm add ass-html5
 ### Simple HTML
 
 > [!NOTE]
-> The simple `video` tag element, in fullscreen mode, the position of the video is absolutely on top of any element.
-> No other element can go on top of it.
+> In fullscreen, the browser only shows the `video` element and its controls, so the subtitles move to the top layer with the [Popover API](https://developer.mozilla.org/docs/Web/API/Popover_API). That needs Chrome 114+, Firefox 125+ or Safari 17+. On iPhone the video uses its own fullscreen player, so subtitles are not shown there.
 >
-> It's therefore recommended to use a third party player rather than the native one. You can see an example with [plry](https://github.com/sampotts/plyr) [here](#svelte-and-plry).
+> Subtitles that reach the bottom of the frame are drawn over the native control bar. Players with their own controls, like [video.js](#videojs) or [plyr](https://github.com/sampotts/plyr) ([example](#svelte-and-plry)), keep the controls above the subtitles.
 
 ```html
 <script src="https://cdn.jsdelivr.net/npm/ass-html5@0.6.0/dist/ass.min.js"></script>
