@@ -1,5 +1,11 @@
 # ass-html5
 
+## 0.6.3
+
+### Patch Changes
+
+- 70a2802: Show subtitles when the native video is fullscreen
+
 ## 0.6.2
 
 ### Patch Changes
