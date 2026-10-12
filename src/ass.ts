@@ -110,6 +110,7 @@ export class ASS {
   private onReady?: () => void;
   private logging: LOGTYPE = 'DISABLE';
   private compiledAss: CompiledASS | null = null;
+  private readonly onFullscreenChange = () => this.setCanvasSize();
 
   constructor(options: ASSOptions) {
     if (options.assText) {
@@ -158,6 +159,7 @@ export class ASS {
       this.initRenderer(sizes);
 
       this.videoElement.addEventListener('loadedmetadata', this.setCanvasSize.bind(this));
+      document.addEventListener('fullscreenchange', this.onFullscreenChange);
 
       this.ro = new ResizeObserver(this.setCanvasSize.bind(this));
       this.ro.observe(this.videoElement);
@@ -233,6 +235,7 @@ export class ASS {
    */
   destroy() {
     this.videoElement?.removeEventListener('loadedmetadata', this.setCanvasSize.bind(this));
+    document.removeEventListener('fullscreenchange', this.onFullscreenChange);
     this.ro?.disconnect();
 
     this.renderer?.destroy();
@@ -243,14 +246,16 @@ export class ASS {
     const { videoWidth, videoHeight, offsetTop, offsetLeft } = this
       .videoElement as HTMLVideoElement;
     const aspectRatio = videoWidth / videoHeight;
+    // A fullscreen video is laid out from the top-left corner of the viewport
+    const fullscreen = document.fullscreenElement === this.videoElement;
 
     const maxWidth = this.videoElement?.clientWidth || 0;
     const maxHeight = this.videoElement?.clientHeight || 0;
 
     let width = maxWidth;
     let height = maxHeight;
-    let x = offsetLeft;
-    let y = offsetTop;
+    let x = fullscreen ? 0 : offsetLeft;
+    let y = fullscreen ? 0 : offsetTop;
 
     if (maxHeight * aspectRatio > maxWidth) {
       width = maxWidth;
@@ -272,6 +277,7 @@ export class ASS {
     const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
 
     if (this.renderer?.renderDiv) {
+      this.placeOverlay(this.renderer.renderDiv, fullscreen);
       this.renderer.renderDiv.style.width = width + 'px';
       this.renderer.renderDiv.style.height = height + 'px';
       this.renderer.renderDiv.style.top = y + 'px';
@@ -286,8 +292,31 @@ export class ASS {
       // @ts-ignore
       layer.ctx.textRendering = 'geometricPrecision';
     });
+    this.renderer?.invalidate();
 
     return sizes;
+  }
+
+  /**
+   * While the video is fullscreen, the browser paints only the video and its controls, so the
+   * overlay moves to the top layer (Popover API). It has pointer-events: none, so the controls
+   * still receive clicks.
+   */
+  private placeOverlay(overlay: HTMLDivElement, fullscreen: boolean) {
+    if (!('showPopover' in overlay)) return;
+
+    if (fullscreen && !overlay.hasAttribute('popover')) {
+      overlay.setAttribute('popover', 'manual');
+      overlay.showPopover();
+    } else if (!fullscreen) {
+      overlay.removeAttribute('popover');
+    }
+
+    overlay.style.position = fullscreen ? 'fixed' : 'absolute';
+    overlay.style.right = fullscreen ? 'auto' : '';
+    overlay.style.bottom = fullscreen ? 'auto' : '';
+    overlay.style.border = fullscreen ? 'none' : '';
+    overlay.style.background = fullscreen ? 'none' : '';
   }
 
   private async loadFonts(fonts: Font[]) {

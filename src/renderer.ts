@@ -1168,6 +1168,14 @@ export class Renderer {
     });
   }
 
+  /**
+   * Forces every layer to be painted again on the next frame.
+   * Needed after the canvases are resized, since resizing clears their content.
+   */
+  invalidate() {
+    this.lastActiveDialogueHashes.clear();
+  }
+
   private upscaleMargin(margin: Margin) {
     return {
       left: this.upscale(
