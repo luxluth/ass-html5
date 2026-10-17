@@ -69,7 +69,7 @@ pnpm add ass-html5
 > Subtitles that reach the bottom of the frame are drawn over the native control bar. Players with their own controls, like [video.js](#videojs) or [plyr](https://github.com/sampotts/plyr) ([example](#svelte-and-plry)), keep the controls above the subtitles.
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/ass-html5@0.6.0/dist/ass.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/ass-html5@latest/dist/ass.min.js"></script>
 ```
 
 ```html
@@ -137,7 +137,7 @@ pnpm add ass-html5
 In the `head` :
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/ass-html5@0.6.2/dist/ass.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/ass-html5@latest/dist/ass.min.js" defer></script>
 <script src="https://vjs.zencdn.net/8.3.0/video.min.js" defer></script>
 <link href="https://vjs.zencdn.net/8.3.0/video-js.css" rel="stylesheet" />
 ```
