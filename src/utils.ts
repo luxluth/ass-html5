@@ -806,6 +806,115 @@ export function getOpacityComplex(
   return Math.max(0, Math.min(1, (255 - rawAlpha) / 255));
 }
 
+/** Row-major homography, applied to a column vector [x, y, 1]. */
+export type ProjectionMatrix = readonly [
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number
+];
+
+export type ProjectionTransform = {
+  frx?: number;
+  fry?: number;
+  frz?: number;
+  fax?: number;
+  fay?: number;
+  /** The pen's X and the top of the unrotated line box, for glyph-local shear. */
+  shearOrigin?: { x: number; y: number };
+};
+
+/**
+ * Projects already scaled screen coordinates around an ASS event's rotation origin. As in
+ * libass's calc_transform_matrix, shear precedes rotations Z, X and Y, then perspective.
+ * The caller supplies the focal length in output pixels (312.5 times the vertical layout scale)
+ * and adjusts fax/fay for unequal X/Y glyph scales. Font scaling belongs to the input mask.
+ */
+export function assProjection(
+  origin: { x: number; y: number },
+  transform: ProjectionTransform,
+  focalLength: number
+): ProjectionMatrix {
+  if (!(focalLength > 0) || !Number.isFinite(focalLength)) {
+    throw new RangeError('The projection focal length must be finite and positive');
+  }
+
+  type Row = [number, number, number];
+  const combine = (a: Row, ka: number, b: Row, kb: number): Row => [
+    a[0] * ka + b[0] * kb,
+    a[1] * ka + b[1] * kb,
+    a[2] * ka + b[2] * kb
+  ];
+  const radians = Math.PI / 180;
+  const rx = (transform.frx ?? 0) * radians;
+  const ry = (transform.fry ?? 0) * radians;
+  const rz = (transform.frz ?? 0) * radians;
+  const fax = transform.fax ?? 0;
+  const fay = transform.fay ?? 0;
+  const shearOrigin = transform.shearOrigin ?? origin;
+  const x: Row = [1, fax, -origin.x - fax * shearOrigin.y];
+  const y: Row = [fay, 1, -origin.y - fay * shearOrigin.x];
+  const zero: Row = [0, 0, 0];
+
+  const xz = combine(x, Math.cos(rz), y, Math.sin(rz));
+  const yz = combine(x, -Math.sin(rz), y, Math.cos(rz));
+  const yx = combine(yz, Math.cos(rx), zero, 0);
+  const zx = combine(yz, -Math.sin(rx), zero, 0);
+  const xy = combine(xz, Math.cos(ry), zx, -Math.sin(ry));
+  const zy = combine(xz, Math.sin(ry), zx, Math.cos(ry));
+  const w: Row = [zy[0] / focalLength, zy[1] / focalLength, 1 + zy[2] / focalLength];
+  const outX = combine(xy, 1, w, origin.x);
+  const outY = combine(yx, 1, w, origin.y);
+
+  return [...outX, ...outY, ...w];
+}
+
+/** A point behind the eye plane or too close to its singularity has no finite image. */
+export function projectPoint(
+  matrix: ProjectionMatrix,
+  x: number,
+  y: number
+): { x: number; y: number } | null {
+  const w = matrix[6] * x + matrix[7] * y + matrix[8];
+  if (!Number.isFinite(w) || w <= 1e-8) return null;
+  const px = (matrix[0] * x + matrix[1] * y + matrix[2]) / w;
+  const py = (matrix[3] * x + matrix[4] * y + matrix[5]) / w;
+  return Number.isFinite(px) && Number.isFinite(py) ? { x: px, y: py } : null;
+}
+
+/** Inverse mapping for sampling a projected mask; a collapsed plane cannot be sampled. */
+export function invertProjection(matrix: ProjectionMatrix): ProjectionMatrix | null {
+  const [a, b, c, d, e, f, g, h, i] = matrix;
+  const aa = e * i - f * h;
+  const bb = c * h - b * i;
+  const cc = b * f - c * e;
+  const dd = f * g - d * i;
+  const ee = a * i - c * g;
+  const ff = c * d - a * f;
+  const gg = d * h - e * g;
+  const hh = b * g - a * h;
+  const ii = a * e - b * d;
+  const determinant = a * aa + b * dd + c * gg;
+  if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-12) return null;
+  const result: ProjectionMatrix = [
+    aa / determinant,
+    bb / determinant,
+    cc / determinant,
+    dd / determinant,
+    ee / determinant,
+    ff / determinant,
+    gg / determinant,
+    hh / determinant,
+    ii / determinant
+  ];
+  return result.every(Number.isFinite) ? result : null;
+}
+
 /**
  * Weight asked by a `\b` value or a style's Bold field, as libass reads it: 1 and -1 are bold
  * (700), 0 and below are normal (400), anything else is an exact weight.
