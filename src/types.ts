@@ -33,6 +33,8 @@ export type CustomAnimation = {
 export type StyleDescriptor = {
   fontname: string;
   fontsize: number;
+  /** `\fs` in script pixels: the cell height of the face, before it is converted to `fontsize` */
+  scriptSize: number;
   /** requested weight, as libass reads `\b`: 400 normal, 700 bold, or an exact weight */
   weight: number;
   italic: boolean;
@@ -112,6 +114,10 @@ export type FontFaceInfo = {
   /** weights the face draws without synthesis: a single one, or a range for variable fonts */
   minWeight: number;
   maxWeight: number;
+  /** whether the weight comes from the file or from an explicit descriptor */
+  weightKnown: boolean;
+  /** bold flag of the file, which can disagree with its weight class */
+  bold: boolean;
   italic: boolean;
   /** unitsPerEm / (usWinAscent + usWinDescent), see `parseFontMetrics` */
   ratio: number;
