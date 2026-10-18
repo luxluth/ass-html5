@@ -33,7 +33,8 @@ export type CustomAnimation = {
 export type StyleDescriptor = {
   fontname: string;
   fontsize: number;
-  bold: boolean;
+  /** requested weight, as libass reads `\b`: 400 normal, 700 bold, or an exact weight */
+  weight: number;
   italic: boolean;
   underline: boolean;
   strikeout: boolean;
@@ -104,6 +105,17 @@ export type Override = {
 };
 
 export type Styles = { [styleName: string]: CompiledASSStyle };
+
+/** A loaded font file, registered under one of the names it declares (see `ASS.loadFont`) */
+export type FontFaceInfo = {
+  family: string;
+  /** weights the face draws without synthesis: a single one, or a range for variable fonts */
+  minWeight: number;
+  maxWeight: number;
+  italic: boolean;
+  /** unitsPerEm / (usWinAscent + usWinDescent), see `parseFontMetrics` */
+  ratio: number;
+};
 
 export type Position = {
   x: number;

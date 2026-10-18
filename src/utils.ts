@@ -395,6 +395,33 @@ export function getOpacityComplex(
   return Math.max(0, Math.min(1, (255 - rawAlpha) / 255));
 }
 
+/**
+ * Weight asked by a `\b` value or a style's Bold field, as libass reads it: 1 and -1 are bold
+ * (700), 0 and below are normal (400), anything else is an exact weight.
+ */
+export function assWeight(b: number): number {
+  if (b === 1 || b === -1) return 700;
+  if (b <= 0) return 400;
+  return b;
+}
+
+/**
+ * Weights of a `FontFace` weight descriptor: `normal`, `bold`, a number, or a range such as
+ * `100 900` (variable fonts). Undefined when it is missing or not understood.
+ */
+export function parseFontWeight(weight?: string): [number, number] | undefined {
+  if (weight === undefined) return undefined;
+  const parts = weight
+    .trim()
+    .split(/\s+/)
+    .map((w) => (w === 'normal' ? 400 : w === 'bold' ? 700 : Number(w)));
+  const min = parts[0];
+  const max = parts[1] ?? min;
+  if (min === undefined || max === undefined || parts.length > 2) return undefined;
+  if (!(min > 0) || !(max >= min)) return undefined;
+  return [min, max];
+}
+
 /** A font name as written in the script, without quotes and the `@` of vertical fonts */
 export function cleanFontName(name: string) {
   return name
@@ -413,6 +440,9 @@ export interface FontMetrics {
   winAscent: number;
   winDescent: number;
   ratio: number;
+  /** OS/2 usWeightClass, read as libass does (ass_face_get_weight) */
+  weight: number;
+  italic: boolean;
   /** Windows family, full and PostScript names: the names libass finds the font by */
   names: string[];
 }
@@ -426,8 +456,8 @@ export interface FontMetrics {
  * matches the ASS FontSize. In CSS / Canvas 2D, font-size sets the EM-square.
  * Therefore, CSS fontSize = ASS fontSize * (unitsPerEm / (usWinAscent + usWinDescent)).
  *
- * Also reads the names of the face. WOFF, WOFF2 and font collections are not read: they give a
- * ratio of 1 and no names.
+ * Also reads the weight, slant and names of the face. WOFF, WOFF2 and font collections are not
+ * read: they give the defaults (ratio 1, weight 400, no names).
  */
 export function parseFontMetrics(buffer: ArrayBuffer): FontMetrics {
   const unknown: FontMetrics = {
@@ -435,6 +465,8 @@ export function parseFontMetrics(buffer: ArrayBuffer): FontMetrics {
     winAscent: 0,
     winDescent: 0,
     ratio: 1,
+    weight: 400,
+    italic: false,
     names: []
   };
   try {
@@ -498,6 +530,19 @@ export function parseFontMetrics(buffer: ArrayBuffer): FontMetrics {
 
     const ratio = cellHeight > 0 && unitsPerEm > 0 ? unitsPerEm / cellHeight : 1;
 
+    // Bold and italic flags come from OS/2 fsSelection, or head macStyle without OS/2, as in
+    // FreeType. A weight class of 0 falls back to the bold flag, 1 to 9 are hundreds.
+    const macStyle =
+      headOffset && headOffset + 46 <= buffer.byteLength ? view.getUint16(headOffset + 44) : 0;
+    const hasOs2 = !!os2Offset && os2Offset + 64 <= buffer.byteLength;
+    const fsSelection = hasOs2 ? view.getUint16(os2Offset + 62) : 0;
+    const boldFlag = hasOs2 ? (fsSelection & 0x20) !== 0 : (macStyle & 1) !== 0;
+    const italic = hasOs2 ? (fsSelection & 0x201) !== 0 : (macStyle & 2) !== 0;
+    const weightClass = hasOs2 ? view.getUint16(os2Offset + 4) : 0;
+    let weight = weightClass;
+    if (weightClass === 0) weight = boldFlag ? 700 : 400;
+    else if (weightClass < 10) weight = weightClass * 100;
+
     // Name records of the Windows platform are UTF-16BE: nameID 1 family, 4 full, 6 PostScript
     const names: string[] = [];
     if (nameOffset && nameOffset + 6 <= buffer.byteLength) {
@@ -522,7 +567,7 @@ export function parseFontMetrics(buffer: ArrayBuffer): FontMetrics {
       }
     }
 
-    return { unitsPerEm, winAscent, winDescent, ratio, names };
+    return { unitsPerEm, winAscent, winDescent, ratio, weight, italic, names };
   } catch {
     return unknown;
   }
