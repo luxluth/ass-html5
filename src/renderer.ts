@@ -54,6 +54,9 @@ type PreProceesedAss = {
   index: number; // script order: stable id, and draw order within a layer
 };
 
+// Style of one glyph or drawing for the current frame, with its hash for grouping runs.
+type ResolvedChar = { font: StyleDescriptor; hash: number };
+
 type MoveAnimation = {
   // x1: number;
   // y1: number;
@@ -88,6 +91,7 @@ export class Renderer {
   private nextStart = 0;
   private selected: PreProceesedAss[] = [];
   private selectedTime: number | null = null;
+  private measureCache = new Map<string, TextMetrics>();
 
   constructor(
     ass: CompiledASS,
@@ -422,18 +426,48 @@ export class Renderer {
     return this.selected;
   }
 
-  private getLineMetrics(layer: Layer, lines: Char[][]) {
+  // Style of every glyph and drawing, resolved once per frame. Wrapping, widths, metrics and
+  // painting all read this map. The glyphs of one fragment share their tag and style, so they
+  // share one resolved style too.
+  private resolveChars(d: PreProceesedAss, layer: Layer): Map<Char, ResolvedChar> {
+    const resolved = new Map<Char, ResolvedChar>();
+    let last: { tag: CompiledTag; style: string; run: ResolvedChar } | null = null;
+    d.chars.forEach((char) => {
+      if (char.kind === CHARKIND.NEWLINE) return;
+      if (last === null || last.tag !== char.tag || last.style !== char.style) {
+        const font = this.computeStyle(char.style, d.alignment, layer);
+        this.applyOverrideTag(char.tag, font);
+        last = { tag: char.tag, style: char.style, run: { font, hash: this.getFontHash(font) } };
+      }
+      resolved.set(char, last.run);
+    });
+    return resolved;
+  }
+
+  // measureText runs for every glyph of every frame, and the same runs repeat. Results are kept
+  // until the canvas is invalidated.
+  private measure(ctx: CanvasRenderingContext2D, text: string): TextMetrics {
+    const key = `${ctx.font}|${ctx.letterSpacing}|${ctx.fontKerning}|${text}`;
+    let metrics = this.measureCache.get(key);
+    if (metrics === undefined) {
+      // Animated sizes make a new font string on every frame, so the cache is bounded
+      if (this.measureCache.size >= 4096) this.measureCache.clear();
+      metrics = ctx.measureText(text);
+      this.measureCache.set(key, metrics);
+    }
+    return metrics;
+  }
+
+  private getLineMetrics(layer: Layer, lines: Char[][], resolved: Map<Char, ResolvedChar>) {
     return lines.map((line) => {
       let maxAscent = 0;
       let maxDescent = 0;
 
       line.forEach((char) => {
         if (char.kind === CHARKIND.NORMAL) {
-          let font = this.computeStyle(char.style, 1, layer);
-          this.applyOverrideTag(char.tag, font);
-          this.applyFont(font, layer);
+          this.applyFont(resolved.get(char)!.font, layer);
 
-          const m = layer.ctx.measureText(char.c);
+          const m = this.measure(layer.ctx, char.c);
           if (m.fontBoundingBoxAscent > maxAscent) maxAscent = m.fontBoundingBoxAscent;
           if (m.fontBoundingBoxDescent > maxDescent) maxDescent = m.fontBoundingBoxDescent;
         } else if (char.kind === CHARKIND.DRAWING) {
@@ -454,28 +488,32 @@ export class Renderer {
     });
   }
 
-  private measureChar(layer: Layer, char: Char): number {
+  private measureChar(layer: Layer, char: Char, resolved: Map<Char, ResolvedChar>): number {
     if (char.kind === CHARKIND.NORMAL) {
-      let font = this.computeStyle(char.style, 1, layer);
-      this.applyOverrideTag(char.tag, font);
-      this.applyFont(font, layer);
-      return layer.ctx.measureText(char.c).width;
+      this.applyFont(resolved.get(char)!.font, layer);
+      return this.measure(layer.ctx, char.c).width;
     } else if (char.kind === CHARKIND.DRAWING) {
       return char.w;
     }
     return 0;
   }
 
-  private lineWidth(layer: Layer, chars: Char[]) {
+  private lineWidth(layer: Layer, chars: Char[], resolved: Map<Char, ResolvedChar>) {
     let w = 0;
     chars.forEach((char) => {
-      w += this.measureChar(layer, char);
+      w += this.measureChar(layer, char, resolved);
     });
 
     return w;
   }
 
-  private lines(chars: Char[], layer: Layer, q: number, maxWidth: number): Char[][] {
+  private lines(
+    chars: Char[],
+    layer: Layer,
+    q: number,
+    maxWidth: number,
+    resolved: Map<Char, ResolvedChar>
+  ): Char[][] {
     let lines: Char[][] = [];
     let currentLine: Char[] = [];
     let currentLineWidth = 0;
@@ -508,7 +546,7 @@ export class Renderer {
         continue;
       }
 
-      const charWidth = this.measureChar(layer, char);
+      const charWidth = this.measureChar(layer, char, resolved);
 
       // Check if we need to wrap
       if (currentLineWidth + charWidth > maxWidth && currentLine.length > 0) {
@@ -521,7 +559,7 @@ export class Renderer {
 
           currentLine = overflowChars;
           // Recalculate width for the new line start
-          currentLineWidth = this.lineWidth(layer, currentLine);
+          currentLineWidth = this.lineWidth(layer, currentLine, resolved);
           lastSafeBreakIndex = -1;
         } else {
           // No break point found
@@ -578,8 +616,9 @@ export class Renderer {
     const margin = this.upscaleMargin(d.margin);
     const maxWidth = layer.canvas.width - margin.left - margin.right;
 
-    const lines = this.lines(d.chars, layer, d.q, maxWidth);
-    const lineMetrics = this.getLineMetrics(layer, lines);
+    const resolved = this.resolveChars(d, layer);
+    const lines = this.lines(d.chars, layer, d.q, maxWidth, resolved);
+    const lineMetrics = this.getLineMetrics(layer, lines, resolved);
     const totalHeight = lineMetrics.reduce((acc, m) => acc + m.height, 0);
 
     let cX = 0;
@@ -717,7 +756,7 @@ export class Renderer {
     let words: Word[] = [];
 
     lines.forEach((line, lineIdx) => {
-      const lineWidth = this.lineWidth(layer, line);
+      const lineWidth = this.lineWidth(layer, line, resolved);
       let offsetX = 0;
 
       if (!customPosition) {
@@ -772,17 +811,15 @@ export class Renderer {
           char.pos.x = cX;
           char.pos.y = baseline;
 
-          font = this.computeStyle(char.style, d.alignment, layer);
-          this.applyOverrideTag(char.tag, font);
+          font = resolved.get(char)!.font;
           this.applyFont(font, layer);
-          charWidth = layer.ctx.measureText(char.c).width;
+          charWidth = this.measure(layer.ctx, char.c).width;
 
           char.w = charWidth;
         } else if (char.kind === CHARKIND.DRAWING) {
           char.pos.x = cX;
 
-          font = this.computeStyle(char.style, d.alignment, layer);
-          this.applyOverrideTag(char.tag, font);
+          font = resolved.get(char)!.font;
           const pScale = Math.pow(2, -(char.scale - 1));
           const dw = char.drawing.width * pScale * Xratio;
           const dh = char.drawing.height * pScale * Yratio;
@@ -796,7 +833,7 @@ export class Renderer {
 
         // Word Grouping (per line)
         if (char.kind == CHARKIND.NORMAL || char.kind == CHARKIND.DRAWING) {
-          let fHash = this.getFontHash(font);
+          let fHash = resolved.get(char)!.hash;
           if (currentHash !== fHash) {
             if (currentWord.length > 0) {
               if (currentFont !== null) {
@@ -996,7 +1033,7 @@ export class Renderer {
         });
       }
 
-      let metrics = layer.ctx.measureText(str);
+      let metrics = this.measure(layer.ctx, str);
 
       // The opaque box shares the canvas with the text now, so it goes first
       if (word.font.borderStyle === 3) {
@@ -1157,6 +1194,7 @@ export class Renderer {
    */
   invalidate() {
     this.lastStateHash = null;
+    this.measureCache.clear();
   }
 
   private upscaleMargin(margin: Margin) {
@@ -1303,8 +1341,6 @@ export class Renderer {
       textAlign: this.getAlignment(alignment),
       textBaseline: this.getBaseLine(alignment)
     };
-
-    this.applyFont(font, layer);
 
     return font;
   }
