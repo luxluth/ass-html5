@@ -39,8 +39,13 @@ import {
   cleanFontName,
   stripWeightSuffix,
   assWeight,
-  buildDrawingPath
+  buildDrawingPath,
+  halveMask,
+  placeMask,
+  projectPoint,
+  invertProjection
 } from './utils';
+import type { ProjectionMatrix } from './utils';
 
 type PreProceesedAss = {
   start: number;
@@ -67,6 +72,10 @@ type DrawingChar = Extract<Char, { kind: CHARKIND.DRAWING }>;
 
 // Face drawn for a style, see resolveFace. `family` is null for fonts that were not loaded.
 type ResolvedFace = { family: string | null; weight: number; embolden: boolean; ratio: number };
+
+// Coverage of a word, from 0 to 255 per output pixel, without its colors and fades. `x` and `y`
+// place its top left corner on the canvas.
+type Bitmap = { data: Uint8ClampedArray; width: number; height: number; x: number; y: number };
 
 type MoveAnimation = {
   // x1: number;
@@ -106,6 +115,7 @@ export class Renderer {
   private selected: PreProceesedAss[] = [];
   private selectedTime: number | null = null;
   private measureCache = new Map<string, TextMetrics>();
+  private affineCanvases?: { source: HTMLCanvasElement; target: HTMLCanvasElement };
   private drawingPaths = new WeakMap<Drawing, { x: number; y: number; path: Path2D }>();
 
   constructor(
@@ -1221,6 +1231,206 @@ export class Renderer {
     layer.ctx.fillRect(pos.x, pos.y - height, width, height);
     layer.ctx.closePath();
     layer.ctx.restore();
+  }
+
+  // Native affine resampling avoids a JavaScript perspective inversion for each output pixel.
+  // Input coverage has `supersample` pixels per output pixel; colors and ASS alpha are applied
+  // later.
+  private projectAffineBitmap(
+    source: Bitmap,
+    border: Uint8ClampedArray | undefined,
+    matrix: ProjectionMatrix,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    supersample: number
+  ): { fill: Bitmap; border?: Bitmap } | null {
+    const canvases = (this.affineCanvases ??= {
+      source: document.createElement('canvas'),
+      target: document.createElement('canvas')
+    });
+    if (canvases.source.width !== source.width) canvases.source.width = source.width;
+    if (canvases.source.height !== source.height) canvases.source.height = source.height;
+    if (canvases.target.width !== width) canvases.target.width = width;
+    if (canvases.target.height !== height) canvases.target.height = height;
+    const input = canvases.source.getContext('2d');
+    const output = canvases.target.getContext('2d');
+    if (!input || !output) return null;
+    const pixels = input.createImageData(source.width, source.height);
+    pixels.data.fill(255);
+    const denominator = matrix[8];
+    const project = (data: Uint8ClampedArray): Bitmap => {
+      for (let i = 0; i < data.length; i++) pixels.data[i * 4 + 3] = data[i]!;
+      input.putImageData(pixels, 0, 0);
+      output.setTransform(1, 0, 0, 1, 0, 0);
+      output.clearRect(0, 0, width, height);
+      output.globalAlpha = 1;
+      output.globalCompositeOperation = 'source-over';
+      output.filter = 'none';
+      output.shadowColor = 'transparent';
+      output.imageSmoothingEnabled = true;
+      output.imageSmoothingQuality = 'high';
+      output.setTransform(
+        matrix[0] / (supersample * denominator),
+        matrix[3] / (supersample * denominator),
+        matrix[1] / (supersample * denominator),
+        matrix[4] / (supersample * denominator),
+        (matrix[0] * source.x + matrix[1] * source.y + matrix[2]) / denominator - x,
+        (matrix[3] * source.x + matrix[4] * source.y + matrix[5]) / denominator - y
+      );
+      output.drawImage(canvases.source, 0, 0);
+      const rgba = output.getImageData(0, 0, width, height).data;
+      const coverage = new Uint8ClampedArray(width * height);
+      for (let i = 0; i < coverage.length; i++) coverage[i] = rgba[i * 4 + 3]!;
+      return { data: coverage, width, height, x, y };
+    };
+    const fill = project(source.data);
+    return { fill, border: border ? project(border) : undefined };
+  }
+
+  // Coverage with `supersample` (1 or 2) pixels per output pixel, mapped to output pixels.
+  private projectBitmap(
+    source: Bitmap,
+    border: Uint8ClampedArray | undefined,
+    matrix: ProjectionMatrix,
+    layer: Layer,
+    padding: number,
+    supersample: number
+  ): { fill: Bitmap; border?: Bitmap } | null {
+    const inverse = invertProjection(matrix);
+    if (!inverse) return null;
+    const right = source.x + source.width / supersample;
+    const bottom = source.y + source.height / supersample;
+    const points = [
+      projectPoint(matrix, source.x, source.y),
+      projectPoint(matrix, right, source.y),
+      projectPoint(matrix, source.x, bottom),
+      projectPoint(matrix, right, bottom)
+    ];
+    const visible = points.filter((p) => p !== null);
+    if (!visible.length) return null;
+    const crossesPlane = visible.length !== points.length;
+    const minX = crossesPlane ? -padding : Math.min(...visible.map((p) => p.x));
+    const minY = crossesPlane ? -padding : Math.min(...visible.map((p) => p.y));
+    const maxX = crossesPlane ? layer.canvas.width + padding : Math.max(...visible.map((p) => p.x));
+    const maxY = crossesPlane
+      ? layer.canvas.height + padding
+      : Math.max(...visible.map((p) => p.y));
+    const x = Math.max(-padding, Math.floor(minX) - padding);
+    const y = Math.max(-padding, Math.floor(minY) - padding);
+    const width = Math.min(layer.canvas.width + padding, Math.ceil(maxX) + padding) - x;
+    const height = Math.min(layer.canvas.height + padding, Math.ceil(maxY) + padding) - y;
+    if (width < 1 || height < 1 || width * height > 16777216) return null;
+    const flat = Math.abs(matrix[6]) < 1e-10 && Math.abs(matrix[7]) < 1e-10;
+    // Without rotation or shear the samples line up with the output pixels (see glyphBitmap):
+    // they are used as they are, or 2x2 samples are box filtered to their exact coverage. Any
+    // resampling would blur the edges.
+    const shiftX = matrix[2] / matrix[8] + source.x;
+    const shiftY = matrix[5] / matrix[8] + source.y;
+    if (
+      flat &&
+      Math.abs(matrix[0] / matrix[8] - 1) < 1e-10 &&
+      Math.abs(matrix[4] / matrix[8] - 1) < 1e-10 &&
+      Math.abs(matrix[1]) < 1e-10 &&
+      Math.abs(matrix[3]) < 1e-10 &&
+      Math.abs(shiftX - Math.round(shiftX)) < 1e-6 &&
+      Math.abs(shiftY - Math.round(shiftY)) < 1e-6
+    ) {
+      const left = (x - Math.round(shiftX)) * supersample;
+      const top = (y - Math.round(shiftY)) * supersample;
+      const place = (data: Uint8ClampedArray): Bitmap => {
+        let coverage: Uint8ClampedArray;
+        if (supersample === 2) {
+          coverage = halveMask(data, source.width, source.height, left, top, width, height);
+        } else {
+          coverage = new Uint8ClampedArray(width * height);
+          placeMask(data, source.width, source.height, coverage, width, height, -left, -top);
+        }
+        return { data: coverage, width, height, x, y };
+      };
+      return { fill: place(source.data), border: border ? place(border) : undefined };
+    }
+    if (flat) {
+      const affine = this.projectAffineBitmap(
+        source,
+        border,
+        matrix,
+        x,
+        y,
+        width,
+        height,
+        supersample
+      );
+      if (affine) return affine;
+    }
+    const fill: Bitmap = { data: new Uint8ClampedArray(width * height), width, height, x, y };
+    const outline = border ? { ...fill, data: new Uint8ClampedArray(width * height) } : undefined;
+    const sourceWidth = source.width;
+    const sourceHeight = source.height;
+    const input = source.data;
+    const offsetsX = [0, inverse[0] / 2, inverse[1] / 2, (inverse[0] + inverse[1]) / 2];
+    const offsetsY = [0, inverse[3] / 2, inverse[4] / 2, (inverse[3] + inverse[4]) / 2];
+    const offsetsW = [0, inverse[6] / 2, inverse[7] / 2, (inverse[6] + inverse[7]) / 2];
+    const fromX = Math.max(0, Math.floor(minX) - x);
+    const fromY = Math.max(0, Math.floor(minY) - y);
+    const toX = Math.min(width, Math.ceil(maxX) - x);
+    const toY = Math.min(height, Math.ceil(maxY) - y);
+    for (let row = fromY; row < toY; row++) {
+      for (let col = fromX; col < toX; col++) {
+        let value = 0;
+        let edge = 0;
+        const screenX = x + col + 0.25;
+        const screenY = y + row + 0.25;
+        const baseX = inverse[0] * screenX + inverse[1] * screenY + inverse[2];
+        const baseY = inverse[3] * screenX + inverse[4] * screenY + inverse[5];
+        const baseW = inverse[6] * screenX + inverse[7] * screenY + inverse[8];
+        for (let sample = 0; sample < 4; sample++) {
+          const denominator = baseW + offsetsW[sample]!;
+          if (!(denominator > 1e-8) || !Number.isFinite(denominator)) continue;
+          const px = ((baseX + offsetsX[sample]!) / denominator - source.x) * supersample - 0.5;
+          const py = ((baseY + offsetsY[sample]!) / denominator - source.y) * supersample - 0.5;
+          const ix = Math.floor(px);
+          const iy = Math.floor(py);
+          if (!(ix >= -1 && iy >= -1 && ix < sourceWidth && iy < sourceHeight)) continue;
+          const fx = px - ix;
+          const fy = py - iy;
+          const index = iy * sourceWidth + ix;
+          if (ix >= 0 && iy >= 0 && ix + 1 < sourceWidth && iy + 1 < sourceHeight) {
+            value +=
+              (input[index]! * (1 - fx) + input[index + 1]! * fx) * (1 - fy) +
+              (input[index + sourceWidth]! * (1 - fx) + input[index + sourceWidth + 1]! * fx) * fy;
+            if (border) {
+              edge +=
+                (border[index]! * (1 - fx) + border[index + 1]! * fx) * (1 - fy) +
+                (border[index + sourceWidth]! * (1 - fx) + border[index + sourceWidth + 1]! * fx) *
+                  fy;
+            }
+          } else {
+            const a = ix >= 0 && iy >= 0;
+            const b = ix + 1 < sourceWidth && iy >= 0;
+            const c = ix >= 0 && iy + 1 < sourceHeight;
+            const d = ix + 1 < sourceWidth && iy + 1 < sourceHeight;
+            value +=
+              ((a ? input[index]! : 0) * (1 - fx) + (b ? input[index + 1]! : 0) * fx) * (1 - fy) +
+              ((c ? input[index + sourceWidth]! : 0) * (1 - fx) +
+                (d ? input[index + sourceWidth + 1]! : 0) * fx) *
+                fy;
+            if (border) {
+              edge +=
+                ((a ? border[index]! : 0) * (1 - fx) + (b ? border[index + 1]! : 0) * fx) *
+                  (1 - fy) +
+                ((c ? border[index + sourceWidth]! : 0) * (1 - fx) +
+                  (d ? border[index + sourceWidth + 1]! : 0) * fx) *
+                  fy;
+            }
+          }
+        }
+        fill.data[row * width + col] = value / 4;
+        if (outline) outline.data[row * width + col] = edge / 4;
+      }
+    }
+    return { fill, border: outline };
   }
 
   clear() {
