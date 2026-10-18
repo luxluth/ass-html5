@@ -15,7 +15,8 @@ import type {
   Karaoke,
   Drawing,
   Clip,
-  Rect
+  Rect,
+  FontFaceInfo
 } from './types';
 import { CHARKIND, LOGTYPE, Align, Baseline, FadeKind } from './types';
 import {
@@ -36,7 +37,8 @@ import {
   parseAlpha,
   interpolateColor,
   cleanFontName,
-  stripWeightSuffix
+  stripWeightSuffix,
+  assWeight
 } from './utils';
 
 type PreProceesedAss = {
@@ -59,6 +61,9 @@ type PreProceesedAss = {
 
 // Style of one glyph or drawing for the current frame, with its hash for grouping runs.
 type ResolvedChar = { font: StyleDescriptor; hash: number };
+
+// Face drawn for a style, see resolveFace. `family` is null for fonts that were not loaded.
+type ResolvedFace = { family: string | null; weight: number; embolden: boolean };
 
 type MoveAnimation = {
   // x1: number;
@@ -89,8 +94,9 @@ export class Renderer {
   currentTime = 0;
   private occupiedRects: Map<number, Rect[]> = new Map();
   private lastStateHash: string | null = null;
-  // unitsPerEm / (usWinAscent + usWinDescent) of the loaded fonts, by each lowercase name
-  private fontRatios: Map<string, number>;
+  // Faces of the loaded fonts, by each of their lowercase names (see `ASS.loadFont`)
+  private fonts: Map<string, FontFaceInfo[]>;
+  private faceCache = new Map<string, ResolvedFace>();
   // Dialogues on screen, see getSlices
   private byStart: PreProceesedAss[] = [];
   private nextStart = 0;
@@ -104,12 +110,12 @@ export class Renderer {
     video: HTMLVideoElement,
     log: LOGTYPE,
     zIndex?: number,
-    fontRatios: Map<string, number> = new Map()
+    fonts: Map<string, FontFaceInfo[]> = new Map()
   ) {
     this._log = log;
     this.compiledASS = ass;
     this.styles = ass.styles;
-    this.fontRatios = fontRatios;
+    this.fonts = fonts;
     if (this._log === 'DEBUG') {
       this.log('DEBUG', this.compiledASS);
     }
@@ -1059,8 +1065,13 @@ export class Renderer {
         );
       }
 
+      // libass emboldens a face that is too light by em/64 (ass_glyph_embolden). The border grows
+      // from the emboldened outline.
+      const bolden = this.resolveFace(word.font).embolden ? word.font.fontsize / 64 : 0;
+
       if (word.font.borderStyle !== 3) {
         if (word.font.xbord !== 0 || word.font.ybord !== 0) {
+          layer.ctx.lineWidth += bolden;
           layer.ctx.strokeText(str, wordHead.pos.x, wordHead.pos.y);
           // With a border, libass blurs the border and keeps the fill sharp
           layer.ctx.filter = 'none';
@@ -1070,7 +1081,7 @@ export class Renderer {
       if (hasKaraoke) {
         layer.ctx.save();
         layer.ctx.fillStyle = blendAlpha(word.font.colors.c2, word.font.colors.a2);
-        layer.ctx.fillText(str, wordHead.pos.x, wordHead.pos.y);
+        this.fillGlyphs(layer.ctx, str, wordHead.pos, bolden);
         layer.ctx.restore();
 
         layer.ctx.save();
@@ -1083,10 +1094,10 @@ export class Renderer {
         );
         layer.ctx.clip();
 
-        layer.ctx.fillText(str, wordHead.pos.x, wordHead.pos.y);
+        this.fillGlyphs(layer.ctx, str, wordHead.pos, bolden);
         layer.ctx.restore();
       } else {
-        layer.ctx.fillText(str, wordHead.pos.x, wordHead.pos.y);
+        this.fillGlyphs(layer.ctx, str, wordHead.pos, bolden);
       }
 
       if (word.font.underline) {
@@ -1100,6 +1111,20 @@ export class Renderer {
         layer.ctx.fillRect(wordHead.pos.x, y, metrics.width, (layer.canvas.height * 0.2) / 100);
       }
     }
+  }
+
+  // fillText, emboldened by a stroke of `bolden` px in the fill color when the face needs it.
+  // The stroke casts no shadow: fillText casts it once.
+  private fillGlyphs(ctx: CanvasRenderingContext2D, str: string, pos: Vector2, bolden: number) {
+    if (bolden > 0) {
+      ctx.save();
+      ctx.lineWidth = bolden;
+      ctx.strokeStyle = ctx.fillStyle;
+      ctx.shadowColor = 'transparent';
+      ctx.strokeText(str, pos.x, pos.y);
+      ctx.restore();
+    }
+    ctx.fillText(str, pos.x, pos.y);
   }
 
   private drawDrawing(
@@ -1238,7 +1263,9 @@ export class Renderer {
   }
 
   private applyOverrideTag(tag: CompiledTag, font: StyleDescriptor) {
-    if (tag.b !== undefined) font.bold = tag.b === 1;
+    // As in libass and VSFilter, \b takes 0, 1 or a weight from 100; anything else keeps the style's
+    const b = tag.b as number | undefined;
+    if (b !== undefined && (b === 0 || b === 1 || b >= 100)) font.weight = assWeight(b);
     if (tag.i !== undefined) font.italic = tag.i === 1;
     if (tag.u !== undefined) font.underline = tag.u === 1;
     if (tag.s !== undefined) font.strikeout = tag.s === 1;
@@ -1292,10 +1319,44 @@ export class Renderer {
    * (see `ASS.loadFont`). Fonts that were not loaded get the ratio of Arial, about 0.895.
    */
   private getFontRatio(fontname: string): number {
+    return this.findFaces(fontname)?.[0]?.ratio ?? 0.895;
+  }
+
+  // Loaded faces registered under a fontname, or under the name without its weight suffix
+  // ("Source Sans Pro Semibold" → "Source Sans Pro"). The second lookup is not libass behavior: it
+  // keeps fonts loaded by family name working when the file's own names can't be read (WOFF2).
+  private findFaces(fontname: string): FontFaceInfo[] | undefined {
     const name = cleanFontName(fontname).toLowerCase();
-    // The name without its weight is not libass behavior: it keeps a font loaded by its family
-    // working when the names in the file can't be read (WOFF2), see `ASS.loadFont`
-    return this.fontRatios.get(name) ?? this.fontRatios.get(stripWeightSuffix(name)) ?? 0.895;
+    return this.fonts.get(name) ?? this.fonts.get(stripWeightSuffix(name));
+  }
+
+  /**
+   * Face drawn for a style, chosen like libass: same name, then the closest slant and weight.
+   * The browser is asked for the exact weight of that face, so it never fakes a bold (its fake
+   * bold is far heavier than libass's). When the face is lighter than asked by more than 150,
+   * libass emboldens it (ass_font.c), and so does drawWord.
+   * Fonts that were not loaded are left to the browser, with the weight asked.
+   */
+  private resolveFace(font: StyleDescriptor): ResolvedFace {
+    const key = `${font.fontname}|${font.weight}|${font.italic}`;
+    const cached = this.faceCache.get(key);
+    if (cached) return cached;
+
+    const faces = this.findFaces(font.fontname);
+    let resolved: ResolvedFace = { family: null, weight: font.weight, embolden: false };
+    if (faces && faces.length > 0) {
+      const distance = (f: FontFaceInfo) =>
+        (f.italic !== font.italic ? 1000 : 0) +
+        Math.max(f.minWeight - font.weight, font.weight - f.maxWeight, 0);
+      const face = faces.reduce((best, f) => (distance(f) < distance(best) ? f : best));
+      resolved = {
+        family: face.family,
+        weight: Math.min(Math.max(font.weight, face.minWeight), face.maxWeight),
+        embolden: font.weight > face.maxWeight + 150
+      };
+    }
+    this.faceCache.set(key, resolved);
+    return resolved;
   }
 
   private upscaleFontSize(fs: number, fontname: string): number {
@@ -1310,16 +1371,20 @@ export class Renderer {
   // A font that is missing falls back to Arial, then to the sans-serif font, instead of the
   // browser default (often a serif font)
   private fontDecriptorString(font: StyleDescriptor) {
+    const face = this.resolveFace(font);
     const quote = (name: string) => `"${name.replace(/["\\]/g, '\\$&')}"`;
-    const name = cleanFontName(font.fontname);
-    const family = stripWeightSuffix(name);
-    const families =
-      family.toLowerCase() !== name.toLowerCase()
-        ? `${quote(name)}, ${quote(family)}, Arial, sans-serif`
-        : `${quote(name)}, Arial, sans-serif`;
-    return `${font.bold ? 'bold ' : ''}${font.italic ? 'italic ' : ''}${font.fontsize.toFixed(
-      3
-    )}px ${families}`;
+    let families: string;
+    if (face.family !== null) {
+      families = `${quote(face.family)}, Arial, sans-serif`;
+    } else {
+      const name = cleanFontName(font.fontname);
+      const family = stripWeightSuffix(name);
+      families =
+        family.toLowerCase() !== name.toLowerCase()
+          ? `${quote(name)}, ${quote(family)}, Arial, sans-serif`
+          : `${quote(name)}, Arial, sans-serif`;
+    }
+    return `${font.italic ? 'italic ' : ''}${face.weight} ${font.fontsize.toFixed(3)}px ${families}`;
   }
 
   private computeStyle(name: string, alignment: number, layer: Layer): StyleDescriptor {
@@ -1358,7 +1423,7 @@ export class Renderer {
     const font: StyleDescriptor = {
       fontsize: this.upscaleFontSize(fs, fn),
       fontname: fn,
-      bold: b === 1,
+      weight: assWeight(b),
       italic: i === 1,
       underline: u === 1,
       strikeout: s === 1,
