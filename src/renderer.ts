@@ -51,6 +51,7 @@ type PreProceesedAss = {
   clip?: Clip;
   q: number;
   animated: boolean;
+  index: number; // script order: stable id, and draw order within a layer
 };
 
 type MoveAnimation = {
@@ -70,7 +71,6 @@ export class Renderer {
   private compiledASS: CompiledASS;
   renderDiv: HTMLDivElement;
   layers: Layer[];
-  private numberOfLayers: number;
   private video: HTMLVideoElement;
   private playerResX: number;
   private playerResY: number;
@@ -82,7 +82,7 @@ export class Renderer {
   // private previous = 0;
   currentTime = 0;
   private occupiedRects: Map<number, Rect[]> = new Map();
-  private lastActiveDialogueHashes: Map<number, string> = new Map();
+  private lastStateHash: string | null = null;
 
   constructor(
     ass: CompiledASS,
@@ -100,74 +100,26 @@ export class Renderer {
     this.playerResX = this.compiledASS.width;
     this.playerResY = this.compiledASS.height;
     this.renderDiv = newRender(sizes.y, sizes.x, sizes.width, sizes.height, zIndex, video);
-    const background = newCanvas(sizes.width, sizes.height, -1, 'background', this.renderDiv);
-    const bgCtx = background.getContext('2d') as CanvasRenderingContext2D;
-    if (bgCtx === null) {
+    // Every ASS layer is drawn on this one canvas, lower layers first (see display)
+    const canvas = newCanvas(sizes.width, sizes.height, 0, 'subtitles', this.renderDiv);
+    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+    if (ctx === null) {
       throw new Error('Unable to initilize the Canvas 2D context');
     }
+    //@ts-ignore
+    ctx.textRendering = 'geometricPrecision';
+
     this.layers = [
       {
-        canvas: background,
-        ctx: bgCtx
+        canvas,
+        ctx
       }
     ];
-
-    this.numberOfLayers = this.findTotalLayers(ass);
-    this.insertLayers(sizes, background);
     this.video = video;
-  }
-
-  private insertLayers(sizes: OnInitSizes, insertAfter: HTMLCanvasElement) {
-    for (let i = 0; i < this.numberOfLayers; i++) {
-      const canvas = newCanvas(sizes.width, sizes.height, i, 'frame', undefined, insertAfter);
-      const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
-      if (ctx === null) {
-        throw new Error('Unable to initilize the Canvas 2D context');
-      }
-
-      //@ts-ignore
-      ctx.textRendering = 'geometricPrecision';
-
-      this.layers.push({
-        canvas: canvas,
-        ctx: ctx
-      });
-    }
-  }
-
-  private getLayer(l: number): Layer | null {
-    for (let i = 1; i < this.layers.length; i++) {
-      if (this.layers[i]?.canvas.dataset.layer == l.toString()) {
-        return this.layers[i] as Layer;
-      }
-    }
-    return null;
-  }
-
-  private findTotalLayers(ass: CompiledASS) {
-    let maxLayer = 1;
-    ass.dialogues.forEach((dialogue) => {
-      if (dialogue.layer >= maxLayer) maxLayer++;
-    });
-
-    return maxLayer;
   }
 
   async warmup() {
     const { dialogues } = this.compiledASS;
-    const canvas = document.createElement('canvas');
-    canvas.height = this.playerResY;
-    canvas.width = this.playerResX;
-    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
-    // @ts-ignore
-    ctx.textRendering = 'geometricPrecision';
-    const computelayer: Layer = {
-      ctx,
-      canvas
-    };
-
-    computelayer.canvas.width = this.playerResX;
-    computelayer.canvas.height = this.playerResY;
 
     for (let i = 0; i < dialogues.length; i++) {
       const dia = dialogues[i] as Dialogue;
@@ -202,12 +154,13 @@ export class Renderer {
         }
       }
 
-      const chars = this.processSlices(alignment, slices, computelayer);
+      const chars = this.processSlices(slices);
       const isAnimated =
         !!(movAnim || fadeAnim) ||
         chars.some((c) => c.kind === CHARKIND.NORMAL && ((c.tag as any).t || c.karaoke));
 
       this.ppass.push({
+        index: this.ppass.length,
         start,
         layer,
         end,
@@ -226,19 +179,15 @@ export class Renderer {
     }
   }
 
-  private processSlices(alignment: number, slices: DialogueSlice[], layer: Layer): Char[] {
+  private processSlices(slices: DialogueSlice[]): Char[] {
     let chars: Char[] = [];
     let currentKaraokeTime = 0;
     slices.forEach((slice) => {
       const { style, fragments } = slice;
-      let font = this.computeStyle(style, alignment, layer);
 
       let _frag: Char[] = [];
 
       fragments.forEach((frag) => {
-        this.applyOverrideTag(frag.tag, font);
-        this.applyFont(font, layer);
-
         // Karaoke Logic
         const tag = frag.tag as any;
         let kMode: 'k' | 'kf' | 'ko' | 'K' | null = null;
@@ -397,36 +346,19 @@ export class Renderer {
     this.currentTime = time;
     const slicesToDisplay = this.getSlices(time);
 
-    // Group by layer
-    const layerGroups = new Map<number, PreProceesedAss[]>();
-    slicesToDisplay.forEach((d) => {
-      const group = layerGroups.get(d.layer) || [];
-      group.push(d);
-      layerGroups.set(d.layer, group);
-    });
+    // The canvas is painted again when the dialogues on screen change, or on every frame while
+    // one of them is animated
+    const hasAnimated = slicesToDisplay.some((d) => d.animated);
+    const dialogueIds = slicesToDisplay.map((d) => d.index).join(',');
+    const stateHash = hasAnimated ? `animated-${time}` : `static-${dialogueIds}`;
+    if (stateHash === this.lastStateHash) return;
+    this.lastStateHash = stateHash;
 
-    this.layers.forEach((layer, index) => {
-      const layerNum = parseInt(layer.canvas.dataset.layer || '-1');
-      if (layerNum === -1) return; // background
-
-      const activeOnLayer = layerGroups.get(layerNum) || [];
-
-      // Generate state hash for this layer
-      const hasAnimated = activeOnLayer.some((d) => d.animated);
-      const dialogueIds = activeOnLayer.map((d) => this.ppass.indexOf(d)).join(',');
-      const stateHash = hasAnimated ? `animated-${time}` : `static-${dialogueIds}`;
-
-      const lastHash = this.lastActiveDialogueHashes.get(layerNum);
-
-      if (stateHash !== lastHash) {
-        this.clearLayer(index);
-        if (activeOnLayer.length > 0) {
-          this.occupiedRects.set(layerNum, []); // Reset collision rects for this layer
-          activeOnLayer.forEach((d) => this.showDialogue(d, time));
-        }
-        this.lastActiveDialogueHashes.set(layerNum, stateHash);
-      }
-    });
+    this.clear();
+    this.occupiedRects.clear(); // collision rects, per layer
+    slicesToDisplay
+      .sort((a, b) => a.layer - b.layer || a.index - b.index)
+      .forEach((d) => this.showDialogue(d, time));
   }
 
   // private charsToString(chars: Char[]): string {
@@ -566,7 +498,7 @@ export class Renderer {
   }
 
   private showDialogue(d: PreProceesedAss, time: number) {
-    const layer = this.getLayer(d.layer);
+    const layer = this.layers[0];
     if (!layer) return;
 
     layer.ctx.save();
@@ -1010,13 +942,23 @@ export class Renderer {
         });
       }
 
+      let metrics = layer.ctx.measureText(str);
+
+      // The opaque box shares the canvas with the text now, so it goes first
+      if (word.font.borderStyle === 3) {
+        this.drawTextBackground(
+          wordHead.pos,
+          metrics.actualBoundingBoxAscent + metrics.fontBoundingBoxDescent,
+          metrics.width,
+          word.font
+        );
+      }
+
       if (word.font.borderStyle !== 3) {
         if (word.font.xbord !== 0 || word.font.ybord !== 0) {
           layer.ctx.strokeText(str, wordHead.pos.x, wordHead.pos.y);
         }
       }
-
-      let metrics = layer.ctx.measureText(str);
 
       if (hasKaraoke) {
         layer.ctx.save();
@@ -1049,15 +991,6 @@ export class Renderer {
         layer.ctx.shadowOffsetX = 0;
         layer.ctx.shadowOffsetY = 0;
         layer.ctx.fillRect(wordHead.pos.x, y, metrics.width, (layer.canvas.height * 0.2) / 100);
-      }
-
-      if (word.font.borderStyle === 3) {
-        this.drawTextBackground(
-          wordHead.pos,
-          metrics.actualBoundingBoxAscent + metrics.fontBoundingBoxDescent,
-          metrics.width,
-          word.font
-        );
       }
     }
   }
@@ -1158,15 +1091,6 @@ export class Renderer {
     layer.ctx.restore();
   }
 
-  private clearLayer(layer: number) {
-    this.layers[layer]?.ctx.clearRect(
-      0,
-      0,
-      this.layers[layer]?.canvas.width as number,
-      this.layers[layer]?.canvas.height as number
-    );
-  }
-
   clear() {
     this.layers.forEach((layer) => {
       layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
@@ -1174,11 +1098,11 @@ export class Renderer {
   }
 
   /**
-   * Forces every layer to be painted again on the next frame.
-   * Needed after the canvases are resized, since resizing clears their content.
+   * Forces the canvas to be painted again on the next frame.
+   * Needed after the canvas is resized, since resizing clears its content.
    */
   invalidate() {
-    this.lastActiveDialogueHashes.clear();
+    this.lastStateHash = null;
   }
 
   private upscaleMargin(margin: Margin) {
