@@ -57,14 +57,18 @@ describe('PlayRes', () => {
     const ass = new ASS({ assText: script(''), video: videoElement });
     await ass.render();
     const renderer = (ass as any).renderer;
-    const ctx: CanvasRenderingContext2D = renderer.layers[0].ctx;
+    // Glyphs are drawn on a scratch canvas: record the font of every context
+    const proto = Object.getPrototypeOf(renderer.layers[0].ctx);
+    const fillText = proto.fillText;
     const fonts: string[] = [];
-    const fillText = ctx.fillText.bind(ctx);
-    ctx.fillText = (...args: Parameters<typeof fillText>) => {
-      fonts.push(ctx.font);
-      return fillText(...args);
-    };
-    renderer.display(0.5);
+    vi.spyOn(proto, 'fillText').mockImplementation(function (
+      this: CanvasRenderingContext2D,
+      ...args: any[]
+    ) {
+      fonts.push(this.font);
+      return fillText.apply(this, args);
+    });
+    renderer.forceRender(0.5);
 
     // Without PlayRes the size was Infinity, an invalid font the canvas ignored
     expect(fonts.length).toBeGreaterThan(0);

@@ -57,10 +57,19 @@ describe('Layers', () => {
     vi.restoreAllMocks();
   });
 
+  // Masks painted, in order (see Renderer.paintMask)
+  let paints: { color: string; data: Uint8ClampedArray }[];
+
   async function draw(assText: string) {
     const ass = new ASS({ assText, video: videoElement });
     await ass.render();
     const renderer = (ass as any).renderer;
+    paints = [];
+    const paintMask = renderer.paintMask.bind(renderer);
+    vi.spyOn(renderer, 'paintMask').mockImplementation((...args: any[]) => {
+      paints.push({ color: args[1], data: args[0].data });
+      return paintMask(...args);
+    });
     renderer.display(0.5);
     const canvases = renderer.renderDiv.querySelectorAll('canvas').length;
     ass.destroy();
@@ -90,6 +99,11 @@ describe('Layers', () => {
 
   it('should draw the opaque box under its text', async () => {
     await draw(script(['Dialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,Boxed'], 3));
-    expect(calls).toEqual(['rect', 'text Boxed']);
+    // As in libass, the box is the border of BorderStyle 3, in OutlineColour, painted first
+    expect(paints.map((p) => p.color)).toEqual(['#000000', '#ffffff']);
+    const [box, text] = paints as [(typeof paints)[0], (typeof paints)[0]];
+    expect(text.data.some((v) => v > 0)).toBe(true);
+    // The box is opaque under every pixel of the text
+    expect(text.data.every((v, i) => v === 0 || box.data[i] === 255)).toBe(true);
   });
 });

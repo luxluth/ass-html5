@@ -59,8 +59,9 @@ Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,Line 2`;
     renderer.display(1);
 
     expect(fillTextSpy).toHaveBeenCalledTimes(2);
-    const y1 = fillTextSpy.mock.calls[0]![2];
-    const y2 = fillTextSpy.mock.calls[1]![2];
+    // Glyph masks use local coordinates; collision placement belongs to the event's pen.
+    const y1 = renderer.ppass[0].chars[0].pos.y;
+    const y2 = renderer.ppass[1].chars[0].pos.y;
 
     // They should be different
     expect(y1).not.toBe(y2);

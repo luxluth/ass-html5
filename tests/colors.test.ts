@@ -23,8 +23,8 @@ Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,${text}`;
 
 describe('Colors and alpha', () => {
   let videoElement: HTMLVideoElement;
-  let fills: { fillStyle: string; shadowColor: string }[];
-  const originalGetContext = HTMLCanvasElement.prototype.getContext;
+  // Masks painted, in order, with their color and alpha (see Renderer.paintMask)
+  let paints: { color: string; alpha: number; secondary?: { color: string; alpha: number } }[];
 
   beforeEach(() => {
     videoElement = document.createElement('video');
@@ -41,29 +41,28 @@ describe('Colors and alpha', () => {
     };
     vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 0);
 
-    fills = [];
-    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string) {
-      const ctx = originalGetContext.apply(this, [type]) as CanvasRenderingContext2D;
-      if (type === '2d') {
-        const fillText = ctx.fillText;
-        ctx.fillText = function (this: CanvasRenderingContext2D, ...args: any[]) {
-          fills.push({ fillStyle: String(this.fillStyle), shadowColor: this.shadowColor });
-          return fillText.apply(this, args as any);
-        };
-      }
-      return ctx;
-    } as any;
+    paints = [];
   });
 
   afterEach(() => {
-    HTMLCanvasElement.prototype.getContext = originalGetContext;
     vi.restoreAllMocks();
   });
 
   async function draw(assText: string, time: number) {
     const ass = new ASS({ assText, video: videoElement });
     await ass.render();
-    (ass as any).renderer.display(time);
+    const renderer = (ass as any).renderer;
+    const paintMask = renderer.paintMask.bind(renderer);
+    vi.spyOn(renderer, 'paintMask').mockImplementation((...args: any[]) => {
+      const [, color, alpha, , , secondary, secondaryColor, secondaryAlpha] = args;
+      paints.push({
+        color: color.toLowerCase(),
+        alpha,
+        secondary: secondary && { color: secondaryColor.toLowerCase(), alpha: secondaryAlpha }
+      });
+      return paintMask(...args);
+    });
+    renderer.forceRender(time);
     ass.destroy();
   }
 
@@ -123,7 +122,8 @@ describe('Colors and alpha', () => {
       ),
       0.5
     );
-    expect(fills[0]!.shadowColor).toMatch(/^(#0000ff|rgba\(0, 0, 255, 1\))$/);
+    // Shadows are painted first
+    expect(paints[0]).toEqual({ color: '#0000ff', alpha: 0, secondary: undefined });
   });
 
   it('should apply \\2c and \\2a to the part karaoke has not reached', async () => {
@@ -134,7 +134,7 @@ describe('Colors and alpha', () => {
       ),
       0.5
     );
-    // The unsung text is filled first, in the secondary color
-    expect(fills[0]!.fillStyle).toMatch(/^rgba\(0, 255, 0, 0\.49\d*\)$/);
+    // The unsung text is filled in the secondary color, with its own alpha
+    expect(paints.find((p) => p.secondary)!.secondary).toEqual({ color: '#00ff00', alpha: 0x80 });
   });
 });

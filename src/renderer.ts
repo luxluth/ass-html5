@@ -21,7 +21,6 @@ import type {
 import { CHARKIND, LOGTYPE, Align, Baseline, FadeKind } from './types';
 import {
   ruleOfThree,
-  blendAlpha,
   convertAegisubColorToHex,
   swapBBGGRR,
   newCanvas,
@@ -40,8 +39,12 @@ import {
   stripWeightSuffix,
   assWeight,
   buildDrawingPath,
+  blurMask,
+  expandMask,
   halveMask,
   placeMask,
+  reduceAlpha,
+  assProjection,
   projectPoint,
   invertProjection
 } from './utils';
@@ -76,6 +79,14 @@ type ResolvedFace = { family: string | null; weight: number; embolden: boolean; 
 // Coverage of a word, from 0 to 255 per output pixel, without its colors and fades. `x` and `y`
 // place its top left corner on the canvas.
 type Bitmap = { data: Uint8ClampedArray; width: number; height: number; x: number; y: number };
+type WordMasks = {
+  fill: Bitmap;
+  border?: Bitmap;
+  shadow?: Bitmap;
+  font: StyleDescriptor;
+  // Part of the fill karaoke has not reached yet, in the secondary color
+  secondary?: Bitmap;
+};
 
 type MoveAnimation = {
   // x1: number;
@@ -115,6 +126,8 @@ export class Renderer {
   private selected: PreProceesedAss[] = [];
   private selectedTime: number | null = null;
   private measureCache = new Map<string, TextMetrics>();
+  private paintCanvas = document.createElement('canvas');
+  private glyphContext?: CanvasRenderingContext2D;
   private affineCanvases?: { source: HTMLCanvasElement; target: HTMLCanvasElement };
   private drawingPaths = new WeakMap<Drawing, { x: number; y: number; path: Path2D }>();
 
@@ -591,7 +604,7 @@ export class Renderer {
   }
 
   // \fscx and \fscy as factors. They are part of the layout, like the font size. The tilts are
-  // not: they are applied around the rotation origin when painting, see applyTransform.
+  // not: they are applied around the rotation origin when painting, see drawWord.
   private textScale(font: StyleDescriptor) {
     return { x: font.t.fscx / 100, y: font.t.fscy / 100 };
   }
@@ -955,31 +968,24 @@ export class Renderer {
 
         cX += charWidth;
 
-        // Word Grouping (per line)
+        // Word Grouping (per line). A drawing is a word of its own: it is painted from its path,
+        // so text or another drawing grouped with it would be lost.
         if (char.kind == CHARKIND.NORMAL || char.kind == CHARKIND.DRAWING) {
-          let fHash = resolved.get(char)!.hash;
-          if (currentHash !== fHash) {
-            if (currentWord.length > 0) {
-              if (currentFont !== null) {
-                words.push({
-                  font: currentFont,
-                  value: currentWord,
-                  w: chunkCharWidth(currentWord)
-                });
-                currentWord = [char];
-                currentFont = font;
-                currentHash = fHash;
-              }
-            } else {
-              currentFont = font;
-              currentWord.push(char);
-              currentHash = fHash;
-            }
-          } else {
-            currentFont = font;
-            currentWord.push(char);
-            currentHash = fHash;
+          const fHash = resolved.get(char)!.hash;
+          const head = currentWord[0];
+          if (
+            head &&
+            currentFont !== null &&
+            (currentHash !== fHash ||
+              char.kind === CHARKIND.DRAWING ||
+              head.kind === CHARKIND.DRAWING)
+          ) {
+            words.push({ font: currentFont, value: currentWord, w: chunkCharWidth(currentWord) });
+            currentWord = [];
           }
+          currentFont = font;
+          currentWord.push(char);
+          currentHash = fHash;
         }
       });
 
@@ -993,12 +999,37 @@ export class Renderer {
       }
     });
 
+    const masks: WordMasks[] = [];
     words.forEach((word) => {
       word.font.opacity = currentOpacity;
-      layer.ctx.save();
-      this.drawWord(word, time, d.start, layer, rotationOrigin);
-      layer.ctx.restore();
+      const result = this.drawWord(word, time, d.start, layer, rotationOrigin);
+      if (result) masks.push(result);
     });
+    // As in libass, the shadows of an event are painted first, then its borders, then its fills,
+    // so the border of a run cannot cover the fill of the run before it.
+    for (const phase of ['shadow', 'border', 'fill'] as const) {
+      for (const word of masks) {
+        const bitmap = word[phase];
+        if (!bitmap) continue;
+        const { colors, opacity } = word.font;
+        if (phase === 'fill') {
+          this.paintMask(
+            bitmap,
+            colors.c1,
+            colors.a1,
+            opacity,
+            layer,
+            word.secondary,
+            colors.c2,
+            colors.a2
+          );
+        } else if (phase === 'border') {
+          this.paintMask(bitmap, colors.c3, colors.a3, opacity, layer);
+        } else {
+          this.paintMask(bitmap, colors.c4, colors.a4, opacity, layer);
+        }
+      }
+    }
 
     layer.ctx.restore();
   }
@@ -1047,190 +1078,335 @@ export class Renderer {
     return stringHash(JSON.stringify(font));
   }
 
-  private drawWord(word: Word, time: number, startTime: number, layer: Layer, origin?: Vector2) {
-    let str = chunkCharToString(word.value);
-    this.applyFont(word.font, layer);
-    const wordHead = word.value[0] as Char;
+  /**
+   * The resolution libass measures `\blur`, the 3D camera distance and unscaled borders in:
+   * LayoutResX/Y, else the video's own size, else PlayRes. With a 1080p video and a 720p script,
+   * a blur of 1 is 1/1080 of the frame, not 1/720.
+   */
+  private layoutRes(): { x: number; y: number } {
+    const x = Number(this.compiledASS.info.LayoutResX);
+    const y = Number(this.compiledASS.info.LayoutResY);
+    if (x > 0 && y > 0) return { x, y };
+    const { videoWidth, videoHeight } = this.video;
+    if (videoWidth > 0 && videoHeight > 0) return { x: videoWidth, y: videoHeight };
+    return { x: this.playerResX, y: this.playerResY };
+  }
 
-    if (wordHead.kind === CHARKIND.DRAWING) {
-      this.drawDrawing(wordHead, layer, word.font, origin);
-      return;
+  private drawWord(
+    word: Word,
+    time: number,
+    startTime: number,
+    layer: Layer,
+    origin?: Vector2
+  ): WordMasks | null {
+    const head = word.value[0] as Exclude<Char, { kind: CHARKIND.NEWLINE }>;
+    // The fraction of the pen goes into the glyph raster: the mask then sits on whole pixels and
+    // never has to be resampled, which would blur every edge. Like libass, the pen is kept to
+    // 1/8 pixel, so moving text reuses its rasters.
+    const pen = { x: Math.round(head.pos.x * 8) / 8, y: Math.round(head.pos.y * 8) / 8 };
+    const penX = Math.floor(pen.x);
+    const penY = Math.floor(pen.y);
+    const subX = pen.x - penX;
+    const subY = pen.y - penY;
+    const font = word.font;
+    // Rotated or sheared coverage is resampled, so it is rasterized with 2x2 samples per pixel.
+    // Otherwise it already lands on whole pixels and is used as it is.
+    const flat = !font.t.frx && !font.t.fry && !font.t.frz && !font.t.fax && !font.t.fay;
+    const supersample = flat ? 1 : 2;
+    const glyph = this.glyphBitmap(word, layer, subX, subY, supersample);
+    if (!glyph) return null;
+    const layout = this.layoutRes();
+    const blurScaleX = layer.canvas.width / layout.x;
+    const blurScaleY = layer.canvas.height / layout.y;
+    const scaled = this.compiledASS.info.ScaledBorderAndShadow !== 'no';
+    const ratioX = scaled ? layer.canvas.width / this.playerResX : blurScaleX;
+    const ratioY = scaled ? layer.canvas.height / this.playerResY : blurScaleY;
+    const borderX = Math.max(0, font.xbord * ratioX);
+    const borderY = Math.max(0, font.ybord * ratioY);
+    const shadowX = font.xshad * ratioX;
+    const shadowY = font.yshad * ratioY;
+    const box = font.borderStyle === 3;
+    const hasBorder = borderX > 0 || borderY > 0 || box;
+    const pad = Math.ceil(Math.max(borderX, borderY) + 2) * supersample;
+    const width = glyph.width + 2 * pad;
+    const height = glyph.height + 2 * pad;
+    if (width * height > 16777216) return null;
+    const sourceX = penX + glyph.x - pad / supersample;
+    const sourceY = penY + glyph.y - pad / supersample;
+    const sigmaX = Math.max(0, font.blur) * blurScaleX * 0.8493218;
+    const sigmaY = Math.max(0, font.blur) * blurScaleY * 0.8493218;
+    const be = Math.min(127, Math.max(0, Math.round(font.be)));
+    const padding = Math.ceil(
+      Math.max(sigmaX, sigmaY) * 4 +
+        Math.min(be, 5) +
+        Math.max(Math.abs(shadowX), Math.abs(shadowY)) +
+        2
+    );
+    const data = new Uint8ClampedArray(width * height);
+    placeMask(glyph.data, glyph.width, glyph.height, data, width, height, pad, pad);
+    const source = { data, width, height, x: sourceX, y: sourceY };
+    let border: Uint8ClampedArray | undefined;
+    if (box) {
+      border = new Uint8ClampedArray(data.length);
+      const metrics = this.measure(layer.ctx, chunkCharToString(word.value));
+      const sy = Math.abs(font.t.fscy / 100);
+      const ascent =
+        (metrics.fontBoundingBoxAscent || metrics.actualBoundingBoxAscent || font.fontsize * 0.8) *
+        sy;
+      const descent =
+        (metrics.fontBoundingBoxDescent ||
+          metrics.actualBoundingBoxDescent ||
+          font.fontsize * 0.2) * sy;
+      const s = supersample;
+      const top = Math.max(0, Math.floor((subY - ascent - glyph.y - borderY) * s) + pad);
+      const bottom = Math.min(height, Math.ceil((subY + descent - glyph.y + borderY) * s) + pad);
+      const left = Math.max(0, Math.floor((subX - glyph.x - borderX) * s) + pad);
+      const right = Math.min(width, Math.ceil((subX + word.w - glyph.x + borderX) * s) + pad);
+      for (let y = top; y < bottom; y++) border.fill(255, y * width + left, y * width + right);
+    } else if (hasBorder) {
+      // Stroking the outline is libass's way and much faster than dilating the bitmap, which
+      // is left for pens the browser cannot draw. The glyph and its stroke make the border.
+      const stroked = this.glyphBitmap(word, layer, subX, subY, supersample, {
+        x: borderX,
+        y: borderY
+      });
+      if (stroked) {
+        border = new Uint8ClampedArray(data.length);
+        const left = (stroked.x - glyph.x) * supersample + pad;
+        const top = (stroked.y - glyph.y) * supersample + pad;
+        placeMask(stroked.data, stroked.width, stroked.height, border, width, height, left, top);
+        for (let i = 0; i < border.length; i++) if (data[i]! > border[i]!) border[i] = data[i]!;
+      } else {
+        border = expandMask(data, width, height, borderX * supersample, borderY * supersample);
+      }
     }
-
-    if (wordHead.kind === CHARKIND.NORMAL) {
-      const scale = this.textScale(word.font);
-      if (scale.x === 0 || scale.y === 0) return;
-
-      this.applyTransform(layer.ctx, word.font, wordHead.pos, origin);
-      // The layout already gave the word its scaled size, so it is scaled around its own pen
-      layer.ctx.translate(wordHead.pos.x, wordHead.pos.y);
-      layer.ctx.scale(scale.x, scale.y);
-      layer.ctx.translate(-wordHead.pos.x, -wordHead.pos.y);
-      let hasKaraoke = false;
+    const sx = font.t.fscx / 100;
+    const sy = font.t.fscy / 100;
+    const matrix = assProjection(
+      origin ?? head.pos,
+      {
+        ...font.t,
+        fax: (font.t.fax ?? 0) * (sx / sy),
+        fay: (font.t.fay ?? 0) * (sy / sx),
+        shearOrigin: { x: head.pos.x, y: head.pos.y - font.fontsize * sy }
+      },
+      312.5 * blurScaleY
+    );
+    const projected = this.projectBitmap(source, border, matrix, layer, padding, supersample);
+    if (!projected) return null;
+    const masks: WordMasks = { fill: projected.fill, border: projected.border, font };
+    const { fill } = masks;
+    if (!hasBorder || box) {
+      fill.data = blurMask(fill.data, fill.width, fill.height, sigmaX, sigmaY, be);
+    }
+    if (masks.border) {
+      masks.border.data = blurMask(masks.border.data, fill.width, fill.height, sigmaX, sigmaY, be);
+    }
+    const karaoke = word.value.some((char) => char.kind === CHARKIND.NORMAL && char.karaoke);
+    const hasShadow = shadowX !== 0 || shadowY !== 0;
+    const fillInBorder =
+      box || (font.colors.a1 === 0 && font.colors.a2 === 0 && font.opacity === 1);
+    const fillInShadow = hasShadow && (karaoke || font.colors.a1 !== 255 || box);
+    const fixBorder = (bitmap: Bitmap) => {
+      for (let i = 0; i < bitmap.data.length; i++) {
+        const b = bitmap.data[i]!;
+        const g = fill.data[i]!;
+        bitmap.data[i] = b > g ? b - (g >> 1) : 0;
+      }
+    };
+    if (masks.border && !fillInBorder && !fillInShadow) fixBorder(masks.border);
+    if (hasShadow && (hasBorder || fillInShadow)) {
+      const from = masks.border ?? fill;
+      masks.shadow = { ...from, data: from.data.slice(), x: from.x + shadowX, y: from.y + shadowY };
+      if (masks.border && fillInBorder && !fillInShadow) fixBorder(masks.shadow);
+    }
+    if (masks.border && fillInShadow && !fillInBorder) fixBorder(masks.border);
+    if (karaoke) {
       let clipWidth = 0;
-
-      if (word.value.some((c) => c.kind === CHARKIND.NORMAL && c.karaoke)) {
-        hasKaraoke = true;
-        word.value.forEach((char) => {
-          if (char.kind === CHARKIND.NORMAL && char.karaoke) {
-            const relTime = time - startTime;
-            const kStart = char.karaoke.start;
-            const kEnd = char.karaoke.end;
-
-            if (relTime >= kEnd) {
-              clipWidth += char.w;
-            } else if (relTime > kStart) {
-              const dur = kEnd - kStart;
-              if (dur > 0) {
-                const p = (relTime - kStart) / dur;
-                if (char.karaoke.type === 'kf' || char.karaoke.type === 'K') {
-                  clipWidth += char.w * p;
-                } else {
-                  clipWidth += char.w;
-                }
-              }
-            }
-          } else if (char.kind === CHARKIND.NORMAL) {
-            clipWidth += char.w;
-          }
-        });
-      }
-
-      let metrics = this.measure(layer.ctx, str);
-
-      // The opaque box shares the canvas with the text now, so it goes first
-      if (word.font.borderStyle === 3) {
-        this.drawTextBackground(
-          wordHead.pos,
-          metrics.actualBoundingBoxAscent + metrics.fontBoundingBoxDescent,
-          metrics.width,
-          word.font
-        );
-      }
-
-      // libass emboldens a face that is too light by em/64 (ass_glyph_embolden). The border grows
-      // from the emboldened outline.
-      const bolden = this.resolveFace(word.font).embolden ? word.font.fontsize / 64 : 0;
-
-      if (word.font.borderStyle !== 3) {
-        if (word.font.xbord !== 0 || word.font.ybord !== 0) {
-          // \bord does not grow with \fscx and \fscy. Canvas has a single pen width, so with
-          // different x and y scales the border follows their average.
-          const avgScale = (Math.abs(scale.x) + Math.abs(scale.y)) / 2;
-          layer.ctx.lineWidth = layer.ctx.lineWidth / avgScale + bolden;
-          layer.ctx.strokeText(str, wordHead.pos.x, wordHead.pos.y);
-          // With a border, libass blurs the border and keeps the fill sharp
-          layer.ctx.filter = 'none';
+      const relative = time - startTime;
+      for (const char of word.value) {
+        if (char.kind !== CHARKIND.NORMAL) continue;
+        const k = char.karaoke;
+        if (!k || relative >= k.end) clipWidth += char.w;
+        else if (relative >= k.start) {
+          clipWidth +=
+            k.type === 'kf' || k.type === 'K'
+              ? char.w * ((relative - k.start) / Math.max(k.end - k.start, 0.000001))
+              : char.w;
         }
       }
+      masks.secondary = { ...fill, data: fill.data.slice() };
+      const split = head.pos.x + clipWidth - fill.x;
+      for (let y = 0; y < fill.height; y++) {
+        for (let x = 0; x < fill.width; x++) {
+          const i = y * fill.width + x;
+          const amount = Math.max(0, Math.min(1, split - x));
+          fill.data[i] = masks.secondary.data[i]! * amount;
+          masks.secondary.data[i] = masks.secondary.data[i]! * (1 - amount);
+        }
+      }
+      if (
+        word.value.every(
+          (c) =>
+            c.kind === CHARKIND.NORMAL && c.karaoke?.type === 'ko' && relative < c.karaoke.start
+        )
+      ) {
+        masks.border = undefined;
+      }
+    }
+    return masks;
+  }
 
-      if (hasKaraoke) {
-        layer.ctx.save();
-        layer.ctx.fillStyle = blendAlpha(word.font.colors.c2, word.font.colors.a2);
-        this.fillGlyphs(layer.ctx, str, wordHead.pos, bolden);
-        layer.ctx.restore();
-
-        layer.ctx.save();
-        layer.ctx.beginPath();
-        layer.ctx.rect(
-          wordHead.pos.x,
-          wordHead.pos.y - layer.canvas.height,
-          clipWidth / scale.x, // char widths are in layout pixels
-          layer.canvas.height * 2
+  // Glyph coverage at `supersample` (1 or 2) times the output resolution, without ASS alpha or
+  // effects. The pen is at (subX, subY) from the bitmap's whole-pixel origin, as libass
+  // rasterizes outlines at their subpixel position, so x and y are whole pixels relative to the
+  // floored pen. With a border (radii in output pixels) the coverage is instead the outline
+  // stroked with an elliptical pen, as libass's stroker does; null when the browser cannot draw
+  // that pen.
+  private glyphBitmap(
+    word: Word,
+    layer: Layer,
+    subX: number,
+    subY: number,
+    supersample: number,
+    border?: { x: number; y: number }
+  ): Bitmap | null {
+    const font = word.font;
+    const head = word.value[0] as Exclude<Char, { kind: CHARKIND.NEWLINE }>;
+    const drawing = head.kind === CHARKIND.DRAWING;
+    const scale = drawing
+      ? this.drawingScale(head, font, layer)
+      : { x: font.t.fscx / 100, y: font.t.fscy / 100 };
+    const sx = scale.x;
+    const sy = scale.y;
+    if (!Number.isFinite(sx + sy) || Math.abs(sx) < 0.00001 || Math.abs(sy) < 0.00001) return null;
+    const text = chunkCharToString(word.value);
+    const bolden = !drawing && this.resolveFace(font).embolden ? Math.floor(font.fontsize) / 64 : 0;
+    // Radius of a round pen stroked along the outline. FreeType's embolden moves the outline out
+    // by half its strength. A border is stroked in the text's own scaled space, where the pen is
+    // round only when the border has the glyph's proportions; drawings are in output pixels.
+    let pen = bolden / 2;
+    if (border) {
+      if (!(border.x > 0 && border.y > 0)) return null;
+      const radius = drawing ? Math.max(border.x, border.y) : border.x / Math.abs(sx);
+      if (!drawing && Math.abs(border.y / Math.abs(sy) - radius) > radius * 1e-9) return null;
+      pen += radius;
+    }
+    const growX = bolden * Math.abs(sx) + (border?.x ?? 0);
+    const growY = bolden * Math.abs(sy) + (border?.y ?? 0);
+    // FreeType's embolden also moves the outline right and up by half its strength
+    const originX = subX + (bolden * sx) / 2;
+    const originY = subY - (bolden * sy) / 2;
+    this.applyFont(font, layer);
+    const metrics = this.measure(layer.ctx, text);
+    const left = drawing ? head.drawing.minX : -(metrics.actualBoundingBoxLeft || 0);
+    const right = drawing
+      ? head.drawing.minX + head.drawing.width
+      : Math.max(metrics.actualBoundingBoxRight || 0, word.w / Math.abs(sx));
+    const top = drawing
+      ? head.drawing.minY
+      : -(font.borderStyle === 3
+          ? metrics.fontBoundingBoxAscent || metrics.actualBoundingBoxAscent || font.fontsize * 0.8
+          : metrics.actualBoundingBoxAscent || font.fontsize * 0.8);
+    const bottom = drawing
+      ? head.drawing.minY + head.drawing.height
+      : Math.max(
+          (font.borderStyle === 3 ? metrics.fontBoundingBoxDescent : 0) ||
+            metrics.actualBoundingBoxDescent ||
+            font.fontsize * 0.2,
+          font.underline
+            ? (metrics.actualBoundingBoxDescent || 2) +
+                Math.max(font.fontsize / 20, 1 / Math.abs(sy))
+            : 0
         );
-        layer.ctx.clip();
-
-        this.fillGlyphs(layer.ctx, str, wordHead.pos, bolden);
-        layer.ctx.restore();
+    const x = Math.floor(Math.min(left * sx, right * sx) + originX - growX - 2);
+    const y = Math.floor(Math.min(top * sy, bottom * sy) + originY - growY - 2);
+    const width = Math.ceil(
+      (Math.max(left * sx, right * sx) + originX + growX + 2 - x) * supersample
+    );
+    const height = Math.ceil(
+      (Math.max(top * sy, bottom * sy) + originY + growY + 2 - y) * supersample
+    );
+    if (width < 1 || height < 1 || width * height > 16777216) return null;
+    // Skia (Chrome) draws text of up to 256 device pixels from glyph masks with contrast and gamma
+    // boosts, heavier and softer than libass's coverage. Text past 256 pixels along either axis is
+    // filled as an outline with exact coverage, so the glyph's larger axis is drawn a whole number
+    // of times longer and reduced. Text under 8 pixels (as when it grows from \fscx0) is left as
+    // it is.
+    const outlineFactor = Math.ceil(
+      257 / (supersample * font.fontsize * Math.max(Math.abs(sx), Math.abs(sy)))
+    );
+    const factor =
+      drawing || !(outlineFactor > 1 && outlineFactor * supersample <= 32)
+        ? 1
+        : Math.max(1, Math.min(outlineFactor, Math.floor(4194304 / (width * height))));
+    const tall = Math.abs(sy) >= Math.abs(sx);
+    const factorX = tall ? 1 : factor;
+    const factorY = tall ? factor : 1;
+    const rasterWidth = width * factorX;
+    const rasterHeight = height * factorY;
+    // One scratch surface, read back on every use: willReadFrequently keeps it on the CPU.
+    const ctx = (this.glyphContext ??= document
+      .createElement('canvas')
+      .getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D);
+    const canvas = ctx.canvas;
+    // Resizing reallocates the surface, so it only grows (up to 4M pixels); just the raster's
+    // corner is cleared and read.
+    const large = canvas.width * canvas.height > 4194304;
+    if (canvas.width < rasterWidth || canvas.height < rasterHeight || large) {
+      canvas.width = Math.max(rasterWidth, large ? 0 : canvas.width);
+      canvas.height = Math.max(rasterHeight, large ? 0 : canvas.height);
+    } else {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, rasterWidth, rasterHeight);
+    }
+    ctx.font = this.fontDecriptorString(font);
+    ctx.letterSpacing = `${font.t.fsp}px`;
+    // Unhinted outlines at their exact position, like libass and like the measuring context
+    ctx.textRendering = 'geometricPrecision';
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = '#fff';
+    // A round pen adds every point within its radius of the outline: the glyph dilated by it
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.filter = 'none';
+    ctx.shadowColor = 'transparent';
+    const kx = supersample * factorX;
+    const ky = supersample * factorY;
+    ctx.setTransform(kx, 0, 0, ky, (originX - x) * kx, (originY - y) * ky);
+    if (drawing) {
+      const path = this.drawingPath(head.drawing, sx, sy);
+      if (!border) {
+        ctx.fill(path);
+      } else if (border.x === border.y) {
+        ctx.lineWidth = 2 * pen;
+        ctx.stroke(path);
       } else {
-        this.fillGlyphs(layer.ctx, str, wordHead.pos, bolden);
+        // An elliptical pen is a round one in a space stretched by the border radii
+        const outline = new Path2D();
+        outline.addPath(path, new DOMMatrix([pen / border.x, 0, 0, pen / border.y, 0, 0]));
+        ctx.scale(border.x / pen, border.y / pen);
+        ctx.lineWidth = 2 * pen;
+        ctx.stroke(outline);
       }
-
-      if (word.font.underline) {
-        const y = wordHead.pos.y + metrics.emHeightDescent;
-        layer.ctx.fillRect(wordHead.pos.x, y, metrics.width, (layer.canvas.height * 0.2) / 100);
+    } else {
+      ctx.scale(sx, sy);
+      ctx.lineWidth = 2 * pen;
+      // A border is only the stroke: the caller already has the glyph's own coverage
+      if (!border) ctx.fillText(text, 0, 0);
+      if (pen) ctx.strokeText(text, 0, 0);
+      const thickness = Math.max(font.fontsize / 20, 1 / Math.abs(sy));
+      const lines: number[] = [];
+      if (font.underline) lines.push(metrics.actualBoundingBoxDescent || 2);
+      if (font.strikeout) lines.push(-font.fontsize * 0.3);
+      for (const top of lines) {
+        if (!border) ctx.fillRect(0, top, word.w / Math.abs(sx), thickness);
+        if (pen) ctx.strokeRect(0, top, word.w / Math.abs(sx), thickness);
       }
-      if (word.font.strikeout) {
-        const y = wordHead.pos.y - metrics.hangingBaseline / 2;
-        layer.ctx.shadowOffsetX = 0;
-        layer.ctx.shadowOffsetY = 0;
-        layer.ctx.fillRect(wordHead.pos.x, y, metrics.width, (layer.canvas.height * 0.2) / 100);
-      }
     }
-  }
-
-  // fillText, emboldened by a stroke of `bolden` px in the fill color when the face needs it.
-  // The stroke casts no shadow: fillText casts it once.
-  private fillGlyphs(ctx: CanvasRenderingContext2D, str: string, pos: Vector2, bolden: number) {
-    if (bolden > 0) {
-      ctx.save();
-      ctx.lineWidth = bolden;
-      ctx.strokeStyle = ctx.fillStyle;
-      ctx.shadowColor = 'transparent';
-      ctx.strokeText(str, pos.x, pos.y);
-      ctx.restore();
-    }
-    ctx.fillText(str, pos.x, pos.y);
-  }
-
-  private drawDrawing(char: DrawingChar, layer: Layer, font: StyleDescriptor, origin?: Vector2) {
-    const { pos } = char;
-    const ctx = layer.ctx;
-
-    ctx.save();
-
-    // \fscx and \fscy are already in the outline, so they do not scale the border
-    this.applyTransform(ctx, font, pos, origin);
-
-    const { x: sx, y: sy } = this.drawingScale(char, font, layer);
-    const path = this.drawingPath(char.drawing, sx, sy);
-    ctx.translate(pos.x, pos.y);
-
-    // Border under the fill, as for text, and only the border blurred
-    if ((font.xbord ?? 0) > 0 || (font.ybord ?? 0) > 0) {
-      ctx.stroke(path);
-      ctx.filter = 'none';
-    }
-    ctx.fill(path);
-
-    ctx.restore();
-  }
-
-  // Rotation, shear and the tilts, around the rotation origin. \fscx and \fscy are not applied
-  // here since they are part of the layout, see textScale.
-  private applyTransform(
-    ctx: CanvasRenderingContext2D,
-    font: StyleDescriptor,
-    pos: Vector2,
-    origin?: Vector2
-  ) {
-    const t = font.t;
-    const org = origin || pos;
-
-    ctx.translate(org.x, org.y);
-
-    if (t.frz) ctx.rotate((-t.frz * Math.PI) / 180);
-
-    const scaleX = t.fry ? Math.cos((t.fry * Math.PI) / 180) : 1;
-    const scaleY = t.frx ? Math.cos((t.frx * Math.PI) / 180) : 1;
-
-    if (t.fax || t.fay) {
-      ctx.transform(1, t.fay || 0, -(t.fax || 0), 1, 0, 0);
-    }
-
-    ctx.scale(scaleX, scaleY);
-
-    ctx.translate(-org.x, -org.y);
-  }
-
-  private drawTextBackground(pos: Vector2, height: number, width: number, font: StyleDescriptor) {
-    const layer = this.layers[0] as Layer;
-    layer.ctx.save();
-    layer.ctx.beginPath();
-    layer.ctx.fillStyle = font.colors.c2;
-    layer.ctx.fillRect(pos.x, pos.y - height, width, height);
-    layer.ctx.closePath();
-    layer.ctx.restore();
+    const rgba = ctx.getImageData(0, 0, rasterWidth, rasterHeight).data;
+    const data = reduceAlpha(rgba, width, height, factorX, factorY);
+    return { data, width, height, x, y };
   }
 
   // Native affine resampling avoids a JavaScript perspective inversion for each output pixel.
@@ -1431,6 +1607,41 @@ export class Renderer {
       }
     }
     return { fill, border: outline };
+  }
+
+  private paintMask(
+    bitmap: Bitmap,
+    color: string,
+    alpha: number,
+    opacity: number,
+    layer: Layer,
+    secondary?: Bitmap,
+    secondaryColor = color,
+    secondaryAlpha = alpha
+  ) {
+    if ((alpha >= 255 && (!secondary || secondaryAlpha >= 255)) || opacity <= 0) return;
+    const canvas = this.paintCanvas;
+    if (canvas.width !== bitmap.width) canvas.width = bitmap.width;
+    if (canvas.height !== bitmap.height) canvas.height = bitmap.height;
+    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+    const pixels = ctx.createImageData(bitmap.width, bitmap.height);
+    const rgb = (value: string) =>
+      [1, 3, 5].map((offset) => parseInt(value.slice(offset, offset + 2), 16) || 0);
+    const primary = rgb(color);
+    const other = rgb(secondaryColor);
+    for (let i = 0; i < bitmap.data.length; i++) {
+      const a = (bitmap.data[i]! * (255 - alpha)) / 255;
+      const b = secondary ? (secondary.data[i]! * (255 - secondaryAlpha)) / 255 : 0;
+      const total = a + b;
+      if (!total) continue;
+      for (let channel = 0; channel < 3; channel++) {
+        pixels.data[i * 4 + channel] = (primary[channel]! * a + other[channel]! * b) / total;
+      }
+      pixels.data[i * 4 + 3] = total;
+    }
+    ctx.putImageData(pixels, 0, 0);
+    layer.ctx.globalAlpha = opacity;
+    layer.ctx.drawImage(canvas, bitmap.x, bitmap.y);
   }
 
   clear() {
@@ -1684,36 +1895,9 @@ export class Renderer {
   }
 
   private applyFont(font: StyleDescriptor, layer: Layer) {
+    // Only for measuring: words are painted from their masks (see drawWord and paintMask)
     layer.ctx.font = this.fontDecriptorString(font);
-    layer.ctx.fillStyle = blendAlpha(font.colors.c1, font.colors.a1);
-    layer.ctx.strokeStyle = blendAlpha(font.colors.c3, font.colors.a3);
     layer.ctx.letterSpacing = `${font.t.fsp}px`;
-    layer.ctx.shadowOffsetX = this.upscale(
-      font.xshad,
-      this.playerResX,
-      this.layers[0]?.canvas.width || this.playerResX
-    );
-    layer.ctx.shadowOffsetY = this.upscale(
-      font.yshad,
-      this.playerResY,
-      this.layers[0]?.canvas.height || this.playerResY
-    );
-    layer.ctx.shadowColor = blendAlpha(font.colors.c4, font.colors.a4);
-    layer.ctx.lineWidth =
-      this.upscale(font.xbord, this.playerResX, this.layers[0]?.canvas.width || this.playerResX) +
-      this.upscale(font.ybord, this.playerResY, this.layers[0]?.canvas.height || this.playerResY);
-    layer.ctx.lineCap = 'round';
-    layer.ctx.lineJoin = 'round';
-    layer.ctx.globalAlpha = font.opacity;
-
-    // libass: the gaussian of \blur has sigma = blur * 2 / sqrt(ln 256) ≈ blur * 0.8493218
-    const blurSigma =
-      this.upscale(font.blur, this.playerResY, this.layers[0]?.canvas.height || this.playerResY) *
-      0.8493218;
-    // \be passes are [1 2 1] / 4 kernels in output pixels, not scaled: a variance of 1/2 each
-    const beSigma = font.be > 0 ? Math.sqrt(font.be / 2) : 0;
-    const sigma = Math.hypot(blurSigma, beSigma);
-    layer.ctx.filter = sigma > 0 ? `blur(${sigma.toFixed(3)}px)` : 'none';
   }
 
   private getAlignment(alignment: number) {

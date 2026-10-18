@@ -253,8 +253,9 @@ describe('Fonts', () => {
     const fill = calls.find((c) => c.kind === 'fill')!;
     expect(fill.font).toMatch(/\b400\b/);
     expect(fill.font).not.toContain('bold');
-    // \b1 asks 700, the face is 400: libass emboldens by em/64 (fontsize 50, ratio 1)
-    const stroke = calls[calls.indexOf(fill) - 1]!;
+    // \b1 asks 700, the face is 400: libass emboldens by em/64 (fontsize 50, ratio 1), stroking
+    // the outline it has just filled
+    const stroke = calls[calls.indexOf(fill) + 1]!;
     expect(stroke.kind).toBe('stroke');
     expect(stroke.same).toBe(true);
     expect(stroke.lineWidth).toBeCloseTo(50 / 64, 5);

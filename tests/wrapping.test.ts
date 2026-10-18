@@ -82,10 +82,10 @@ Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,{\\\\q1}Line that wraps`; // "
     // Should be at least 3-4 lines.
 
     expect(fillTextSpy).toHaveBeenCalled();
-    const calls = fillTextSpy.mock.calls;
-
-    // Collect unique Y coordinates
-    const uniqueYs = new Set(calls.map((c) => c[2]));
+    // Masks draw at a local baseline; line breaks must move their layout pens.
+    const uniqueYs = new Set(
+      renderer.ppass[0].chars.filter((c: any) => c.pos?.y > 0).map((c: any) => c.pos.y)
+    );
     expect(uniqueYs.size).toBeGreaterThan(1);
 
     ass.destroy();
