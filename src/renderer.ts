@@ -546,11 +546,15 @@ export class Renderer {
 
       line.forEach((char) => {
         if (char.kind === CHARKIND.NORMAL) {
-          this.applyFont(resolved.get(char)!.font, layer);
+          const font = resolved.get(char)!.font;
+          this.applyFont(font, layer);
 
           const m = this.measure(layer.ctx, char.c);
-          if (m.fontBoundingBoxAscent > maxAscent) maxAscent = m.fontBoundingBoxAscent;
-          if (m.fontBoundingBoxDescent > maxDescent) maxDescent = m.fontBoundingBoxDescent;
+          const sy = this.textScale(font).y;
+          const ascent = m.fontBoundingBoxAscent * sy;
+          const descent = m.fontBoundingBoxDescent * sy;
+          if (ascent > maxAscent) maxAscent = ascent;
+          if (descent > maxDescent) maxDescent = descent;
         } else if (char.kind === CHARKIND.DRAWING) {
           const { h } = this.drawingBox(char, resolved.get(char)!.font, layer);
           if (h > maxAscent) maxAscent = h;
@@ -566,24 +570,29 @@ export class Renderer {
 
   private measureChar(layer: Layer, char: Char, resolved: Map<Char, ResolvedChar>): number {
     if (char.kind === CHARKIND.NORMAL) {
-      this.applyFont(resolved.get(char)!.font, layer);
-      return this.measure(layer.ctx, char.c).width;
+      const font = resolved.get(char)!.font;
+      this.applyFont(font, layer);
+      return this.measure(layer.ctx, char.c).width * this.textScale(font).x;
     } else if (char.kind === CHARKIND.DRAWING) {
       return this.drawingBox(char, resolved.get(char)!.font, layer).w;
     }
     return 0;
   }
 
-  // Scale from drawing units to output pixels: \p, \fscx, \fscy and the tilts. Layout and painting
-  // both use it, so a drawing is never laid out at one size and painted at another.
+  // \fscx and \fscy as factors. They are part of the layout, like the font size. The tilts are
+  // not: they are applied around the rotation origin when painting, see applyTransform.
+  private textScale(font: StyleDescriptor) {
+    return { x: font.t.fscx / 100, y: font.t.fscy / 100 };
+  }
+
+  // Scale from drawing units to output pixels: \p, \fscx and \fscy. Layout and painting both use
+  // it, so a drawing is never laid out at one size and painted at another.
   private drawingScale(char: DrawingChar, font: StyleDescriptor, layer: Layer) {
-    const t = font.t;
-    const tiltX = t.fry ? Math.cos((t.fry * Math.PI) / 180) : 1;
-    const tiltY = t.frx ? Math.cos((t.frx * Math.PI) / 180) : 1;
+    const scale = this.textScale(font);
     const pScale = Math.pow(2, -(char.scale - 1));
     return {
-      x: ((t.fscx ?? 100) / 100) * tiltX * pScale * (layer.canvas.width / this.playerResX),
-      y: ((t.fscy ?? 100) / 100) * tiltY * pScale * (layer.canvas.height / this.playerResY)
+      x: scale.x * pScale * (layer.canvas.width / this.playerResX),
+      y: scale.y * pScale * (layer.canvas.height / this.playerResY)
     };
   }
 
@@ -919,8 +928,7 @@ export class Renderer {
           char.pos.y = baseline;
 
           font = resolved.get(char)!.font;
-          this.applyFont(font, layer);
-          charWidth = this.measure(layer.ctx, char.c).width;
+          charWidth = this.measureChar(layer, char, resolved);
 
           char.w = charWidth;
         } else if (char.kind === CHARKIND.DRAWING) {
@@ -1039,7 +1047,14 @@ export class Renderer {
     }
 
     if (wordHead.kind === CHARKIND.NORMAL) {
+      const scale = this.textScale(word.font);
+      if (scale.x === 0 || scale.y === 0) return;
+
       this.applyTransform(layer.ctx, word.font, wordHead.pos, origin);
+      // The layout already gave the word its scaled size, so it is scaled around its own pen
+      layer.ctx.translate(wordHead.pos.x, wordHead.pos.y);
+      layer.ctx.scale(scale.x, scale.y);
+      layer.ctx.translate(-wordHead.pos.x, -wordHead.pos.y);
       let hasKaraoke = false;
       let clipWidth = 0;
 
@@ -1088,7 +1103,10 @@ export class Renderer {
 
       if (word.font.borderStyle !== 3) {
         if (word.font.xbord !== 0 || word.font.ybord !== 0) {
-          layer.ctx.lineWidth += bolden;
+          // \bord does not grow with \fscx and \fscy. Canvas has a single pen width, so with
+          // different x and y scales the border follows their average.
+          const avgScale = (Math.abs(scale.x) + Math.abs(scale.y)) / 2;
+          layer.ctx.lineWidth = layer.ctx.lineWidth / avgScale + bolden;
           layer.ctx.strokeText(str, wordHead.pos.x, wordHead.pos.y);
           // With a border, libass blurs the border and keeps the fill sharp
           layer.ctx.filter = 'none';
@@ -1106,7 +1124,7 @@ export class Renderer {
         layer.ctx.rect(
           wordHead.pos.x,
           wordHead.pos.y - layer.canvas.height,
-          clipWidth,
+          clipWidth / scale.x, // char widths are in layout pixels
           layer.canvas.height * 2
         );
         layer.ctx.clip();
@@ -1150,8 +1168,8 @@ export class Renderer {
 
     ctx.save();
 
-    // Rotation and shear only: the size is already in the outline, so the border is not scaled
-    this.applyTransform(ctx, font, pos, origin, true);
+    // \fscx and \fscy are already in the outline, so they do not scale the border
+    this.applyTransform(ctx, font, pos, origin);
 
     const { x: sx, y: sy } = this.drawingScale(char, font, layer);
     const path = this.drawingPath(char.drawing, sx, sy);
@@ -1167,12 +1185,13 @@ export class Renderer {
     ctx.restore();
   }
 
+  // Rotation, shear and the tilts, around the rotation origin. \fscx and \fscy are not applied
+  // here since they are part of the layout, see textScale.
   private applyTransform(
     ctx: CanvasRenderingContext2D,
     font: StyleDescriptor,
     pos: Vector2,
-    origin?: Vector2,
-    skipScaling = false
+    origin?: Vector2
   ) {
     const t = font.t;
     const org = origin || pos;
@@ -1184,16 +1203,11 @@ export class Renderer {
     const scaleX = t.fry ? Math.cos((t.fry * Math.PI) / 180) : 1;
     const scaleY = t.frx ? Math.cos((t.frx * Math.PI) / 180) : 1;
 
-    const fscx = (t.fscx / 100) * scaleX;
-    const fscy = (t.fscy / 100) * scaleY;
-
     if (t.fax || t.fay) {
       ctx.transform(1, t.fay || 0, -(t.fax || 0), 1, 0, 0);
     }
 
-    if (!skipScaling) {
-      ctx.scale(fscx, fscy);
-    }
+    ctx.scale(scaleX, scaleY);
 
     ctx.translate(-org.x, -org.y);
   }
