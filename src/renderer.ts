@@ -352,6 +352,12 @@ export class Renderer {
     this.renderDiv.remove();
   }
 
+  /** Paints the frame at `time` now, instead of on the next animation frame */
+  forceRender(time = this.video.currentTime) {
+    this.invalidate();
+    this.display(time);
+  }
+
   private display(time: number) {
     this.currentTime = time;
     const slicesToDisplay = this.getSlices(time);

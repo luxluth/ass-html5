@@ -246,12 +246,24 @@ export class ASS {
   private setCanvasSize() {
     const { videoWidth, videoHeight, offsetTop, offsetLeft } = this
       .videoElement as HTMLVideoElement;
-    const aspectRatio = videoWidth / videoHeight;
     // A fullscreen video is laid out from the top-left corner of the viewport
     const fullscreen = document.fullscreenElement === this.videoElement;
 
     const maxWidth = this.videoElement?.clientWidth || 0;
     const maxHeight = this.videoElement?.clientHeight || 0;
+
+    // A video that is not laid out keeps the current canvas
+    if (maxWidth <= 0 || maxHeight <= 0) {
+      return { width: 0, height: 0, x: 0, y: 0 } as OnInitSizes;
+    }
+
+    // Before the metadata loads, the video has no size yet: use the script's, then the element's
+    const videoRatio = videoWidth && videoHeight ? videoWidth / videoHeight : 0;
+    const scriptRatio =
+      this.compiledAss?.width && this.compiledAss?.height
+        ? this.compiledAss.width / this.compiledAss.height
+        : 0;
+    const aspectRatio = videoRatio || scriptRatio || maxWidth / maxHeight;
 
     let width = maxWidth;
     let height = maxHeight;
@@ -267,6 +279,12 @@ export class ASS {
       width = height * aspectRatio;
       x += (maxWidth - width) / 2;
     }
+
+    // Whole CSS pixels, so the canvas is not resampled
+    width = Math.round(width);
+    height = Math.round(height);
+    x = Math.round(x);
+    y = Math.round(y);
 
     const sizes = {
       width,
@@ -285,15 +303,24 @@ export class ASS {
       this.renderer.renderDiv.style.left = x + 'px';
     }
 
+    const canvasWidth = Math.round(width * dpr);
+    const canvasHeight = Math.round(height * dpr);
+
+    // Setting the size of a canvas clears it, even to the same value
+    let resized = false;
     this.renderer?.layers.forEach((layer) => {
-      layer.canvas.width = Math.round(width * dpr);
-      layer.canvas.height = Math.round(height * dpr);
+      if (layer.canvas.width !== canvasWidth || layer.canvas.height !== canvasHeight) {
+        layer.canvas.width = canvasWidth;
+        layer.canvas.height = canvasHeight;
+        resized = true;
+      }
       layer.canvas.style.width = width + 'px';
       layer.canvas.style.height = height + 'px';
       // @ts-ignore
       layer.ctx.textRendering = 'geometricPrecision';
     });
-    this.renderer?.invalidate();
+    // Paint now, or the cleared canvas shows until the next animation frame
+    if (resized) this.renderer?.forceRender(this.videoElement?.currentTime ?? 0);
 
     return sizes;
   }
