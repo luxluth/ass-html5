@@ -395,11 +395,26 @@ export function getOpacityComplex(
   return Math.max(0, Math.min(1, (255 - rawAlpha) / 255));
 }
 
+/** A font name as written in the script, without quotes and the `@` of vertical fonts */
+export function cleanFontName(name: string) {
+  return name
+    .trim()
+    .replace(/^["']|["']$/g, '')
+    .replace(/^@/, '');
+}
+
+/** "Source Sans Pro Semibold" → "Source Sans Pro" */
+export function stripWeightSuffix(name: string) {
+  return name.replace(/\s+(semibold|bold|regular|light|medium|black|italic)/i, '').trim();
+}
+
 export interface FontMetrics {
   unitsPerEm: number;
   winAscent: number;
   winDescent: number;
   ratio: number;
+  /** Windows family, full and PostScript names: the names libass finds the font by */
+  names: string[];
 }
 
 /**
@@ -411,10 +426,17 @@ export interface FontMetrics {
  * matches the ASS FontSize. In CSS / Canvas 2D, font-size sets the EM-square.
  * Therefore, CSS fontSize = ASS fontSize * (unitsPerEm / (usWinAscent + usWinDescent)).
  *
- * WOFF, WOFF2 and font collections are not read: they give a ratio of 1.
+ * Also reads the names of the face. WOFF, WOFF2 and font collections are not read: they give a
+ * ratio of 1 and no names.
  */
 export function parseFontMetrics(buffer: ArrayBuffer): FontMetrics {
-  const unknown: FontMetrics = { unitsPerEm: 1000, winAscent: 0, winDescent: 0, ratio: 1 };
+  const unknown: FontMetrics = {
+    unitsPerEm: 1000,
+    winAscent: 0,
+    winDescent: 0,
+    ratio: 1,
+    names: []
+  };
   try {
     const view = new DataView(buffer);
     if (buffer.byteLength < 12) {
@@ -431,6 +453,7 @@ export function parseFontMetrics(buffer: ArrayBuffer): FontMetrics {
     let headOffset = 0;
     let os2Offset = 0;
     let hheaOffset = 0;
+    let nameOffset = 0;
 
     for (let i = 0; i < numTables; i++) {
       const offset = 12 + i * 16;
@@ -444,6 +467,7 @@ export function parseFontMetrics(buffer: ArrayBuffer): FontMetrics {
       if (tag === 'head') headOffset = view.getUint32(offset + 8);
       else if (tag === 'OS/2') os2Offset = view.getUint32(offset + 8);
       else if (tag === 'hhea') hheaOffset = view.getUint32(offset + 8);
+      else if (tag === 'name') nameOffset = view.getUint32(offset + 8);
     }
 
     let unitsPerEm = 1000;
@@ -473,7 +497,32 @@ export function parseFontMetrics(buffer: ArrayBuffer): FontMetrics {
     }
 
     const ratio = cellHeight > 0 && unitsPerEm > 0 ? unitsPerEm / cellHeight : 1;
-    return { unitsPerEm, winAscent, winDescent, ratio };
+
+    // Name records of the Windows platform are UTF-16BE: nameID 1 family, 4 full, 6 PostScript
+    const names: string[] = [];
+    if (nameOffset && nameOffset + 6 <= buffer.byteLength) {
+      const count = view.getUint16(nameOffset + 2);
+      const strings = nameOffset + view.getUint16(nameOffset + 4);
+      for (let i = 0; i < count; i++) {
+        const record = nameOffset + 6 + i * 12;
+        if (record + 12 > buffer.byteLength) break;
+        const nameId = view.getUint16(record + 6);
+        if (view.getUint16(record) !== 3 || (nameId !== 1 && nameId !== 4 && nameId !== 6)) {
+          continue;
+        }
+        const length = view.getUint16(record + 8);
+        const start = strings + view.getUint16(record + 10);
+        if (start + length > buffer.byteLength) continue;
+        let name = '';
+        for (let j = 0; j + 1 < length; j += 2) {
+          name += String.fromCharCode(view.getUint16(start + j));
+        }
+        name = name.trim();
+        if (name && !names.some((n) => n.toLowerCase() === name.toLowerCase())) names.push(name);
+      }
+    }
+
+    return { unitsPerEm, winAscent, winDescent, ratio, names };
   } catch {
     return unknown;
   }
