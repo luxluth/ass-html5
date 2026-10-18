@@ -66,6 +66,7 @@ type Call = { kind: 'fill' | 'stroke'; text: string; font: string };
 
 describe('Fonts', () => {
   let videoElement: HTMLVideoElement;
+  let faces: string[];
   let calls: Call[];
   const originalGetContext = HTMLCanvasElement.prototype.getContext;
 
@@ -85,10 +86,14 @@ describe('Fonts', () => {
     vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 0);
 
     // jsdom has no FontFace
+    faces = [];
     vi.stubGlobal(
       'FontFace',
       class {
         status = 'loaded';
+        constructor(family: string) {
+          faces.push(family);
+        }
         load() {
           return Promise.resolve(this);
         }
@@ -176,6 +181,36 @@ describe('Fonts', () => {
     const woff2 = new ArrayBuffer(64);
     new DataView(woff2).setUint32(0, 0x774f4632); // 'wOF2'
     expect(parseFontMetrics(woff2).ratio).toBe(1);
+    expect(parseFontMetrics(woff2).names).toEqual([]);
+  });
+
+  it('should read the names of a font file', () => {
+    const metrics = parseFontMetrics(fontFile(600, 'Test Sans Semibold'));
+    expect(metrics.names).toEqual(['Test Sans Semibold', 'TestSansSemibold']);
+    expect(metrics.ratio).toBe(1);
+  });
+
+  it('should register a font file under each of its names', async () => {
+    await draw(script('Test Sans Semibold', []), fontFile(600, 'Test Sans Semibold'));
+    expect(faces).toEqual(['Test Sans', 'Test Sans Semibold', 'TestSansSemibold']);
+  });
+
+  it('should size a font asked by a name of its file', async () => {
+    // Loaded as "Test Sans", asked as its full name
+    await draw(
+      script('Test Sans Semibold', ['Dialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,Text']),
+      fontFile(600, 'Test Sans Semibold')
+    );
+    expect(fillFont('Text')).toContain('50.000px "Test Sans Semibold"');
+  });
+
+  it('should fall back to the family without weight, then to Arial and sans-serif', async () => {
+    await draw(
+      script('Source Sans Pro Semibold', ['Dialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,Text'])
+    );
+    expect(fillFont('Text')).toContain(
+      '"Source Sans Pro Semibold", "Source Sans Pro", Arial, sans-serif'
+    );
   });
 
   it('should size a loaded font by its cell, usWinAscent + usWinDescent', async () => {
