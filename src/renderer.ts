@@ -102,8 +102,21 @@ export class Renderer {
     if (this._log === 'DEBUG') {
       this.log('DEBUG', this.compiledASS);
     }
-    this.playerResX = this.compiledASS.width;
-    this.playerResY = this.compiledASS.height;
+    // ass-compiler gives null for a missing PlayRes. Fill it in as libass does.
+    const { width, height } = this.compiledASS;
+    if (!width && !height) {
+      this.playerResX = 384;
+      this.playerResY = 288;
+    } else if (!height) {
+      this.playerResX = width;
+      this.playerResY = width === 1280 ? 1024 : Math.max(1, Math.floor((width * 3) / 4));
+    } else if (!width) {
+      this.playerResX = height === 1024 ? 1280 : Math.max(1, Math.floor((height * 4) / 3));
+      this.playerResY = height;
+    } else {
+      this.playerResX = width;
+      this.playerResY = height;
+    }
     this.renderDiv = newRender(sizes.y, sizes.x, sizes.width, sizes.height, zIndex, video);
     // Every ASS layer is drawn on this one canvas, lower layers first (see display)
     const canvas = newCanvas(sizes.width, sizes.height, 0, 'subtitles', this.renderDiv);
