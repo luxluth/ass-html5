@@ -394,3 +394,87 @@ export function getOpacityComplex(
 
   return Math.max(0, Math.min(1, (255 - rawAlpha) / 255));
 }
+
+export interface FontMetrics {
+  unitsPerEm: number;
+  winAscent: number;
+  winDescent: number;
+  ratio: number;
+}
+
+/**
+ * Extract OpenType / TrueType font metrics (unitsPerEm, usWinAscent, usWinDescent)
+ * from a binary font ArrayBuffer to replicate VSFilter / libass font sizing.
+ *
+ * In libass / VSFilter, FontSize does not map to the EM-square directly.
+ * Instead, the font is scaled so that the cell height (usWinAscent + usWinDescent)
+ * matches the ASS FontSize. In CSS / Canvas 2D, font-size sets the EM-square.
+ * Therefore, CSS fontSize = ASS fontSize * (unitsPerEm / (usWinAscent + usWinDescent)).
+ *
+ * WOFF, WOFF2 and font collections are not read: they give a ratio of 1.
+ */
+export function parseFontMetrics(buffer: ArrayBuffer): FontMetrics {
+  const unknown: FontMetrics = { unitsPerEm: 1000, winAscent: 0, winDescent: 0, ratio: 1 };
+  try {
+    const view = new DataView(buffer);
+    if (buffer.byteLength < 12) {
+      return unknown;
+    }
+
+    // TrueType (0x00010000 or 'true') and CFF ('OTTO') outlines
+    const signature = view.getUint32(0);
+    if (signature !== 0x00010000 && signature !== 0x74727565 && signature !== 0x4f54544f) {
+      return unknown;
+    }
+
+    const numTables = view.getUint16(4);
+    let headOffset = 0;
+    let os2Offset = 0;
+    let hheaOffset = 0;
+
+    for (let i = 0; i < numTables; i++) {
+      const offset = 12 + i * 16;
+      if (offset + 16 > buffer.byteLength) break;
+      const tag = String.fromCharCode(
+        view.getUint8(offset),
+        view.getUint8(offset + 1),
+        view.getUint8(offset + 2),
+        view.getUint8(offset + 3)
+      );
+      if (tag === 'head') headOffset = view.getUint32(offset + 8);
+      else if (tag === 'OS/2') os2Offset = view.getUint32(offset + 8);
+      else if (tag === 'hhea') hheaOffset = view.getUint32(offset + 8);
+    }
+
+    let unitsPerEm = 1000;
+    if (headOffset && headOffset + 20 <= buffer.byteLength) {
+      const upem = view.getUint16(headOffset + 18);
+      if (upem > 0) unitsPerEm = upem;
+    }
+
+    let winAscent = 0;
+    let winDescent = 0;
+    if (os2Offset && os2Offset + 78 <= buffer.byteLength) {
+      winAscent = view.getUint16(os2Offset + 74);
+      winDescent = view.getUint16(os2Offset + 76);
+    }
+
+    // Fonts without usWin* metrics fall back to the typographic ones, then to hhea
+    let cellHeight = winAscent + winDescent;
+    if (cellHeight === 0 && os2Offset && os2Offset + 72 <= buffer.byteLength) {
+      const typoAsc = view.getInt16(os2Offset + 68);
+      const typoDesc = view.getInt16(os2Offset + 70);
+      cellHeight = Math.abs(typoAsc) + Math.abs(typoDesc);
+    }
+    if (cellHeight === 0 && hheaOffset && hheaOffset + 8 <= buffer.byteLength) {
+      const asc = view.getInt16(hheaOffset + 4);
+      const desc = view.getInt16(hheaOffset + 6);
+      cellHeight = Math.abs(asc) + Math.abs(desc);
+    }
+
+    const ratio = cellHeight > 0 && unitsPerEm > 0 ? unitsPerEm / cellHeight : 1;
+    return { unitsPerEm, winAscent, winDescent, ratio };
+  } catch {
+    return unknown;
+  }
+}
