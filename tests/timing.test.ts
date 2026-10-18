@@ -82,6 +82,48 @@ describe('Dialogue timing', () => {
     ass.destroy();
   });
 
+  it('should animate \\t from the current value and hold the target after it', async () => {
+    const ass = new ASS({
+      assText: assText.replace(',,A', ',,{\\1a&H80&\\t(0,100,\\bord6\\3c&HFF4E03&\\1a&H00&)}A'),
+      video: videoElement
+    });
+    await ass.render();
+    const renderer = (ass as any).renderer;
+    const d = renderer.ppass.find((x: any) => x.chars.some((c: any) => c.c === 'A'));
+    const fontAt = (time: number) =>
+      renderer.resolveChars(d, renderer.layers[0], time).get(d.chars[0]).font;
+
+    expect(fontAt(0).xbord).toBe(2);
+    expect(fontAt(0.05).xbord).toBeCloseTo(4);
+    expect(fontAt(0.2).xbord).toBe(6);
+    expect(fontAt(0).colors.a1).toBe(0x80);
+    expect(fontAt(0.05).colors.a1).toBe(0x40);
+    expect(fontAt(0.2).colors.a1).toBe(0);
+    expect(fontAt(0).colors.c3).toBe('#000000');
+    expect(fontAt(0.05).colors.c3).toBe('#022780');
+    expect(fontAt(0.2).colors.c3).toBe('#034eff');
+    ass.destroy();
+  });
+
+  it('should repaint a drawing animated with \\t on every frame', async () => {
+    vi.stubGlobal('Path2D', class {}); // jsdom has no Path2D
+    const ass = new ASS({
+      assText: assText.replace(',,A', ',,{\\t(0,1000,\\frz90)\\p1}m 0 0 l 10 0 10 10{\\p0}'),
+      video: videoElement
+    });
+    await ass.render();
+    const renderer = (ass as any).renderer;
+    // Only which frames are painted matters here, not the drawing
+    const paint = vi.spyOn(renderer, 'showDialogue').mockImplementation(() => {});
+    renderer.display(0.1);
+    paint.mockClear();
+    renderer.display(0.2);
+
+    expect(paint).toHaveBeenCalled();
+    ass.destroy();
+    vi.unstubAllGlobals();
+  });
+
   // x of the text drawn at each time, for a 2 s event aligned on the left (\an7)
   async function moveX(move: string, times: number[]) {
     const ass = new ASS({
