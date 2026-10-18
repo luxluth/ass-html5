@@ -33,7 +33,8 @@ import {
   getOpacity,
   getOpacityComplex,
   lerp,
-  parseAlpha
+  parseAlpha,
+  interpolateColor
 } from './utils';
 
 type PreProceesedAss = {
@@ -179,7 +180,11 @@ export class Renderer {
       const chars = this.processSlices(slices);
       const isAnimated =
         !!(movAnim || fadeAnim) ||
-        chars.some((c) => c.kind === CHARKIND.NORMAL && ((c.tag as any).t || c.karaoke));
+        chars.some(
+          (c) =>
+            (c.kind === CHARKIND.NORMAL && (!!c.tag.t || !!c.karaoke)) ||
+            (c.kind === CHARKIND.DRAWING && !!c.tag.t)
+        );
 
       this.ppass.push({
         index: this.ppass.length,
@@ -426,10 +431,10 @@ export class Renderer {
     return this.selected;
   }
 
-  // Style of every glyph and drawing, resolved once per frame. Wrapping, widths, metrics and
-  // painting all read this map. The glyphs of one fragment share their tag and style, so they
-  // share one resolved style too.
-  private resolveChars(d: PreProceesedAss, layer: Layer): Map<Char, ResolvedChar> {
+  // Style of every glyph and drawing, resolved once per frame with its \t transforms, so wrapping,
+  // widths, metrics and painting all see the animated values. The glyphs of one fragment share
+  // their tag and style, so they share one resolved style too.
+  private resolveChars(d: PreProceesedAss, layer: Layer, time: number): Map<Char, ResolvedChar> {
     const resolved = new Map<Char, ResolvedChar>();
     let last: { tag: CompiledTag; style: string; run: ResolvedChar } | null = null;
     d.chars.forEach((char) => {
@@ -437,11 +442,78 @@ export class Renderer {
       if (last === null || last.tag !== char.tag || last.style !== char.style) {
         const font = this.computeStyle(char.style, d.alignment, layer);
         this.applyOverrideTag(char.tag, font);
+        this.applyTransforms(font, time, d.start);
         last = { tag: char.tag, style: char.style, run: { font, hash: this.getFontHash(font) } };
       }
       resolved.set(char, last.run);
     });
     return resolved;
+  }
+
+  // \t transforms at `time`, in order. Each one goes from the value before it to its target, and
+  // holds the target after its end, as in libass.
+  private applyTransforms(font: StyleDescriptor, time: number, startTime: number) {
+    const cur = time * 1000;
+    font.customAnimations.forEach((ca: CustomAnimation) => {
+      const start = startTime * 1000 + ca.t1;
+      const end = startTime * 1000 + ca.t2;
+      if (cur < start) return;
+      let t = end <= start ? 1 : Math.min(1, (cur - start) / (end - start));
+      if (ca.accel !== 1) t = Math.pow(t, ca.accel);
+      const tag = ca.tag as any;
+
+      for (const field in tag) {
+        switch (field) {
+          case 'a1':
+          case 'a2':
+          case 'a3':
+          case 'a4':
+            font.colors[field] = Math.round(lerp(font.colors[field], parseAlpha(tag[field]), t));
+            break;
+          case 'c1':
+          case 'c2':
+          case 'c3':
+          case 'c4':
+            font.colors[field] = interpolateColor(font.colors[field], swapBBGGRR(tag[field]), t);
+            break;
+          case 'blur':
+          case 'be':
+          case 'xshad':
+          case 'yshad':
+          case 'xbord':
+          case 'ybord':
+            font[field] = lerp(font[field], tag[field], t);
+            break;
+          case 'fax':
+          case 'fay':
+          case 'frx':
+          case 'fry':
+          case 'frz':
+            font.t[field] = lerp(font.t[field] ?? 0, tag[field], t);
+            break;
+          case 'fscx':
+          case 'fscy':
+            font.t[field] = lerp(font.t[field] ?? 100, tag[field], t);
+            break;
+          case 'fs':
+            font.fontsize = lerp(
+              font.fontsize,
+              this.upscale(tag.fs, this.playerResY, this.layers[0]?.canvas.height || 0),
+              t
+            );
+            break;
+          case 'fsp':
+            font.t.fsp = lerp(
+              font.t.fsp ?? 0,
+              this.upscale(tag.fsp, this.playerResX, this.layers[0]?.canvas.width || 0),
+              t
+            );
+            break;
+          default:
+            break;
+        }
+      }
+    });
   }
 
   // measureText runs for every glyph of every frame, and the same runs repeat. Results are kept
@@ -590,16 +662,15 @@ export class Renderer {
     if (d.clip) {
       let activeClip = d.clip;
       for (const char of d.chars) {
-        if (char.kind === CHARKIND.NORMAL && char.tag.t) {
+        if (char.kind !== CHARKIND.NEWLINE && char.tag.t) {
           for (const anim of char.tag.t) {
-            if (
-              (anim.tag as any).clip &&
-              d.start * 1000 + anim.t1 <= time * 1000 &&
-              time * 1000 <= d.start * 1000 + anim.t2
-            ) {
+            if ((anim.tag as any).clip) {
               const start = d.start * 1000 + anim.t1;
               const end = d.start * 1000 + anim.t2;
-              let t = (time * 1000 - start) / (end - start);
+              const cur = time * 1000;
+              if (cur < start) continue;
+              // After its end, a transform holds its target
+              let t = end <= start ? 1 : Math.min(1, (cur - start) / (end - start));
               if (anim.accel !== 1) t = Math.pow(t, anim.accel);
 
               activeClip = this.interpolateClip(d.clip, (anim.tag as any).clip as Clip, t);
@@ -616,7 +687,7 @@ export class Renderer {
     const margin = this.upscaleMargin(d.margin);
     const maxWidth = layer.canvas.width - margin.left - margin.right;
 
-    const resolved = this.resolveChars(d, layer);
+    const resolved = this.resolveChars(d, layer, time);
     const lines = this.lines(d.chars, layer, d.q, maxWidth, resolved);
     const lineMetrics = this.getLineMetrics(layer, lines, resolved);
     const totalHeight = lineMetrics.reduce((acc, m) => acc + m.height, 0);
@@ -934,65 +1005,6 @@ export class Renderer {
 
   private drawWord(word: Word, time: number, startTime: number, layer: Layer, origin?: Vector2) {
     let str = chunkCharToString(word.value);
-    for (let i = 0; i < word.font.customAnimations.length; i++) {
-      const ca = word.font.customAnimations[i] as CustomAnimation;
-      if (startTime * 1000 + ca.t1 <= time * 1000 && time * 1000 <= startTime * 1000 + ca.t2) {
-        const end = startTime * 1000 + ca.t2;
-        const start = startTime * 1000 + ca.t1;
-        let t = (time * 1000 - start) / (end - start);
-        if (ca.accel !== 1) {
-          t = Math.pow(t, ca.accel);
-        }
-
-        for (const field in ca.tag) {
-          switch (field) {
-            case 'a1':
-            case 'a3':
-            case 'a4':
-              word.font.colors[field] = lerp(
-                255,
-                Math.abs(parseAlpha(ca.tag[field] as string) - 255),
-                t
-              );
-              break;
-            case 'blur':
-            case 'be':
-            case 'xshad':
-            case 'yshad':
-            case 'xbord':
-            case 'ybord':
-              word.font[field] = lerp(0, ca.tag[field] as number, t);
-              break;
-            case 'fax':
-            case 'fay':
-            case 'frx':
-            case 'fry':
-            case 'frz':
-            case 'fscx':
-            case 'fscy':
-              word.font.t[field] = lerp(0, ca.tag[field] as number, t);
-              break;
-            case 'fs':
-              word.font.fontsize = this.upscale(
-                lerp(0, ca.tag[field] as number, t),
-                this.playerResY,
-                this.layers[0]?.canvas.height || 0
-              );
-              break;
-            case 'fsp':
-              word.font.t.fsp = this.upscale(
-                lerp(0, ca.tag[field] as number, t),
-                this.playerResX,
-                this.layers[0]?.canvas.width || this.playerResX
-              );
-              break;
-            default:
-              break;
-          }
-        }
-      }
-    }
-
     this.applyFont(word.font, layer);
     const wordHead = word.value[0] as Char;
 

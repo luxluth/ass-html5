@@ -274,6 +274,22 @@ export function blendAlpha(color: string, alpha: number) {
   return `rgba(${red}, ${green}, ${blue}, ${a.toFixed(3)})`;
 }
 
+/** Color between two `#RRGGBB` colors, at `t` from 0 (the first) to 1 (the second) */
+export function interpolateColor(color1: string, color2: string, t: number): string {
+  const c1Clean = (color1 || '#000000').replace('#', '');
+  const c2Clean = (color2 || '#000000').replace('#', '');
+  const r1 = parseInt(c1Clean.substring(0, 2), 16) || 0;
+  const g1 = parseInt(c1Clean.substring(2, 4), 16) || 0;
+  const b1 = parseInt(c1Clean.substring(4, 6), 16) || 0;
+  const r2 = parseInt(c2Clean.substring(0, 2), 16) || 0;
+  const g2 = parseInt(c2Clean.substring(2, 4), 16) || 0;
+  const b2 = parseInt(c2Clean.substring(4, 6), 16) || 0;
+  const r = Math.min(255, Math.max(0, Math.round(r1 + (r2 - r1) * t)));
+  const g = Math.min(255, Math.max(0, Math.round(g1 + (g2 - g1) * t)));
+  const b = Math.min(255, Math.max(0, Math.round(b1 + (b2 - b1) * t)));
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+}
+
 export class Vector2 {
   x: number;
   y: number;

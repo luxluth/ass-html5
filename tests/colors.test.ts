@@ -1,7 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import ASS from '../src/ass';
 import { FadeKind } from '../src/types';
-import { blendAlpha, getOpacity, getOpacityComplex, parseAlpha } from '../src/utils';
+import {
+  blendAlpha,
+  getOpacity,
+  getOpacityComplex,
+  interpolateColor,
+  parseAlpha
+} from '../src/utils';
 
 function script(style: string, text: string) {
   return `[Script Info]
@@ -66,6 +72,13 @@ describe('Colors and alpha', () => {
     expect(blendAlpha('#ffffff', 255)).toBe('rgba(255, 255, 255, 0.000)');
     expect(blendAlpha('#ff0000', 0x40)).toBe('rgba(255, 0, 0, 0.749)');
     expect(blendAlpha('', 0)).toBe('rgba(0, 0, 0, 1.000)');
+  });
+
+  it('should interpolate colors', () => {
+    expect(interpolateColor('#000000', '#ffffff', 0.5)).toBe('#808080');
+    expect(interpolateColor('#000000', '#ffffff', 0)).toBe('#000000');
+    expect(interpolateColor('#000000', '#ffffff', 1)).toBe('#ffffff');
+    expect(interpolateColor('#ff0000', '#00ff00', 0.5)).toBe('#808000');
   });
 
   it('should parse alpha values safely and correctly', () => {
