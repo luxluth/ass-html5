@@ -126,9 +126,31 @@ export class Renderer {
   private selected: PreProceesedAss[] = [];
   private selectedTime: number | null = null;
   private measureCache = new Map<string, TextMetrics>();
+  // Glyph coverage by font, text, scale and subpixel position, in order of use (see glyphBitmap)
+  private glyphCache = new Map<string, Bitmap>();
+  private glyphCacheSize = 0;
+  // Blurred and projected masks of the words that did not move, see drawWord
+  private filteredMaskCache = new Map<
+    string,
+    { fill: Bitmap; border?: Bitmap; penX: number; penY: number }
+  >();
+  private filteredMaskCacheSize = 0;
+  private glyphIds = new WeakMap<Bitmap, number>();
+  private nextGlyphId = 0;
   private paintCanvas = document.createElement('canvas');
   private glyphContext?: CanvasRenderingContext2D;
   private affineCanvases?: { source: HTMLCanvasElement; target: HTMLCanvasElement };
+  // Media time of the video frame on screen (requestVideoFrameCallback); null from a seek until
+  // its frame is shown, and where the browser has no such callback.
+  private frameTime: number | null = null;
+  private frameHandle: number | null = null;
+  private readonly onSeeking = () => {
+    this.frameTime = null;
+  };
+  private readonly onVideoFrame = (_now: number, metadata: VideoFrameCallbackMetadata) => {
+    this.frameTime = metadata.mediaTime;
+    this.frameHandle = this.video.requestVideoFrameCallback(this.onVideoFrame);
+  };
   private drawingPaths = new WeakMap<Drawing, { x: number; y: number; path: Path2D }>();
 
   constructor(
@@ -381,6 +403,10 @@ export class Renderer {
   }
 
   async startRendering() {
+    if ('requestVideoFrameCallback' in this.video) {
+      this.video.addEventListener('seeking', this.onSeeking);
+      this.frameHandle = this.video.requestVideoFrameCallback(this.onVideoFrame);
+    }
     window.requestAnimationFrame((_timestamp) => {
       // this.previous = timestamp;
       this.animationHandle = requestAnimationFrame(this.render.bind(this));
@@ -396,7 +422,10 @@ export class Renderer {
     } else {
       // this.dt = (timestamp - this.previous) / 1000.0;
       // this.previous = timestamp;
-      this.display(this.video.currentTime);
+      // During playback currentTime moves on every display refresh, but subtitles only change
+      // with the video frame on screen, as in libass players.
+      const playing = !this.video.paused && this.frameTime !== null;
+      this.display(playing ? (this.frameTime as number) : this.video.currentTime);
       this.animationHandle = requestAnimationFrame(this.render.bind(this));
     }
   }
@@ -407,6 +436,8 @@ export class Renderer {
     if (this.animationHandle) {
       cancelAnimationFrame(this.animationHandle);
     }
+    this.video.removeEventListener('seeking', this.onSeeking);
+    if (this.frameHandle !== null) this.video.cancelVideoFrameCallback(this.frameHandle);
     this.renderDiv.remove();
   }
 
@@ -1002,6 +1033,9 @@ export class Renderer {
     const masks: WordMasks[] = [];
     words.forEach((word) => {
       word.font.opacity = currentOpacity;
+      // Nothing would be painted (faded out, or every color fully transparent)
+      const { a1, a2, a3, a4 } = word.font.colors;
+      if (currentOpacity <= 0 || Math.min(a1, a2, a3, a4) >= 255) return;
       const result = this.drawWord(word, time, d.start, layer, rotationOrigin);
       if (result) masks.push(result);
     });
@@ -1142,66 +1176,126 @@ export class Renderer {
         Math.max(Math.abs(shadowX), Math.abs(shadowY)) +
         2
     );
-    const data = new Uint8ClampedArray(width * height);
-    placeMask(glyph.data, glyph.width, glyph.height, data, width, height, pad, pad);
-    const source = { data, width, height, x: sourceX, y: sourceY };
-    let border: Uint8ClampedArray | undefined;
-    if (box) {
-      border = new Uint8ClampedArray(data.length);
-      const metrics = this.measure(layer.ctx, chunkCharToString(word.value));
-      const sy = Math.abs(font.t.fscy / 100);
-      const ascent =
-        (metrics.fontBoundingBoxAscent || metrics.actualBoundingBoxAscent || font.fontsize * 0.8) *
-        sy;
-      const descent =
-        (metrics.fontBoundingBoxDescent ||
-          metrics.actualBoundingBoxDescent ||
-          font.fontsize * 0.2) * sy;
-      const s = supersample;
-      const top = Math.max(0, Math.floor((subY - ascent - glyph.y - borderY) * s) + pad);
-      const bottom = Math.min(height, Math.ceil((subY + descent - glyph.y + borderY) * s) + pad);
-      const left = Math.max(0, Math.floor((subX - glyph.x - borderX) * s) + pad);
-      const right = Math.min(width, Math.ceil((subX + word.w - glyph.x + borderX) * s) + pad);
-      for (let y = top; y < bottom; y++) border.fill(255, y * width + left, y * width + right);
-    } else if (hasBorder) {
-      // Stroking the outline is libass's way and much faster than dilating the bitmap, which
-      // is left for pens the browser cannot draw. The glyph and its stroke make the border.
-      const stroked = this.glyphBitmap(word, layer, subX, subY, supersample, {
-        x: borderX,
-        y: borderY
+    // Equal crop amounts keep a clipped axis fixed; an unclipped axis can move by whole pixels.
+    let cacheKey: string | undefined;
+    if (flat) {
+      let id = this.glyphIds.get(glyph);
+      if (id === undefined) {
+        id = this.nextGlyphId++;
+        this.glyphIds.set(glyph, id);
+      }
+      const cropLeft = Math.max(0, padding - Math.floor(sourceX));
+      const cropTop = Math.max(0, padding - Math.floor(sourceY));
+      const cropRight = Math.max(
+        0,
+        Math.ceil(sourceX + width / supersample) + padding - layer.canvas.width
+      );
+      const cropBottom = Math.max(
+        0,
+        Math.ceil(sourceY + height / supersample) + padding - layer.canvas.height
+      );
+      cacheKey = `${id}|${borderX}|${borderY}|${box}|${word.w}|${sigmaX}|${sigmaY}|${be}|${padding}|${layer.canvas.width}|${layer.canvas.height}|${subX}|${subY}|${cropLeft}|${cropTop}|${cropRight}|${cropBottom}`;
+    }
+    const cached = cacheKey === undefined ? undefined : this.filteredMaskCache.get(cacheKey);
+    let projected: { fill: Bitmap; border?: Bitmap };
+    if (cached) {
+      const dx = penX - cached.penX;
+      const dy = penY - cached.penY;
+      const copy = (bitmap: Bitmap): Bitmap => ({
+        ...bitmap,
+        data: bitmap.data.slice(),
+        x: bitmap.x + dx,
+        y: bitmap.y + dy
       });
-      if (stroked) {
+      projected = { fill: copy(cached.fill), border: cached.border && copy(cached.border) };
+    } else {
+      const data = new Uint8ClampedArray(width * height);
+      placeMask(glyph.data, glyph.width, glyph.height, data, width, height, pad, pad);
+      const source = { data, width, height, x: sourceX, y: sourceY };
+      let border: Uint8ClampedArray | undefined;
+      if (box) {
         border = new Uint8ClampedArray(data.length);
-        const left = (stroked.x - glyph.x) * supersample + pad;
-        const top = (stroked.y - glyph.y) * supersample + pad;
-        placeMask(stroked.data, stroked.width, stroked.height, border, width, height, left, top);
-        for (let i = 0; i < border.length; i++) if (data[i]! > border[i]!) border[i] = data[i]!;
-      } else {
-        border = expandMask(data, width, height, borderX * supersample, borderY * supersample);
+        // The glyph may come from the cache, which leaves the context at another font
+        this.applyFont(font, layer);
+        const metrics = this.measure(layer.ctx, chunkCharToString(word.value));
+        const sy = Math.abs(font.t.fscy / 100);
+        const ascent =
+          (metrics.fontBoundingBoxAscent ||
+            metrics.actualBoundingBoxAscent ||
+            font.fontsize * 0.8) * sy;
+        const descent =
+          (metrics.fontBoundingBoxDescent ||
+            metrics.actualBoundingBoxDescent ||
+            font.fontsize * 0.2) * sy;
+        const s = supersample;
+        const top = Math.max(0, Math.floor((subY - ascent - glyph.y - borderY) * s) + pad);
+        const bottom = Math.min(height, Math.ceil((subY + descent - glyph.y + borderY) * s) + pad);
+        const left = Math.max(0, Math.floor((subX - glyph.x - borderX) * s) + pad);
+        const right = Math.min(width, Math.ceil((subX + word.w - glyph.x + borderX) * s) + pad);
+        for (let y = top; y < bottom; y++) border.fill(255, y * width + left, y * width + right);
+      } else if (hasBorder) {
+        // Stroking the outline is libass's way and much faster than dilating the bitmap, which
+        // is left for pens the browser cannot draw. The glyph and its stroke make the border.
+        const stroked = this.glyphBitmap(word, layer, subX, subY, supersample, {
+          x: borderX,
+          y: borderY
+        });
+        if (stroked) {
+          border = new Uint8ClampedArray(data.length);
+          const left = (stroked.x - glyph.x) * supersample + pad;
+          const top = (stroked.y - glyph.y) * supersample + pad;
+          placeMask(stroked.data, stroked.width, stroked.height, border, width, height, left, top);
+          for (let i = 0; i < border.length; i++) if (data[i]! > border[i]!) border[i] = data[i]!;
+        } else {
+          border = expandMask(data, width, height, borderX * supersample, borderY * supersample);
+        }
+      }
+      const sx = font.t.fscx / 100;
+      const sy = font.t.fscy / 100;
+      const matrix = assProjection(
+        origin ?? head.pos,
+        {
+          ...font.t,
+          fax: (font.t.fax ?? 0) * (sx / sy),
+          fay: (font.t.fay ?? 0) * (sy / sx),
+          shearOrigin: { x: head.pos.x, y: head.pos.y - font.fontsize * sy }
+        },
+        312.5 * blurScaleY
+      );
+      const result = this.projectBitmap(source, border, matrix, layer, padding, supersample);
+      if (!result) return null;
+      projected = result;
+      const { fill } = projected;
+      if (!hasBorder || box) {
+        fill.data = blurMask(fill.data, fill.width, fill.height, sigmaX, sigmaY, be);
+      }
+      if (projected.border) {
+        projected.border.data = blurMask(
+          projected.border.data,
+          fill.width,
+          fill.height,
+          sigmaX,
+          sigmaY,
+          be
+        );
+      }
+      const size = fill.data.length + (projected.border?.data.length ?? 0);
+      if (cacheKey !== undefined && size <= 4194304) {
+        if (this.filteredMaskCacheSize + size > 4194304 || this.filteredMaskCache.size >= 512) {
+          this.filteredMaskCache.clear();
+          this.filteredMaskCacheSize = 0;
+        }
+        this.filteredMaskCache.set(cacheKey, {
+          fill: { ...fill, data: fill.data.slice() },
+          border: projected.border && { ...projected.border, data: projected.border.data.slice() },
+          penX,
+          penY
+        });
+        this.filteredMaskCacheSize += size;
       }
     }
-    const sx = font.t.fscx / 100;
-    const sy = font.t.fscy / 100;
-    const matrix = assProjection(
-      origin ?? head.pos,
-      {
-        ...font.t,
-        fax: (font.t.fax ?? 0) * (sx / sy),
-        fay: (font.t.fay ?? 0) * (sy / sx),
-        shearOrigin: { x: head.pos.x, y: head.pos.y - font.fontsize * sy }
-      },
-      312.5 * blurScaleY
-    );
-    const projected = this.projectBitmap(source, border, matrix, layer, padding, supersample);
-    if (!projected) return null;
     const masks: WordMasks = { fill: projected.fill, border: projected.border, font };
     const { fill } = masks;
-    if (!hasBorder || box) {
-      fill.data = blurMask(fill.data, fill.width, fill.height, sigmaX, sigmaY, be);
-    }
-    if (masks.border) {
-      masks.border.data = blurMask(masks.border.data, fill.width, fill.height, sigmaX, sigmaY, be);
-    }
     const karaoke = word.value.some((char) => char.kind === CHARKIND.NORMAL && char.karaoke);
     const hasShadow = shadowX !== 0 || shadowY !== 0;
     const fillInBorder =
@@ -1297,6 +1391,14 @@ export class Renderer {
     // FreeType's embolden also moves the outline right and up by half its strength
     const originX = subX + (bolden * sx) / 2;
     const originY = subY - (bolden * sy) / 2;
+    const key = `${this.fontDecriptorString(font)}|${font.t.fsp}|${sx}|${sy}|${bolden}|${subX}|${subY}|${supersample}|${font.underline}|${font.strikeout}|${font.borderStyle}|${border ? `${border.x},${border.y}` : ''}|${drawing ? head.drawing.d : text}`;
+    const cached = this.glyphCache.get(key);
+    if (cached) {
+      // Kept in order of use, so animated borders push out old strokes and not the glyphs in use
+      this.glyphCache.delete(key);
+      this.glyphCache.set(key, cached);
+      return cached;
+    }
     this.applyFont(font, layer);
     const metrics = this.measure(layer.ctx, text);
     const left = drawing ? head.drawing.minX : -(metrics.actualBoundingBoxLeft || 0);
@@ -1406,7 +1508,17 @@ export class Renderer {
     }
     const rgba = ctx.getImageData(0, 0, rasterWidth, rasterHeight).data;
     const data = reduceAlpha(rgba, width, height, factorX, factorY);
-    return { data, width, height, x, y };
+    const bitmap = { data, width, height, x, y };
+    if (data.length <= 2097152) {
+      for (const [oldKey, old] of this.glyphCache) {
+        if (this.glyphCacheSize + data.length <= 2097152 && this.glyphCache.size < 256) break;
+        this.glyphCache.delete(oldKey);
+        this.glyphCacheSize -= old.data.length;
+      }
+      this.glyphCache.set(key, bitmap);
+      this.glyphCacheSize += data.length;
+    }
+    return bitmap;
   }
 
   // Native affine resampling avoids a JavaScript perspective inversion for each output pixel.
@@ -1629,15 +1741,29 @@ export class Renderer {
       [1, 3, 5].map((offset) => parseInt(value.slice(offset, offset + 2), 16) || 0);
     const primary = rgb(color);
     const other = rgb(secondaryColor);
-    for (let i = 0; i < bitmap.data.length; i++) {
-      const a = (bitmap.data[i]! * (255 - alpha)) / 255;
-      const b = secondary ? (secondary.data[i]! * (255 - secondaryAlpha)) / 255 : 0;
-      const total = a + b;
-      if (!total) continue;
-      for (let channel = 0; channel < 3; channel++) {
-        pixels.data[i * 4 + channel] = (primary[channel]! * a + other[channel]! * b) / total;
+    if (!secondary) {
+      // One 32-bit write per pixel: the color, plus the tinted alpha from a table of the 256
+      // coverage values. The texel's own byte order places the channels on any platform.
+      const texel = new Uint8ClampedArray(256 * 4);
+      const words = new Uint32Array(texel.buffer);
+      for (let value = 0; value < 256; value++) {
+        texel.set(primary, value * 4);
+        texel[value * 4 + 3] = (value * (255 - alpha)) / 255;
       }
-      pixels.data[i * 4 + 3] = total;
+      const target = new Uint32Array(pixels.data.buffer);
+      const data = bitmap.data;
+      for (let i = 0; i < data.length; i++) target[i] = words[data[i]!]!;
+    } else {
+      for (let i = 0; i < bitmap.data.length; i++) {
+        const a = (bitmap.data[i]! * (255 - alpha)) / 255;
+        const b = (secondary.data[i]! * (255 - secondaryAlpha)) / 255;
+        const total = a + b;
+        if (!total) continue;
+        for (let channel = 0; channel < 3; channel++) {
+          pixels.data[i * 4 + channel] = (primary[channel]! * a + other[channel]! * b) / total;
+        }
+        pixels.data[i * 4 + 3] = total;
+      }
     }
     ctx.putImageData(pixels, 0, 0);
     layer.ctx.globalAlpha = opacity;
