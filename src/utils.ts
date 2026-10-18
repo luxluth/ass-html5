@@ -1,4 +1,11 @@
-import { type Tag, type Char, CHARKIND, FadeAnimation, FadeKind } from './types';
+import {
+  type Tag,
+  type Char,
+  type DrawingInstruction,
+  CHARKIND,
+  FadeAnimation,
+  FadeKind
+} from './types';
 /**
  * Convert a color in RGBA format to Aegisub format
  * @param aegisubColor The color in Aegisub format
@@ -176,6 +183,44 @@ export function chunkCharToString(chars: Char[]) {
   }
 
   return w;
+}
+
+/**
+ * Outline of an ASS drawing in output pixels. Each `m` closes the contour before it, as libass
+ * does, so fill and border both see closed shapes. Coordinates keep their script values, negative
+ * ones included: the origin is the pen position, not the bounding box.
+ * `n` (move without closing) is not handled, since ass-compiler turns it into a line.
+ */
+export function buildDrawingPath(
+  instructions: DrawingInstruction[],
+  sx: number,
+  sy: number
+): Path2D {
+  const path = new Path2D();
+  let open = false;
+
+  instructions.forEach(({ type, points }) => {
+    if (type === 'M' && open) path.closePath();
+
+    if (type === 'C') {
+      // Curves come in triples. A trailing partial triple is ignored, as SVG does.
+      for (let i = 0; i + 2 < points.length; i += 3) {
+        const p1 = points[i]!;
+        const p2 = points[i + 1]!;
+        const p3 = points[i + 2]!;
+        path.bezierCurveTo(p1.x * sx, p1.y * sy, p2.x * sx, p2.y * sy, p3.x * sx, p3.y * sy);
+      }
+    } else {
+      points.forEach(({ x, y }, i) => {
+        if (type === 'M' && i === 0) path.moveTo(x * sx, y * sy);
+        else path.lineTo(x * sx, y * sy);
+      });
+    }
+    open = true;
+  });
+
+  if (open) path.closePath();
+  return path;
 }
 
 export function newRender(
