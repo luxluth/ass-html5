@@ -1060,6 +1060,8 @@ export class Renderer {
       if (word.font.borderStyle !== 3) {
         if (word.font.xbord !== 0 || word.font.ybord !== 0) {
           layer.ctx.strokeText(str, wordHead.pos.x, wordHead.pos.y);
+          // With a border, libass blurs the border and keeps the fill sharp
+          layer.ctx.filter = 'none';
         }
       }
 
@@ -1132,8 +1134,12 @@ export class Renderer {
 
         const scaledPath = new Path2D();
         scaledPath.addPath(path, matrix);
+        // Border under the fill, as for text, and only the border blurred
+        if ((font.xbord ?? 0) > 0 || (font.ybord ?? 0) > 0) {
+          ctx.stroke(scaledPath);
+          ctx.filter = 'none';
+        }
         ctx.fill(scaledPath);
-        if ((font.xbord ?? 0) > 0 || (font.ybord ?? 0) > 0) ctx.stroke(scaledPath);
       } catch (e) {
         this.fallbackDraw(ctx, path, sx, sy);
       }
@@ -1380,12 +1386,14 @@ export class Renderer {
     layer.ctx.lineJoin = 'round';
     layer.ctx.globalAlpha = font.opacity;
 
-    const blurRadius = this.upscale(
-      font.blur + font.be,
-      this.playerResY,
-      this.layers[0]?.canvas.height || this.playerResY
-    );
-    layer.ctx.filter = blurRadius > 0 ? `blur(${blurRadius.toFixed(3)}px)` : 'none';
+    // libass: the gaussian of \blur has sigma = blur * 2 / sqrt(ln 256) ≈ blur * 0.8493218
+    const blurSigma =
+      this.upscale(font.blur, this.playerResY, this.layers[0]?.canvas.height || this.playerResY) *
+      0.8493218;
+    // \be passes are [1 2 1] / 4 kernels in output pixels, not scaled: a variance of 1/2 each
+    const beSigma = font.be > 0 ? Math.sqrt(font.be / 2) : 0;
+    const sigma = Math.hypot(blurSigma, beSigma);
+    layer.ctx.filter = sigma > 0 ? `blur(${sigma.toFixed(3)}px)` : 'none';
   }
 
   private getAlignment(alignment: number) {
