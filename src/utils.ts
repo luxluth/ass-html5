@@ -257,20 +257,21 @@ export function uuidgen() {
   });
 }
 
-export function parseAlpha(of: string) {
-  const a = `0x${of}`;
-  return parseInt(a, 16);
+export function parseAlpha(of?: string | number) {
+  if (of === undefined || of === null || of === '') return 0;
+  if (typeof of === 'number') return of;
+  const clean = of.toString().replace(/&H|&/gi, '');
+  return parseInt(clean, 16) || 0;
 }
 
 export function blendAlpha(color: string, alpha: number) {
-  color = color.replace('#', '');
-  // color = FFFFFF
-  // alpha = 0x80
-  // return rgba(255, 255, 255, 0.5)
-  const red = parseInt(color.substring(0, 2), 16);
-  const green = parseInt(color.substring(2, 4), 16);
-  const blue = parseInt(color.substring(4, 6), 16);
-  return `rgba(${red}, ${green}, ${blue}, ${alpha == 0 ? 1 : alpha / 255})`;
+  color = color ? color.replace('#', '') : '000000';
+  const red = parseInt(color.substring(0, 2), 16) || 0;
+  const green = parseInt(color.substring(2, 4), 16) || 0;
+  const blue = parseInt(color.substring(4, 6), 16) || 0;
+  // In ASS, alpha 0 = fully opaque (1), alpha 255 = fully transparent (0)
+  const a = Math.max(0, Math.min(1, (255 - alpha) / 255));
+  return `rgba(${red}, ${green}, ${blue}, ${a.toFixed(3)})`;
 }
 
 export class Vector2 {
@@ -322,15 +323,15 @@ export function getOpacity(
   const fadeIn = startTime + fade.fadein;
   const fadeOut = endTime - fade.fadeout;
   if (time < fadeIn) {
-    let t = (time - startTime) / (fadeIn - startTime);
-    return lerp(0, 1, t);
+    let t = fadeIn > startTime ? (time - startTime) / (fadeIn - startTime) : 1;
+    return Math.max(0, Math.min(1, lerp(0, 1, t)));
   } else if (time >= fadeIn && time < fadeOut) {
     return 1;
   } else if (time >= fadeOut && time <= endTime) {
-    let t = (time - fadeOut) / (endTime - fadeOut);
-    return lerp(1, 0, t);
+    let t = endTime > fadeOut ? (time - fadeOut) / (endTime - fadeOut) : 1;
+    return Math.max(0, Math.min(1, lerp(1, 0, t)));
   } else {
-    return -1;
+    return 0;
   }
 }
 
@@ -360,19 +361,20 @@ export function getOpacityComplex(
   const t3 = startTime + fade.t3;
   const t4 = startTime + fade.t4;
 
+  let rawAlpha = fade.a1;
   if (time < t1) {
-    return fade.a1;
+    rawAlpha = fade.a1;
   } else if (time >= t1 && time < t2) {
-    let t = (time - t1) / (t2 - t1);
-    return lerp(fade.a1, fade.a2, t);
+    let t = t2 > t1 ? (time - t1) / (t2 - t1) : 1;
+    rawAlpha = lerp(fade.a1, fade.a2, t);
   } else if (time >= t2 && time < t3) {
-    return fade.a2;
+    rawAlpha = fade.a2;
   } else if (time >= t3 && time < t4) {
-    let t = (time - t3) / (t4 - t3);
-    return lerp(fade.a2, fade.a3, t);
-  } else if (time >= t4 && time <= endTime) {
-    return fade.a3;
+    let t = t4 > t3 ? (time - t3) / (t4 - t3) : 1;
+    rawAlpha = lerp(fade.a2, fade.a3, t);
   } else {
-    return -1;
+    rawAlpha = fade.a3;
   }
+
+  return Math.max(0, Math.min(1, (255 - rawAlpha) / 255));
 }
