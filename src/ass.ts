@@ -111,6 +111,7 @@ export class ASS {
   private logging: LOGTYPE = 'DISABLE';
   private compiledAss: CompiledASS | null = null;
   private readonly onFullscreenChange = () => this.setCanvasSize();
+  private readonly onLoadedMetadata = () => this.setCanvasSize();
 
   constructor(options: ASSOptions) {
     if (options.assText) {
@@ -158,7 +159,7 @@ export class ASS {
     if (this.videoElement) {
       this.initRenderer(sizes);
 
-      this.videoElement.addEventListener('loadedmetadata', this.setCanvasSize.bind(this));
+      this.videoElement.addEventListener('loadedmetadata', this.onLoadedMetadata);
       document.addEventListener('fullscreenchange', this.onFullscreenChange);
 
       this.ro = new ResizeObserver(this.setCanvasSize.bind(this));
@@ -234,7 +235,7 @@ export class ASS {
    * Stop the rendering
    */
   destroy() {
-    this.videoElement?.removeEventListener('loadedmetadata', this.setCanvasSize.bind(this));
+    this.videoElement?.removeEventListener('loadedmetadata', this.onLoadedMetadata);
     document.removeEventListener('fullscreenchange', this.onFullscreenChange);
     this.ro?.disconnect();
 

@@ -386,6 +386,11 @@ export class Renderer {
 
   destroy() {
     this.stop = true;
+    // Remove the overlay now, not on the next frame: a hidden tab gets no frames
+    if (this.animationHandle) {
+      cancelAnimationFrame(this.animationHandle);
+    }
+    this.renderDiv.remove();
   }
 
   private display(time: number) {
@@ -1223,9 +1228,11 @@ export class Renderer {
     if (tag.t !== undefined) font.customAnimations = tag.t;
 
     if (tag.c1 !== undefined) font.colors.c1 = swapBBGGRR(tag.c1);
+    if (tag.c2 !== undefined) font.colors.c2 = swapBBGGRR(tag.c2);
     if (tag.c3 !== undefined) font.colors.c3 = swapBBGGRR(tag.c3);
     if (tag.c4 !== undefined) font.colors.c4 = swapBBGGRR(tag.c4);
     if (tag.a1 !== undefined) font.colors.a1 = parseAlpha(tag.a1);
+    if (tag.a2 !== undefined) font.colors.a2 = parseAlpha(tag.a2);
     if (tag.a3 !== undefined) font.colors.a3 = parseAlpha(tag.a3);
     if (tag.a4 !== undefined) font.colors.a4 = parseAlpha(tag.a4);
     if (tag.xshad !== undefined) font.xshad = tag.xshad;
@@ -1290,7 +1297,7 @@ export class Renderer {
         c1: convertAegisubColorToHex(PrimaryColour),
         c2: convertAegisubColorToHex(SecondaryColour),
         c3: convertAegisubColorToHex(OutlineColour),
-        c4,
+        c4: swapBBGGRR(c4),
         a1: parseAlpha(a1),
         a2: parseAlpha(a2),
         a3: parseAlpha(a3),
