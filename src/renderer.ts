@@ -83,6 +83,11 @@ export class Renderer {
   currentTime = 0;
   private occupiedRects: Map<number, Rect[]> = new Map();
   private lastStateHash: string | null = null;
+  // Dialogues on screen, see getSlices
+  private byStart: PreProceesedAss[] = [];
+  private nextStart = 0;
+  private selected: PreProceesedAss[] = [];
+  private selectedTime: number | null = null;
 
   constructor(
     ass: CompiledASS,
@@ -177,6 +182,11 @@ export class Renderer {
         animated: isAnimated
       });
     }
+
+    this.byStart = [...this.ppass].sort((a, b) => a.start - b.start || a.index - b.index);
+    this.selected = [];
+    this.selectedTime = null;
+    this.nextStart = 0;
   }
 
   private processSlices(slices: DialogueSlice[]): Char[] {
@@ -356,9 +366,7 @@ export class Renderer {
 
     this.clear();
     this.occupiedRects.clear(); // collision rects, per layer
-    slicesToDisplay
-      .sort((a, b) => a.layer - b.layer || a.index - b.index)
-      .forEach((d) => this.showDialogue(d, time));
+    slicesToDisplay.forEach((d) => this.showDialogue(d, time));
   }
 
   // private charsToString(chars: Char[]): string {
@@ -369,10 +377,29 @@ export class Renderer {
   //   }, '');
   // }
 
+  // Dialogues on screen at `time`, in layer order, then script order within a layer.
+  // Playback moves forward, so the set only follows the events that start or end since the last
+  // frame instead of scanning the whole script. Seeking back rebuilds it.
   private getSlices(time: number): PreProceesedAss[] {
-    return this.ppass.filter((dialogue) => {
-      return dialogue.start <= time && dialogue.end >= time;
-    });
+    let changed = false;
+    if (this.selectedTime === null || time < this.selectedTime) {
+      this.selected = this.byStart.filter((d) => d.start <= time && time <= d.end);
+      this.nextStart = this.byStart.findIndex((d) => d.start > time);
+      if (this.nextStart === -1) this.nextStart = this.byStart.length;
+      changed = true;
+    } else {
+      while (this.nextStart < this.byStart.length && this.byStart[this.nextStart]!.start <= time) {
+        this.selected.push(this.byStart[this.nextStart]!);
+        this.nextStart++;
+        changed = true;
+      }
+      const alive = this.selected.filter((d) => time <= d.end);
+      if (alive.length !== this.selected.length) changed = true;
+      this.selected = alive;
+    }
+    this.selectedTime = time;
+    if (changed) this.selected.sort((a, b) => a.layer - b.layer || a.index - b.index);
+    return this.selected;
   }
 
   private getLineMetrics(layer: Layer, lines: Char[][]) {
