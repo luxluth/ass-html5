@@ -66,7 +66,7 @@ type ResolvedChar = { font: StyleDescriptor; hash: number };
 type DrawingChar = Extract<Char, { kind: CHARKIND.DRAWING }>;
 
 // Face drawn for a style, see resolveFace. `family` is null for fonts that were not loaded.
-type ResolvedFace = { family: string | null; weight: number; embolden: boolean };
+type ResolvedFace = { family: string | null; weight: number; embolden: boolean; ratio: number };
 
 type MoveAnimation = {
   // x1: number;
@@ -509,7 +509,8 @@ export class Renderer {
             font.t[field] = lerp(font.t[field] ?? 100, tag[field], t);
             break;
           case 'fs':
-            font.fontsize = lerp(font.fontsize, this.upscaleFontSize(tag.fs, font.fontname), t);
+            font.scriptSize = lerp(font.scriptSize, tag.fs, t);
+            font.fontsize = this.upscaleFontSize(font.scriptSize, font);
             break;
           case 'fsp':
             font.t.fsp = lerp(
@@ -1264,13 +1265,18 @@ export class Renderer {
     if (tag.i !== undefined) font.italic = tag.i === 1;
     if (tag.u !== undefined) font.underline = tag.u === 1;
     if (tag.s !== undefined) font.strikeout = tag.s === 1;
-    if (tag.fn !== undefined) {
-      // The size in pixels depends on the metrics of the font
-      font.fontsize *= this.getFontRatio(tag.fn) / this.getFontRatio(font.fontname);
-      font.fontname = tag.fn;
-    }
+    if (tag.fn !== undefined) font.fontname = tag.fn;
     if (tag.q !== undefined) font.t.q = tag.q;
-    if (tag.fs !== undefined) font.fontsize = this.upscaleFontSize(tag.fs, font.fontname);
+    if (tag.fs !== undefined) font.scriptSize = tag.fs;
+    // The size in pixels depends on the metrics of the face drawn, which \fn, \b and \i can change
+    if (
+      tag.fn !== undefined ||
+      tag.fs !== undefined ||
+      tag.b !== undefined ||
+      tag.i !== undefined
+    ) {
+      font.fontsize = this.upscaleFontSize(font.scriptSize, font);
+    }
     if (tag.fscx !== undefined) font.t.fscx = tag.fscx;
     if (tag.fscy !== undefined) font.t.fscy = tag.fscy;
     if (tag.frz !== undefined) font.t.frz = tag.frz;
@@ -1308,15 +1314,6 @@ export class Renderer {
     return (ruleOfThree(firstcomp, secondcomp) * x) / 100;
   }
 
-  /**
-   * libass scales a font so that its cell, usWinAscent + usWinDescent, is the ASS font size,
-   * while the canvas font size is the em square. The ratio between them comes from the font file
-   * (see `ASS.loadFont`). Fonts that were not loaded get the ratio of Arial, about 0.895.
-   */
-  private getFontRatio(fontname: string): number {
-    return this.findFaces(fontname)?.[0]?.ratio ?? 0.895;
-  }
-
   // Loaded faces registered under a fontname, or under the name without its weight suffix
   // ("Source Sans Pro Semibold" → "Source Sans Pro"). The second lookup is not libass behavior: it
   // keeps fonts loaded by family name working when the file's own names can't be read (WOFF2).
@@ -1329,16 +1326,27 @@ export class Renderer {
    * Face drawn for a style, chosen like libass: same name, then the closest slant and weight.
    * The browser is asked for the exact weight of that face, so it never fakes a bold (its fake
    * bold is far heavier than libass's). When the face is lighter than asked by more than 150,
-   * libass emboldens it (ass_font.c), and so does drawWord.
+   * libass emboldens it (ass_font.c), and so does drawWord. A face whose weight could not be read,
+   * or that is flagged bold, is never emboldened: its real weight is unknown.
    * Fonts that were not loaded are left to the browser, with the weight asked.
+   *
+   * libass scales a font so that its cell, usWinAscent + usWinDescent, is the ASS font size,
+   * while the canvas font size is the em square. `ratio` is that of the face drawn, since a bold
+   * face can have other metrics than the regular one. Fonts that were not loaded get the ratio of
+   * Arial, about 0.895.
    */
-  private resolveFace(font: StyleDescriptor): ResolvedFace {
+  private resolveFace(font: Pick<StyleDescriptor, 'fontname' | 'weight' | 'italic'>): ResolvedFace {
     const key = `${font.fontname}|${font.weight}|${font.italic}`;
     const cached = this.faceCache.get(key);
     if (cached) return cached;
 
     const faces = this.findFaces(font.fontname);
-    let resolved: ResolvedFace = { family: null, weight: font.weight, embolden: false };
+    let resolved: ResolvedFace = {
+      family: null,
+      weight: font.weight,
+      embolden: false,
+      ratio: 0.895
+    };
     if (faces && faces.length > 0) {
       const distance = (f: FontFaceInfo) =>
         (f.italic !== font.italic ? 1000 : 0) +
@@ -1347,20 +1355,25 @@ export class Renderer {
       resolved = {
         family: face.family,
         weight: Math.min(Math.max(font.weight, face.minWeight), face.maxWeight),
-        embolden: font.weight > face.maxWeight + 150
+        embolden: face.weightKnown && !face.bold && font.weight > face.maxWeight + 150,
+        ratio: face.ratio
       };
     }
     this.faceCache.set(key, resolved);
     return resolved;
   }
 
-  private upscaleFontSize(fs: number, fontname: string): number {
+  // Size in output pixels of the em square, for a size in script pixels of the face's cell
+  private upscaleFontSize(
+    fs: number,
+    face: Pick<StyleDescriptor, 'fontname' | 'weight' | 'italic'>
+  ) {
     const size = this.upscale(
       fs,
       this.playerResY,
       this.layers[0]?.canvas.height || this.playerResY
     );
-    return size * this.getFontRatio(fontname);
+    return size * this.resolveFace(face).ratio;
   }
 
   // A font that is missing falls back to Arial, then to the sans-serif font, instead of the
@@ -1415,10 +1428,12 @@ export class Renderer {
 
     const { PrimaryColour, OutlineColour, SecondaryColour, BorderStyle } = style.style;
 
+    const weight = assWeight(b);
     const font: StyleDescriptor = {
-      fontsize: this.upscaleFontSize(fs, fn),
+      fontsize: this.upscaleFontSize(fs, { fontname: fn, weight, italic: i === 1 }),
+      scriptSize: fs,
       fontname: fn,
-      weight: assWeight(b),
+      weight,
       italic: i === 1,
       underline: u === 1,
       strikeout: s === 1,

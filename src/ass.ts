@@ -388,10 +388,8 @@ export class ASS {
     const response = await fetch(font.url);
     const buffer = await response.arrayBuffer();
     const metrics = parseFontMetrics(buffer);
-    const [minWeight, maxWeight] = parseFontWeight(font.descriptors?.weight) ?? [
-      metrics.weight,
-      metrics.weight
-    ];
+    const explicitWeight = parseFontWeight(font.descriptors?.weight);
+    const [minWeight, maxWeight] = explicitWeight ?? [metrics.weight, metrics.weight];
     const style = font.descriptors?.style ?? (metrics.italic ? 'italic' : 'normal');
     const descriptors = {
       ...font.descriptors,
@@ -417,6 +415,8 @@ export class ASS {
         family: name,
         minWeight,
         maxWeight,
+        weightKnown: explicitWeight !== undefined || metrics.weightKnown,
+        bold: metrics.bold,
         italic: style !== 'normal',
         ratio: metrics.ratio
       });

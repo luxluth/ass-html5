@@ -487,6 +487,10 @@ export interface FontMetrics {
   ratio: number;
   /** OS/2 usWeightClass, read as libass does (ass_face_get_weight) */
   weight: number;
+  /** false when the file has neither OS/2 nor head: `weight` is then a guess */
+  weightKnown: boolean;
+  /** bold flag of the face, from fsSelection or macStyle */
+  bold: boolean;
   italic: boolean;
   /** Windows family, full and PostScript names: the names libass finds the font by */
   names: string[];
@@ -502,7 +506,7 @@ export interface FontMetrics {
  * Therefore, CSS fontSize = ASS fontSize * (unitsPerEm / (usWinAscent + usWinDescent)).
  *
  * Also reads the weight, slant and names of the face. WOFF, WOFF2 and font collections are not
- * read: they give the defaults (ratio 1, weight 400, no names).
+ * read: they give the defaults (ratio 1, weight 400 but not known, no names).
  */
 export function parseFontMetrics(buffer: ArrayBuffer): FontMetrics {
   const unknown: FontMetrics = {
@@ -511,6 +515,8 @@ export function parseFontMetrics(buffer: ArrayBuffer): FontMetrics {
     winDescent: 0,
     ratio: 1,
     weight: 400,
+    weightKnown: false,
+    bold: false,
     italic: false,
     names: []
   };
@@ -576,9 +582,9 @@ export function parseFontMetrics(buffer: ArrayBuffer): FontMetrics {
     const ratio = cellHeight > 0 && unitsPerEm > 0 ? unitsPerEm / cellHeight : 1;
 
     // Bold and italic flags come from OS/2 fsSelection, or head macStyle without OS/2, as in
-    // FreeType. A weight class of 0 falls back to the bold flag, 1 to 9 are hundreds.
-    const macStyle =
-      headOffset && headOffset + 46 <= buffer.byteLength ? view.getUint16(headOffset + 44) : 0;
+    // FreeType. A weight class of 0 falls back to the bold flag, 1 to 9 are legacy values.
+    const hasHead = !!headOffset && headOffset + 46 <= buffer.byteLength;
+    const macStyle = hasHead ? view.getUint16(headOffset + 44) : 0;
     const hasOs2 = !!os2Offset && os2Offset + 64 <= buffer.byteLength;
     const fsSelection = hasOs2 ? view.getUint16(os2Offset + 62) : 0;
     const boldFlag = hasOs2 ? (fsSelection & 0x20) !== 0 : (macStyle & 1) !== 0;
@@ -586,7 +592,9 @@ export function parseFontMetrics(buffer: ArrayBuffer): FontMetrics {
     const weightClass = hasOs2 ? view.getUint16(os2Offset + 4) : 0;
     let weight = weightClass;
     if (weightClass === 0) weight = boldFlag ? 700 : 400;
-    else if (weightClass < 10) weight = weightClass * 100;
+    else if (weightClass < 10) {
+      weight = [100, 200, 300, 350, 400, 600, 800, 900, 950][weightClass - 1] as number;
+    }
 
     // Name records of the Windows platform are UTF-16BE: nameID 1 family, 4 full, 6 PostScript
     const names: string[] = [];
@@ -612,7 +620,17 @@ export function parseFontMetrics(buffer: ArrayBuffer): FontMetrics {
       }
     }
 
-    return { unitsPerEm, winAscent, winDescent, ratio, weight, italic, names };
+    return {
+      unitsPerEm,
+      winAscent,
+      winDescent,
+      ratio,
+      weight,
+      weightKnown: hasOs2 || hasHead,
+      bold: boldFlag,
+      italic,
+      names
+    };
   } catch {
     return unknown;
   }

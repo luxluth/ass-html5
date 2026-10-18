@@ -2,8 +2,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import ASS from '../src/ass';
 import { assWeight, parseFontMetrics, parseFontWeight } from '../src/utils';
 
-// Smallest TrueType file parseFontMetrics reads: head, OS/2 (ratio 1) and name tables.
-function fontFile(weight: number, family: string): ArrayBuffer {
+// Smallest TrueType file parseFontMetrics reads: head, OS/2 and name tables. The cell is
+// usWinAscent + usWinDescent, so the default one gives a ratio of 1.
+function fontFile(weight: number, family: string, cell = 1000): ArrayBuffer {
   const records = [
     { id: 1, text: family },
     { id: 4, text: family },
@@ -27,8 +28,8 @@ function fontFile(weight: number, family: string): ArrayBuffer {
 
   view.setUint16(64 + 18, 1000); // unitsPerEm
   view.setUint16(128 + 4, weight); // usWeightClass
-  view.setUint16(128 + 74, 800); // usWinAscent
-  view.setUint16(128 + 76, 200); // usWinDescent
+  view.setUint16(128 + 74, cell * 0.8); // usWinAscent
+  view.setUint16(128 + 76, cell * 0.2); // usWinDescent
 
   view.setUint16(208 + 2, records.length);
   view.setUint16(208 + 4, stringsAt - 208);
@@ -204,6 +205,20 @@ describe('Fonts', () => {
     expect(metrics.ratio).toBe(1);
   });
 
+  it('should read legacy weight classes and the bold flag like libass', () => {
+    const file = fontFile(7, 'Test Sans');
+    new DataView(file).setUint16(128 + 62, 0x20); // fsSelection: bold
+    const metrics = parseFontMetrics(file);
+    expect(metrics.weight).toBe(800);
+    expect(metrics.bold).toBe(true);
+    expect(metrics.weightKnown).toBe(true);
+    expect(parseFontMetrics(fontFile(4, 'Test Sans')).weight).toBe(350);
+
+    const woff2 = new ArrayBuffer(64);
+    new DataView(woff2).setUint32(0, 0x774f4632); // 'wOF2'
+    expect(parseFontMetrics(woff2).weightKnown).toBe(false);
+  });
+
   it('should register a font file with its real weight under each of its names', async () => {
     await draw(script('Test Sans Semibold', []), fontFile(600, 'Test Sans Semibold'));
     expect(faces).toEqual([
@@ -243,6 +258,46 @@ describe('Fonts', () => {
     expect(stroke.kind).toBe('stroke');
     expect(stroke.same).toBe(true);
     expect(stroke.lineWidth).toBeCloseTo(50 / 64, 5);
+  });
+
+  it('should not embolden a face flagged bold or whose weight cannot be read', async () => {
+    const flagged = fontFile(400, 'Test Sans');
+    new DataView(flagged).setUint16(128 + 62, 0x20); // fsSelection: bold
+    const woff2 = new ArrayBuffer(64);
+    new DataView(woff2).setUint32(0, 0x774f4632); // 'wOF2'
+    for (const file of [flagged, woff2]) {
+      calls = [];
+      await draw(
+        script('Test Sans', ['Dialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,{\\b1}Text']),
+        file
+      );
+      expect(calls.some((c) => c.kind === 'stroke')).toBe(false);
+    }
+  });
+
+  it('should size each weight by the cell of the face drawn', async () => {
+    // The bold file has a cell of 1250 units for its 1000 units em: 50 becomes 40
+    const files: Record<string, ArrayBuffer> = {
+      '/regular.ttf': fontFile(400, 'Test Sans'),
+      '/bold.ttf': fontFile(700, 'Test Sans', 1250)
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => ({ arrayBuffer: async () => files[url] }))
+    );
+    const ass = new ASS({
+      assText: script('Test Sans', ['Dialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,A{\\b1}B']),
+      video: videoElement,
+      fonts: [
+        { family: 'Test Sans', url: '/regular.ttf' },
+        { family: 'Test Sans', url: '/bold.ttf' }
+      ]
+    });
+    await ass.render();
+    (ass as any).renderer.forceRender(0.5);
+    ass.destroy();
+    expect(fillFont('A')).toContain('400 50.000px');
+    expect(fillFont('B')).toContain('700 40.000px');
   });
 
   it('should draw a semibold face as it is when bold is asked', async () => {
