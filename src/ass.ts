@@ -1,7 +1,7 @@
 import { compile, type CompiledASS } from 'ass-compiler';
 import { Renderer } from './renderer';
 import type { OnInitSizes } from './types';
-import { parseFontMetrics } from './utils';
+import { cleanFontName, parseFontMetrics } from './utils';
 
 export type ASSOptions = {
   /**
@@ -111,7 +111,7 @@ export class ASS {
   private onReady?: () => void;
   private logging: LOGTYPE = 'DISABLE';
   private compiledAss: CompiledASS | null = null;
-  // Size ratio of each loaded font, by lowercase family (see loadFont)
+  // Size ratio of each loaded font, by each of its lowercase names (see loadFont)
   private fontRatios: Map<string, number> = new Map();
   private readonly onFullscreenChange = () => this.setCanvasSize();
   private readonly onLoadedMetadata = () => this.setCanvasSize();
@@ -374,16 +374,30 @@ export class ASS {
   /**
    * The file is kept as an ArrayBuffer, so its metrics can be read: libass sizes text from them
    * (see `parseFontMetrics`).
+   *
+   * It is registered under `font.family` and under every name it declares (family, full and
+   * PostScript), since libass finds fonts by those names: a script can ask for
+   * "Source Sans Pro Semibold" when the file was loaded as "Source Sans Pro".
    */
   private async loadFont(font: Font) {
     const response = await fetch(font.url);
     const buffer = await response.arrayBuffer();
-    const fontFace = new FontFace(font.family, buffer, font.descriptors || {});
-    const loadedFace = await fontFace.load();
-    // @ts-ignore
-    document.fonts.add(loadedFace);
-    this.fontRatios.set(font.family.toLowerCase(), parseFontMetrics(buffer).ratio);
-    return fontFace.status === 'loaded';
+    const metrics = parseFontMetrics(buffer);
+
+    const names: string[] = [];
+    [cleanFontName(font.family), ...metrics.names].forEach((name) => {
+      if (name && !names.some((n) => n.toLowerCase() === name.toLowerCase())) names.push(name);
+    });
+
+    let loaded = false;
+    for (const name of names) {
+      const fontFace = await new FontFace(name, buffer.slice(0), font.descriptors || {}).load();
+      // @ts-ignore
+      document.fonts.add(fontFace);
+      if (fontFace.status === 'loaded') loaded = true;
+      this.fontRatios.set(name.toLowerCase(), metrics.ratio);
+    }
+    return loaded;
   }
 }
 

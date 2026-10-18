@@ -34,7 +34,9 @@ import {
   getOpacityComplex,
   lerp,
   parseAlpha,
-  interpolateColor
+  interpolateColor,
+  cleanFontName,
+  stripWeightSuffix
 } from './utils';
 
 type PreProceesedAss = {
@@ -87,7 +89,7 @@ export class Renderer {
   currentTime = 0;
   private occupiedRects: Map<number, Rect[]> = new Map();
   private lastStateHash: string | null = null;
-  // unitsPerEm / (usWinAscent + usWinDescent) of the loaded fonts, by lowercase family
+  // unitsPerEm / (usWinAscent + usWinDescent) of the loaded fonts, by each lowercase name
   private fontRatios: Map<string, number>;
   // Dialogues on screen, see getSlices
   private byStart: PreProceesedAss[] = [];
@@ -1290,7 +1292,10 @@ export class Renderer {
    * (see `ASS.loadFont`). Fonts that were not loaded get the ratio of Arial, about 0.895.
    */
   private getFontRatio(fontname: string): number {
-    return this.fontRatios.get(fontname.toLowerCase()) ?? 0.895;
+    const name = cleanFontName(fontname).toLowerCase();
+    // The name without its weight is not libass behavior: it keeps a font loaded by its family
+    // working when the names in the file can't be read (WOFF2), see `ASS.loadFont`
+    return this.fontRatios.get(name) ?? this.fontRatios.get(stripWeightSuffix(name)) ?? 0.895;
   }
 
   private upscaleFontSize(fs: number, fontname: string): number {
@@ -1302,10 +1307,19 @@ export class Renderer {
     return size * this.getFontRatio(fontname);
   }
 
+  // A font that is missing falls back to Arial, then to the sans-serif font, instead of the
+  // browser default (often a serif font)
   private fontDecriptorString(font: StyleDescriptor) {
+    const quote = (name: string) => `"${name.replace(/["\\]/g, '\\$&')}"`;
+    const name = cleanFontName(font.fontname);
+    const family = stripWeightSuffix(name);
+    const families =
+      family.toLowerCase() !== name.toLowerCase()
+        ? `${quote(name)}, ${quote(family)}, Arial, sans-serif`
+        : `${quote(name)}, Arial, sans-serif`;
     return `${font.bold ? 'bold ' : ''}${font.italic ? 'italic ' : ''}${font.fontsize.toFixed(
       3
-    )}px "${font.fontname}"`;
+    )}px ${families}`;
   }
 
   private computeStyle(name: string, alignment: number, layer: Layer): StyleDescriptor {
