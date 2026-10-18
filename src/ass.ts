@@ -1,7 +1,7 @@
 import { compile, type CompiledASS } from 'ass-compiler';
 import { Renderer } from './renderer';
-import type { OnInitSizes } from './types';
-import { cleanFontName, parseFontMetrics } from './utils';
+import type { FontFaceInfo, OnInitSizes } from './types';
+import { cleanFontName, parseFontMetrics, parseFontWeight } from './utils';
 
 export type ASSOptions = {
   /**
@@ -111,8 +111,8 @@ export class ASS {
   private onReady?: () => void;
   private logging: LOGTYPE = 'DISABLE';
   private compiledAss: CompiledASS | null = null;
-  // Size ratio of each loaded font, by each of its lowercase names (see loadFont)
-  private fontRatios: Map<string, number> = new Map();
+  // Loaded faces by each of their lowercase names (see loadFont)
+  private fontFaces: Map<string, FontFaceInfo[]> = new Map();
   private readonly onFullscreenChange = () => this.setCanvasSize();
   private readonly onLoadedMetadata = () => this.setCanvasSize();
 
@@ -187,7 +187,7 @@ export class ASS {
       this.videoElement,
       this.logging,
       this.zIndex,
-      this.fontRatios
+      this.fontFaces
     );
 
     // Ensure canvas size is set correctly on init
@@ -378,11 +378,26 @@ export class ASS {
    * It is registered under `font.family` and under every name it declares (family, full and
    * PostScript), since libass finds fonts by those names: a script can ask for
    * "Source Sans Pro Semibold" when the file was loaded as "Source Sans Pro".
+   *
+   * Each face is declared with the real weight and slant of the file. Declared as `normal`, a
+   * bold request makes the browser fake a bold far heavier than libass's; the renderer asks for
+   * the face's own weight instead and emboldens it like libass when needed.
+   * `descriptors.weight` and `descriptors.style`, when given, take precedence over the file.
    */
   private async loadFont(font: Font) {
     const response = await fetch(font.url);
     const buffer = await response.arrayBuffer();
     const metrics = parseFontMetrics(buffer);
+    const [minWeight, maxWeight] = parseFontWeight(font.descriptors?.weight) ?? [
+      metrics.weight,
+      metrics.weight
+    ];
+    const style = font.descriptors?.style ?? (metrics.italic ? 'italic' : 'normal');
+    const descriptors = {
+      ...font.descriptors,
+      weight: font.descriptors?.weight ?? String(metrics.weight),
+      style
+    } as FontFaceDescriptors;
 
     const names: string[] = [];
     [cleanFontName(font.family), ...metrics.names].forEach((name) => {
@@ -391,11 +406,21 @@ export class ASS {
 
     let loaded = false;
     for (const name of names) {
-      const fontFace = await new FontFace(name, buffer.slice(0), font.descriptors || {}).load();
+      const fontFace = await new FontFace(name, buffer.slice(0), descriptors).load();
       // @ts-ignore
       document.fonts.add(fontFace);
       if (fontFace.status === 'loaded') loaded = true;
-      this.fontRatios.set(name.toLowerCase(), metrics.ratio);
+
+      const key = name.toLowerCase();
+      const faces = this.fontFaces.get(key) ?? [];
+      faces.push({
+        family: name,
+        minWeight,
+        maxWeight,
+        italic: style !== 'normal',
+        ratio: metrics.ratio
+      });
+      this.fontFaces.set(key, faces);
     }
     return loaded;
   }

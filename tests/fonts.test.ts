@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import ASS from '../src/ass';
-import { parseFontMetrics } from '../src/utils';
+import { assWeight, parseFontMetrics, parseFontWeight } from '../src/utils';
 
 // Smallest TrueType file parseFontMetrics reads: head, OS/2 (ratio 1) and name tables.
 function fontFile(weight: number, family: string): ArrayBuffer {
@@ -62,11 +62,17 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 ${events.join('\n')}`;
 }
 
-type Call = { kind: 'fill' | 'stroke'; text: string; font: string };
+type Call = {
+  kind: 'fill' | 'stroke';
+  text: string;
+  font: string;
+  lineWidth: number;
+  same: boolean;
+};
 
 describe('Fonts', () => {
   let videoElement: HTMLVideoElement;
-  let faces: string[];
+  let faces: { family: string; weight?: string }[];
   let calls: Call[];
   const originalGetContext = HTMLCanvasElement.prototype.getContext;
 
@@ -91,8 +97,8 @@ describe('Fonts', () => {
       'FontFace',
       class {
         status = 'loaded';
-        constructor(family: string) {
-          faces.push(family);
+        constructor(family: string, _source: ArrayBuffer, descriptors: FontFaceDescriptors) {
+          faces.push({ family, weight: descriptors.weight });
         }
         load() {
           return Promise.resolve(this);
@@ -107,7 +113,13 @@ describe('Fonts', () => {
       if (type === '2d') {
         const record = (kind: Call['kind'], original: Function) =>
           function (this: CanvasRenderingContext2D, ...args: any[]) {
-            calls.push({ kind, text: args[0], font: this.font });
+            calls.push({
+              kind,
+              text: args[0],
+              font: this.font,
+              lineWidth: this.lineWidth,
+              same: this.strokeStyle === this.fillStyle
+            });
             return original.apply(this, args);
           };
         ctx.fillText = record('fill', ctx.fillText);
@@ -184,15 +196,90 @@ describe('Fonts', () => {
     expect(parseFontMetrics(woff2).names).toEqual([]);
   });
 
-  it('should read the names of a font file', () => {
+  it('should read the weight and the names of a font file', () => {
     const metrics = parseFontMetrics(fontFile(600, 'Test Sans Semibold'));
+    expect(metrics.weight).toBe(600);
+    expect(metrics.italic).toBe(false);
     expect(metrics.names).toEqual(['Test Sans Semibold', 'TestSansSemibold']);
     expect(metrics.ratio).toBe(1);
   });
 
-  it('should register a font file under each of its names', async () => {
+  it('should register a font file with its real weight under each of its names', async () => {
     await draw(script('Test Sans Semibold', []), fontFile(600, 'Test Sans Semibold'));
-    expect(faces).toEqual(['Test Sans', 'Test Sans Semibold', 'TestSansSemibold']);
+    expect(faces).toEqual([
+      { family: 'Test Sans', weight: '600' },
+      { family: 'Test Sans Semibold', weight: '600' },
+      { family: 'TestSansSemibold', weight: '600' }
+    ]);
+  });
+
+  it('should read \\b and Bold the way libass does', () => {
+    expect(assWeight(0)).toBe(400);
+    expect(assWeight(1)).toBe(700);
+    expect(assWeight(-1)).toBe(700);
+    expect(assWeight(300)).toBe(300);
+    expect(assWeight(400)).toBe(400);
+  });
+
+  it('should parse FontFace weight descriptors', () => {
+    expect(parseFontWeight('normal')).toEqual([400, 400]);
+    expect(parseFontWeight('bold')).toEqual([700, 700]);
+    expect(parseFontWeight('600')).toEqual([600, 600]);
+    expect(parseFontWeight('100 900')).toEqual([100, 900]);
+    expect(parseFontWeight('heavy')).toBeUndefined();
+    expect(parseFontWeight(undefined)).toBeUndefined();
+  });
+
+  it('should embolden a face lighter than asked by em/64, without browser bold', async () => {
+    await draw(
+      script('Test Condensed', ['Dialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,{\\b1}Text']),
+      fontFile(400, 'Test Condensed')
+    );
+    const fill = calls.find((c) => c.kind === 'fill')!;
+    expect(fill.font).toMatch(/\b400\b/);
+    expect(fill.font).not.toContain('bold');
+    // \b1 asks 700, the face is 400: libass emboldens by em/64 (fontsize 50, ratio 1)
+    const stroke = calls[calls.indexOf(fill) - 1]!;
+    expect(stroke.kind).toBe('stroke');
+    expect(stroke.same).toBe(true);
+    expect(stroke.lineWidth).toBeCloseTo(50 / 64, 5);
+  });
+
+  it('should draw a semibold face as it is when bold is asked', async () => {
+    await draw(
+      script('Test Sans Semibold', [
+        'Dialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,{\\b1}Text'
+      ]),
+      fontFile(600, 'Test Sans Semibold')
+    );
+    // 700 does not exceed 600 + 150: no emboldening, and the browser is asked for 600
+    expect(calls.some((c) => c.kind === 'stroke')).toBe(false);
+    expect(fillFont('Text')).toMatch(/\b600\b/);
+  });
+
+  it('should ask the browser for the weight of \\b when the font is not loaded', async () => {
+    const assText = script('Arial', [
+      'Dialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,{\\b1}A',
+      'Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\b1\\b400}B',
+      'Dialogue: 0,0:00:02.00,0:00:03.00,Default,,0,0,0,,{\\b1\\b0}C',
+      'Dialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,{\\b1\\b5}D'
+    ]);
+    const fonts: Record<string, string> = {};
+    for (const [text, time] of [
+      ['A', 0.5],
+      ['B', 1.5],
+      ['C', 2.5],
+      ['D', 3.5]
+    ] as const) {
+      calls = [];
+      await draw(assText, undefined, time);
+      fonts[text] = fillFont(text);
+    }
+    expect(fonts.A).toMatch(/\b700\b/);
+    expect(fonts.B).toMatch(/\b400\b/);
+    expect(fonts.C).toMatch(/\b400\b/);
+    // \b5 is not a weight: libass goes back to the Bold of the style (0), not to the \b1 before it
+    expect(fonts.D).toMatch(/\b400\b/);
   });
 
   it('should size a font asked by a name of its file', async () => {
