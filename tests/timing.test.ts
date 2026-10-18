@@ -132,13 +132,12 @@ describe('Dialogue timing', () => {
     });
     await ass.render();
     const renderer = (ass as any).renderer;
-    const ctx: CanvasRenderingContext2D = renderer.layers[0].ctx;
     let x = NaN;
-    const fillText = ctx.fillText.bind(ctx);
-    ctx.fillText = (text: string, px: number, py: number) => {
-      if (text === 'A') x = px;
-      return fillText(text, px, py);
-    };
+    // Where the layout puts the word, before it is rasterized
+    vi.spyOn(renderer, 'drawWord').mockImplementation((word: any) => {
+      if (word.value[0].c === 'A') x = word.value[0].pos.x;
+      return null;
+    });
     const xs = times.map((time) => {
       renderer.forceRender(time);
       return x;

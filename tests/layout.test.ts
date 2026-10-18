@@ -101,31 +101,40 @@ describe('Layout', () => {
     expect(measureTwice).toHaveBeenCalledTimes(measureOnce.mock.calls.length);
   });
 
-  // Device x of the pen and device x scale for every fillText and strokeText
-  function recordPainting(ctx: CanvasRenderingContext2D) {
-    const painted: { op: string; text: string; x: number; scale: number; lineWidth: number }[] = [];
-    (['fillText', 'strokeText'] as const).forEach((op) => {
-      const original = ctx[op].bind(ctx);
-      vi.spyOn(ctx, op).mockImplementation((text: string, x: number, y: number) => {
-        const m = ctx.getTransform();
-        painted.push({
-          op,
-          text,
-          x: m.a * x + m.c * y + m.e,
-          scale: m.a,
-          lineWidth: ctx.lineWidth
-        });
-        original(text, x, y);
+  // Canvas bounds of the fill and border of every word painted, from their masks
+  function recordMasks(renderer: any) {
+    const masks: Record<'fill' | 'border', { left: number; width: number }>[] = [];
+    const bounds = (bitmap: {
+      data: Uint8ClampedArray;
+      width: number;
+      height: number;
+      x: number;
+    }) => {
+      let left = bitmap.width;
+      let right = -1;
+      bitmap.data.forEach((value, i) => {
+        if (value < 128) return;
+        left = Math.min(left, i % bitmap.width);
+        right = Math.max(right, i % bitmap.width);
       });
+      return { left: bitmap.x + left, width: right - left + 1 };
+    };
+    const drawWord = renderer.drawWord.bind(renderer);
+    vi.spyOn(renderer, 'drawWord').mockImplementation((...args: any[]) => {
+      const result = drawWord(...args);
+      if (result) {
+        masks.push({ fill: bounds(result.fill), border: result.border && bounds(result.border) });
+      }
+      return result;
     });
-    return painted;
+    return masks;
   }
 
   it('should place a run after a scaled run at its scaled width', async () => {
     const { ass, renderer } = await setup([
-      'Dialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,{\\an7\\pos(100,100)\\fscx50}AA{\\fscx100}AA'
+      'Dialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,{\\an7\\pos(100,100)\\bord0\\fscx50}AA{\\fscx100}AA'
     ]);
-    const painted = recordPainting(renderer.layers[0].ctx);
+    const masks = recordMasks(renderer);
     renderer.display(0.5);
 
     const chars = renderer.ppass[0].chars;
@@ -133,10 +142,10 @@ describe('Layout', () => {
     expect(chars[2].pos.x).toBeCloseTo(100 + naturalWidth / 2);
 
     // Painted where the layout put them, each run at its own scale
-    const fills = painted.filter((p) => p.op === 'fillText');
-    expect(fills.map((p) => p.scale)).toEqual([0.5, 1]);
-    expect(fills[0]!.x).toBeCloseTo(100);
-    expect(fills[1]!.x).toBeCloseTo(100 + naturalWidth / 2);
+    const [half, full] = masks as [(typeof masks)[0], (typeof masks)[0]];
+    expect(Math.abs(half.fill.left - 100)).toBeLessThanOrEqual(2);
+    expect(Math.abs(full.fill.left - (100 + naturalWidth / 2))).toBeLessThanOrEqual(2);
+    expect(half.fill.width / full.fill.width).toBeCloseTo(0.5, 1);
     ass.destroy();
   });
 
@@ -165,13 +174,12 @@ describe('Layout', () => {
     const { ass, renderer } = await setup([
       'Dialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,{\\fscx200\\fscy200}Hi'
     ]);
-    const painted = recordPainting(renderer.layers[0].ctx);
+    const masks = recordMasks(renderer);
     renderer.display(0.5);
 
-    const stroke = painted.find((p) => p.op === 'strokeText')!;
-    // \bord2 on both axes is a 4 px pen at PlayRes 1280x720, whatever the scale
-    expect(stroke.scale).toBeCloseTo(2);
-    expect(stroke.lineWidth * stroke.scale).toBeCloseTo(4);
+    // \bord2 grows the text by 2 px on each side at PlayRes 1280x720, whatever the scale
+    const { fill, border } = masks[0]!;
+    expect(Math.abs(border.width - fill.width - 4)).toBeLessThanOrEqual(1);
     ass.destroy();
   });
 });
@@ -294,6 +302,181 @@ describe('Drawing layout', () => {
 
     // Centered on the anchor: offset by half of the painted width (57.5)
     expect(drawing.pos.x).toBeCloseTo(566 - (46 * 1.25) / 2);
+    ass.destroy();
+  });
+});
+
+// Text centered (\an5) on pos(640,360), the center of the canvas
+const textScript = (tags: string, text = 'TEST', position = '\\pos(640,360)') => `[Script Info]
+Title: Text Layout
+PlayResX: 1280
+PlayResY: 720
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,50,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,5,10,10,10,1
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,{\\an5${position}${tags}}${text}`;
+
+// Follow the real raster transform through its reduction to the padded bitmap (`supersample`
+// pixels per output pixel) and the final homography. This checks the device position
+// independently of the layout's stored pen and already scaled advance.
+function mappedAdvanceCenter(
+  fill: any,
+  glyph: any,
+  source: any,
+  matrix: readonly number[],
+  supersample: number
+) {
+  const pad = (source.width - glyph.width) / 2;
+  const factorX = fill.raster.width / glyph.width;
+  const factorY = fill.raster.height / glyph.height;
+  const center = fill.x + fill.width / 2;
+  const rasterX = fill.matrix.a * center + fill.matrix.c * fill.y + fill.matrix.e;
+  const rasterY = fill.matrix.b * center + fill.matrix.d * fill.y + fill.matrix.f;
+  const x = source.x + (rasterX / factorX + pad) / supersample;
+  const y = source.y + (rasterY / factorY + pad) / supersample;
+  const w = matrix[6]! * x + matrix[7]! * y + matrix[8]!;
+  return {
+    x: (matrix[0]! * x + matrix[1]! * y + matrix[2]!) / w,
+    y: (matrix[3]! * x + matrix[4]! * y + matrix[5]!) / w
+  };
+}
+
+describe('Painting', () => {
+  let videoElement: HTMLVideoElement;
+
+  beforeEach(() => {
+    videoElement = document.createElement('video');
+    Object.defineProperty(videoElement, 'videoWidth', { value: 1280 });
+    Object.defineProperty(videoElement, 'videoHeight', { value: 720 });
+    Object.defineProperty(videoElement, 'clientWidth', { value: 1280 });
+    Object.defineProperty(videoElement, 'clientHeight', { value: 720 });
+    document.body.appendChild(videoElement);
+
+    global.ResizeObserver = class ResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    };
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 0);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('should keep the rendered advance centered at pos when the text grows', async () => {
+    const proto = (document.createElement('canvas').getContext('2d') as any).constructor.prototype;
+    const original = proto.fillText;
+    let fillCall: any;
+    vi.spyOn(proto, 'fillText').mockImplementation(function (
+      this: CanvasRenderingContext2D,
+      ...args: any[]
+    ) {
+      const [text, x, y] = args;
+      fillCall = {
+        x,
+        y,
+        width: this.measureText(text).width,
+        matrix: this.getTransform()
+      };
+      return original.apply(this, args);
+    });
+    // The part of the scratch surface that is read back is the raster
+    const read = proto.getImageData;
+    vi.spyOn(proto, 'getImageData').mockImplementation(function (
+      this: CanvasRenderingContext2D,
+      ...args: any[]
+    ) {
+      if (fillCall && !fillCall.raster) fillCall.raster = { width: args[2], height: args[3] };
+      return read.apply(this, args);
+    });
+
+    for (const scale of [100, 110, 200]) {
+      const ass = new ASS({ assText: textScript(`\\fscx${scale}\\fscy100`), video: videoElement });
+      await ass.render();
+      const renderer = (ass as any).renderer;
+      const glyph = vi.spyOn(renderer, 'glyphBitmap');
+      const projection = vi.spyOn(renderer, 'projectBitmap');
+      renderer.forceRender(1);
+
+      expect(fillCall.width).toBeGreaterThan(0);
+      const [source, , matrix, , , supersample] = projection.mock.calls[0]! as any[];
+      const center = mappedAdvanceCenter(
+        fillCall,
+        glyph.mock.results[0]!.value,
+        source,
+        matrix,
+        supersample
+      );
+      // Like libass, the pen is placed to 1/8 pixel
+      expect(Math.abs(center.x - 640)).toBeLessThanOrEqual(1 / 16);
+      ass.destroy();
+    }
+  });
+
+  it('should keep opaque glyph pixels centered across horizontal scales', async () => {
+    const centers: number[] = [];
+    for (const scale of [100, 110, 200]) {
+      const ass = new ASS({ assText: textScript(`\\fscx${scale}`, 'H'), video: videoElement });
+      await ass.render();
+      const renderer = (ass as any).renderer;
+      renderer.forceRender(1);
+      const { canvas, ctx } = renderer.layers[0];
+      const rgba = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      let left = canvas.width;
+      let right = -1;
+      for (let i = 0; i < rgba.length; i += 4) {
+        if (rgba[i + 3] > 128) {
+          const x = (i / 4) % canvas.width;
+          left = Math.min(left, x);
+          right = Math.max(right, x);
+        }
+      }
+      expect(right).toBeGreaterThan(left);
+      centers.push((left + right + 1) / 2);
+      ass.destroy();
+    }
+    expect(Math.max(...centers) - Math.min(...centers)).toBeLessThanOrEqual(1);
+    for (const center of centers) expect(Math.abs(center - 640)).toBeLessThanOrEqual(1);
+  });
+
+  it('should keep the font size, baseline and advance independent of X and Y rotations', async () => {
+    const metrics: { x: number; y: number; width: number; fontsize: number }[] = [];
+    for (const rotation of ['', '\\frx45', '\\fry60', '\\frx-125\\fry30']) {
+      const ass = new ASS({ assText: textScript(rotation), video: videoElement });
+      await ass.render();
+      const renderer = (ass as any).renderer;
+      const glyph = vi.spyOn(renderer, 'glyphBitmap');
+      renderer.forceRender(1);
+      const word = glyph.mock.calls[0]![0] as any;
+      metrics.push({
+        x: word.value[0].pos.x,
+        y: word.value[0].pos.y,
+        width: word.w,
+        fontsize: word.font.fontsize
+      });
+      ass.destroy();
+    }
+    for (const value of metrics.slice(1)) expect(value).toEqual(metrics[0]);
+  });
+
+  it('should keep an explicit rotation origin fixed while the text moves', async () => {
+    const ass = new ASS({
+      assText: textScript('\\org(600,360)\\frz90', 'TEST', '\\move(640,360,680,360)'),
+      video: videoElement
+    });
+    await ass.render();
+    const renderer = (ass as any).renderer;
+    const projection = vi.spyOn(renderer, 'projectBitmap');
+    for (const time of [1, 4]) {
+      renderer.forceRender(time);
+      const matrix = projection.mock.calls.at(-1)![2] as readonly number[];
+      const w = matrix[6]! * 600 + matrix[7]! * 360 + matrix[8]!;
+      expect((matrix[0]! * 600 + matrix[1]! * 360 + matrix[2]!) / w).toBeCloseTo(600);
+      expect((matrix[3]! * 600 + matrix[4]! * 360 + matrix[5]!) / w).toBeCloseTo(360);
+    }
     ass.destroy();
   });
 });
