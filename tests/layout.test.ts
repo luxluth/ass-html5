@@ -100,6 +100,80 @@ describe('Layout', () => {
     expect(measureOnce).toHaveBeenCalled();
     expect(measureTwice).toHaveBeenCalledTimes(measureOnce.mock.calls.length);
   });
+
+  // Device x of the pen and device x scale for every fillText and strokeText
+  function recordPainting(ctx: CanvasRenderingContext2D) {
+    const painted: { op: string; text: string; x: number; scale: number; lineWidth: number }[] = [];
+    (['fillText', 'strokeText'] as const).forEach((op) => {
+      const original = ctx[op].bind(ctx);
+      vi.spyOn(ctx, op).mockImplementation((text: string, x: number, y: number) => {
+        const m = ctx.getTransform();
+        painted.push({
+          op,
+          text,
+          x: m.a * x + m.c * y + m.e,
+          scale: m.a,
+          lineWidth: ctx.lineWidth
+        });
+        original(text, x, y);
+      });
+    });
+    return painted;
+  }
+
+  it('should place a run after a scaled run at its scaled width', async () => {
+    const { ass, renderer } = await setup([
+      'Dialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,{\\an7\\pos(100,100)\\fscx50}AA{\\fscx100}AA'
+    ]);
+    const painted = recordPainting(renderer.layers[0].ctx);
+    renderer.display(0.5);
+
+    const chars = renderer.ppass[0].chars;
+    const naturalWidth = chars[2].w + chars[3].w;
+    expect(chars[2].pos.x).toBeCloseTo(100 + naturalWidth / 2);
+
+    // Painted where the layout put them, each run at its own scale
+    const fills = painted.filter((p) => p.op === 'fillText');
+    expect(fills.map((p) => p.scale)).toEqual([0.5, 1]);
+    expect(fills[0]!.x).toBeCloseTo(100);
+    expect(fills[1]!.x).toBeCloseTo(100 + naturalWidth / 2);
+    ass.destroy();
+  });
+
+  it('should make a line taller with \\fscy', async () => {
+    const { ass, renderer } = await setup([
+      'Dialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,{\\an7\\pos(100,100)}A',
+      'Dialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,{\\an7\\pos(300,100)\\fscy200}A'
+    ]);
+    // node-canvas has no font ascent, so every glyph gets a 40 px one
+    vi.spyOn(renderer.layers[0].ctx, 'measureText').mockImplementation(
+      () => ({ width: 30, fontBoundingBoxAscent: 40, fontBoundingBoxDescent: 10 }) as TextMetrics
+    );
+    renderer.invalidate();
+    renderer.display(0.5);
+
+    const heads = renderer.ppass.map((d: any) => d.chars[0]);
+    const plain = heads.find((c: any) => c.pos.x < 200);
+    const tall = heads.find((c: any) => c.pos.x > 200);
+    // The baseline sits one ascent below the top of the line
+    expect(plain.pos.y).toBeCloseTo(140);
+    expect(tall.pos.y).toBeCloseTo(180);
+    ass.destroy();
+  });
+
+  it('should keep the border width when the text is scaled', async () => {
+    const { ass, renderer } = await setup([
+      'Dialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,{\\fscx200\\fscy200}Hi'
+    ]);
+    const painted = recordPainting(renderer.layers[0].ctx);
+    renderer.display(0.5);
+
+    const stroke = painted.find((p) => p.op === 'strokeText')!;
+    // \bord2 on both axes is a 4 px pen at PlayRes 1280x720, whatever the scale
+    expect(stroke.scale).toBeCloseTo(2);
+    expect(stroke.lineWidth * stroke.scale).toBeCloseTo(4);
+    ass.destroy();
+  });
 });
 
 describe('Drawing outlines', () => {
