@@ -281,4 +281,47 @@ describe('ASS mask compositing', () => {
     expect(sizes.length).toBeGreaterThan(0);
     for (const size of sizes) expect(size).toBeGreaterThan(256);
   });
+
+  it('should reuse cropped coverage without retaining the previous fade or border correction', async () => {
+    const r = await renderer(String.raw`{\pos(-4,2)\bord4\shad0\blur3\fad(1000,0)}H`);
+    r.invalidate();
+    const project = vi.spyOn(r, 'projectBitmap');
+    r.forceRender(0.25);
+    expect(project).toHaveBeenCalledTimes(1);
+    expect(r.filteredMaskCache.size).toBeGreaterThan(0);
+    for (const time of [0.5, 1]) {
+      const previousCalls = project.mock.calls.length;
+      r.forceRender(time);
+      expect(project).toHaveBeenCalledTimes(previousCalls);
+      const cachedPixels = alphaPixels(r.layers[0].ctx);
+      expect(Math.max(...cachedPixels)).toBeGreaterThan(0);
+      r.filteredMaskCache.clear();
+      r.filteredMaskCacheSize = 0;
+      r.forceRender(time);
+      expect(project).toHaveBeenCalledTimes(previousCalls + 1);
+      expect(alphaPixels(r.layers[0].ctx)).toEqual(cachedPixels);
+    }
+  });
+
+  it('should preserve moving coverage when the viewport crop changes and when integer positions share a mask', async () => {
+    const r = await renderer(String.raw`{\move(-20,35,180,35,0,2000)\shad0\blur2}H`);
+    r.invalidate();
+    const project = vi.spyOn(r, 'projectBitmap');
+    r.forceRender(0);
+    expect(project).toHaveBeenCalledTimes(1);
+    r.forceRender(0.2);
+    expect(project).toHaveBeenCalledTimes(2);
+    r.forceRender(0.8);
+    expect(project).toHaveBeenCalledTimes(3);
+    r.forceRender(0.9);
+    expect(project).toHaveBeenCalledTimes(3);
+    for (const time of [0.9, 1.9]) {
+      r.forceRender(time);
+      const cachedPixels = alphaPixels(r.layers[0].ctx);
+      r.filteredMaskCache.clear();
+      r.filteredMaskCacheSize = 0;
+      r.forceRender(time);
+      expect(alphaPixels(r.layers[0].ctx)).toEqual(cachedPixels);
+    }
+  });
 });
