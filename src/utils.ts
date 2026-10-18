@@ -335,6 +335,372 @@ export function interpolateColor(color1: string, color2: string, t: number): str
   return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
 }
 
+function checkMaskSize(mask: Uint8ClampedArray, width: number, height: number) {
+  if (
+    !Number.isSafeInteger(width) ||
+    !Number.isSafeInteger(height) ||
+    width < 0 ||
+    height < 0 ||
+    mask.length !== width * height
+  ) {
+    throw new RangeError('Invalid mask dimensions');
+  }
+}
+
+function maskRadius(value: number) {
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+// A sampled Gaussian, not libass's integer cascade. Transparent samples outside the ROI
+// retain their weight: clipping the image must not renormalize the blur at its edges.
+function gaussianMaskAxis(
+  source: Float32Array,
+  width: number,
+  height: number,
+  sigma: number,
+  vertical: boolean
+) {
+  const extent = vertical ? height : width;
+  if (!sigma || extent === 0) return source;
+  const support = Math.ceil(4 * sigma);
+  const radius = Math.min(support, extent - 1);
+  const kernel = new Float64Array(radius + 1);
+  let total = 0;
+  // For a large sigma, the continuous normalization avoids an unbounded kernel allocation.
+  // At sigma >= 32 the discretization error here is below the 8-bit mask precision.
+  if (sigma >= 32) total = Math.sqrt(2 * Math.PI) * sigma;
+  for (let i = 0; i <= (sigma >= 32 ? radius : support); i++) {
+    const weight = Math.exp(-0.5 * (i / sigma) ** 2);
+    if (i <= radius) kernel[i] = weight;
+    if (sigma < 32) total += i === 0 ? weight : 2 * weight;
+  }
+  for (let i = 0; i <= radius; i++) kernel[i] = kernel[i]! / total;
+
+  // Only the covered span of each row is read: most of a padded mask is transparent.
+  const first = new Int32Array(height).fill(-1);
+  const last = new Int32Array(height);
+  for (let y = 0; y < height; y++) {
+    const row = y * width;
+    for (let x = 0; x < width; x++) {
+      if (!source[row + x]) continue;
+      if (first[y] === -1) first[y] = x;
+      last[y] = x;
+    }
+  }
+  const result = new Float32Array(source.length);
+  // The kernel is symmetric: the two samples at the same distance share one multiplication.
+  if (vertical) {
+    // Whole rows are added at a time, so memory is read in order.
+    const sum = new Float64Array(width);
+    for (let y = 0; y < height; y++) {
+      let covered = false;
+      for (let i = 0; i <= radius; i++) {
+        const above = y - i >= 0 && first[y - i] !== -1 ? y - i : -1;
+        const below = i && y + i < height && first[y + i] !== -1 ? y + i : -1;
+        if (above === -1 && below === -1) continue;
+        if (!covered) sum.fill(0);
+        covered = true;
+        const weight = kernel[i]!;
+        if (above !== -1 && below !== -1) {
+          const rowA = above * width;
+          const rowB = below * width;
+          const to = Math.max(last[above]!, last[below]!);
+          for (let x = Math.min(first[above]!, first[below]!); x <= to; x++) {
+            sum[x] = sum[x]! + (source[rowA + x]! + source[rowB + x]!) * weight;
+          }
+        } else {
+          const from = above !== -1 ? above : below;
+          const row = from * width;
+          for (let x = first[from]!; x <= last[from]!; x++) {
+            sum[x] = sum[x]! + source[row + x]! * weight;
+          }
+        }
+      }
+      if (covered) result.set(sum, y * width);
+    }
+    return result;
+  }
+  for (let y = 0; y < height; y++) {
+    const start = first[y]!;
+    if (start === -1) continue;
+    const end = last[y]!;
+    const row = y * width;
+    for (let x = Math.max(0, start - radius); x <= Math.min(width - 1, end + radius); x++) {
+      const from = Math.max(start, x - radius);
+      const to = Math.min(end, x + radius);
+      let value = 0;
+      if (from === x - radius && to === x + radius) {
+        value = source[row + x]! * kernel[0]!;
+        for (let i = 1; i <= radius; i++) {
+          value += (source[row + x - i]! + source[row + x + i]!) * kernel[i]!;
+        }
+      } else {
+        for (let i = from; i <= to; i++) value += source[row + i]! * kernel[x > i ? x - i : i - x]!;
+      }
+      result[row + x] = value;
+    }
+  }
+  return result;
+}
+
+// Keep the horizontal sums at full precision; libass truncates only after the 2D /16.
+function beMaskPass(
+  mask: Uint8ClampedArray,
+  width: number,
+  height: number,
+  horizontal: Uint16Array
+) {
+  for (let y = 0; y < height; y++) {
+    const row = y * width;
+    for (let x = 0; x < width; x++) {
+      horizontal[row + x] =
+        (x > 0 ? mask[row + x - 1]! : 0) +
+        2 * mask[row + x]! +
+        (x + 1 < width ? mask[row + x + 1]! : 0);
+    }
+  }
+  for (let y = 0; y < height; y++) {
+    const row = y * width;
+    for (let x = 0; x < width; x++) {
+      mask[row + x] =
+        ((y > 0 ? horizontal[row + x - width]! : 0) +
+          2 * horizontal[row + x]! +
+          (y + 1 < height ? horizontal[row + x + width]! : 0)) >>
+        4;
+    }
+  }
+}
+
+/**
+ * Blur alpha coverage before tinting. Gaussian X/Y are independent; ASS edge blur follows
+ * as discrete [1,2,1] passes, including libass's 6-bit intermediate rounding for be > 1.
+ * The caller supplies transparent padding. Dimensions stay fixed and the input is not changed.
+ */
+export function blurMask(
+  mask: Uint8ClampedArray,
+  width: number,
+  height: number,
+  sigmaX: number,
+  sigmaY: number,
+  be: number
+): Uint8ClampedArray {
+  checkMaskSize(mask, width, height);
+  const result = mask.slice();
+  if (maskRadius(sigmaX) || maskRadius(sigmaY)) {
+    let values: Float32Array = new Float32Array(mask);
+    values = gaussianMaskAxis(values, width, height, maskRadius(sigmaX), false);
+    values = gaussianMaskAxis(values, width, height, maskRadius(sigmaY), true);
+    for (let i = 0; i < values.length; i++) result[i] = Math.round(values[i]!);
+  }
+  const passes = Math.min(127, Math.floor(maskRadius(be) + 0.5));
+  if (passes && result.length) {
+    const horizontal = new Uint16Array(result.length);
+    if (passes > 1) {
+      for (let i = 0; i < result.length; i++) result[i] = ((result[i]! >> 1) + 1) >> 1;
+      for (let i = 1; i < passes; i++) beMaskPass(result, width, height, horizontal);
+      for (let i = 0; i < result.length; i++) {
+        const value = result[i]!;
+        result[i] = (value << 2) - (value > 32 ? 1 : 0);
+      }
+    }
+    beMaskPass(result, width, height, horizontal);
+  }
+  return result;
+}
+
+/**
+ * Coverage of an RGBA raster that was drawn `factorX` and `factorY` times larger than `width` x
+ * `height`: the alpha averaged over each block, which is the area coverage at the smaller size.
+ */
+export function reduceAlpha(
+  rgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+  factorX: number,
+  factorY = factorX
+): Uint8ClampedArray {
+  if (
+    !Number.isSafeInteger(factorX) ||
+    !Number.isSafeInteger(factorY) ||
+    factorX < 1 ||
+    factorY < 1 ||
+    rgba.length !== width * height * factorX * factorY * 4
+  ) {
+    throw new RangeError('Invalid raster dimensions');
+  }
+  const result = new Uint8ClampedArray(width * height);
+  const area = factorX * factorY;
+  if (area === 1) {
+    for (let i = 0; i < result.length; i++) result[i] = rgba[i * 4 + 3]!;
+    return result;
+  }
+  const sums = new Uint32Array(width);
+  for (let y = 0; y < height; y++) {
+    sums.fill(0);
+    for (let row = y * factorY; row < (y + 1) * factorY; row++) {
+      let i = row * width * factorX * 4 + 3;
+      if (factorX === 1) {
+        for (let x = 0; x < width; x++, i += 4) sums[x] = sums[x]! + rgba[i]!;
+        continue;
+      }
+      for (let x = 0; x < width; x++) {
+        let sum = 0;
+        for (let k = 0; k < factorX; k++, i += 4) sum += rgba[i]!;
+        sums[x] = sums[x]! + sum;
+      }
+    }
+    for (let x = 0; x < width; x++) result[y * width + x] = Math.round(sums[x]! / area);
+  }
+  return result;
+}
+
+/**
+ * Halve 2x supersampled coverage with an exact 2x2 box filter: each output pixel gets the area
+ * coverage of its own four samples, so edges stay as sharp as a direct rasterization.
+ * Output pixel (x, y) reads the block at (left + 2x, top + 2y); samples outside the mask are
+ * transparent.
+ */
+export function halveMask(
+  mask: Uint8ClampedArray,
+  width: number,
+  height: number,
+  left: number,
+  top: number,
+  outWidth: number,
+  outHeight: number
+): Uint8ClampedArray {
+  checkMaskSize(mask, width, height);
+  const result = new Uint8ClampedArray(outWidth * outHeight);
+  const fromX = Math.max(0, Math.ceil((-1 - left) / 2));
+  const toX = Math.min(outWidth, Math.floor((width - 1 - left) / 2) + 1);
+  const fromY = Math.max(0, Math.ceil((-1 - top) / 2));
+  const toY = Math.min(outHeight, Math.floor((height - 1 - top) / 2) + 1);
+  for (let y = fromY; y < toY; y++) {
+    const row = top + 2 * y;
+    const upper = row >= 0 ? row * width : -1;
+    const lower = row + 1 < height ? (row + 1) * width : -1;
+    for (let x = fromX; x < toX; x++) {
+      const col = left + 2 * x;
+      let sum = 0;
+      if (col >= 0) {
+        if (upper >= 0) sum += mask[upper + col]!;
+        if (lower >= 0) sum += mask[lower + col]!;
+      }
+      if (col + 1 < width) {
+        if (upper >= 0) sum += mask[upper + col + 1]!;
+        if (lower >= 0) sum += mask[lower + col + 1]!;
+      }
+      result[y * outWidth + x] = (sum + 2) >> 2;
+    }
+  }
+  return result;
+}
+
+/**
+ * Copy a mask into a larger one with its top left corner at (left, top) of the target. Whatever
+ * falls outside the target is dropped.
+ */
+export function placeMask(
+  source: Uint8ClampedArray,
+  sourceWidth: number,
+  sourceHeight: number,
+  target: Uint8ClampedArray,
+  targetWidth: number,
+  targetHeight: number,
+  left: number,
+  top: number
+) {
+  checkMaskSize(source, sourceWidth, sourceHeight);
+  checkMaskSize(target, targetWidth, targetHeight);
+  const fromX = Math.max(0, -left);
+  const toX = Math.min(sourceWidth, targetWidth - left);
+  if (fromX >= toX) return;
+  for (let y = Math.max(0, -top); y < Math.min(sourceHeight, targetHeight - top); y++) {
+    const row = y * sourceWidth;
+    target.set(source.subarray(row + fromX, row + toX), (y + top) * targetWidth + left + fromX);
+  }
+}
+
+/**
+ * Dilate alpha coverage with an elliptical, subpixel footprint. Fractional shifts interpolate
+ * coverage instead of rounding a small bold radius to zero. Scanlines sample the ellipse at
+ * most half a pixel apart; this is a bitmap approximation, not a font outline stroker.
+ * Work stays inside the supplied ROI, which must include the desired transparent padding.
+ */
+export function expandMask(
+  mask: Uint8ClampedArray,
+  width: number,
+  height: number,
+  rx: number,
+  ry: number
+): Uint8ClampedArray {
+  checkMaskSize(mask, width, height);
+  rx = maskRadius(rx);
+  ry = maskRadius(ry);
+  const result = mask.slice();
+  if (!result.length || (!rx && !ry)) return result;
+
+  const rows = new Set<number>([0]);
+  const limit = Math.min(ry, height);
+  const step = ry <= 1 ? 0.25 : 0.5;
+  for (let y = step; y < limit; y += step) {
+    rows.add(y);
+    rows.add(-y);
+  }
+  for (const y of [limit, Math.min(ry / Math.SQRT2, limit)]) {
+    rows.add(y);
+    rows.add(-y);
+  }
+
+  const line = new Float32Array(width);
+  const deque = new Int32Array(width);
+  for (const dy of rows) {
+    const radius = ry ? rx * Math.sqrt(Math.max(0, 1 - (dy / ry) ** 2)) : rx;
+    const whole = Math.floor(Math.min(radius, width));
+    const fraction = radius - Math.floor(radius);
+    for (let y = 0; y < height; y++) {
+      const sourceY = y + dy;
+      const top = Math.floor(sourceY);
+      const fractionY = sourceY - top;
+      const topRow = top >= 0 && top < height ? top * width : -1;
+      const bottomRow = top + 1 >= 0 && top + 1 < height ? (top + 1) * width : -1;
+      if (topRow < 0 && bottomRow < 0) continue;
+      for (let x = 0; x < width; x++) {
+        line[x] =
+          (topRow >= 0 ? mask[topRow + x]! * (1 - fractionY) : 0) +
+          (bottomRow >= 0 ? mask[bottomRow + x]! * fractionY : 0);
+      }
+
+      let head = 0;
+      let tail = 0;
+      let next = 0;
+      for (let x = 0; x < width; x++) {
+        const end = Math.min(width - 1, x + whole);
+        while (next <= end) {
+          while (tail > head && line[deque[tail - 1]!]! <= line[next]!) tail--;
+          deque[tail++] = next++;
+        }
+        while (tail > head && deque[head]! < x - whole) head++;
+        let value = tail > head ? line[deque[head]!]! : 0;
+        if (fraction && radius < width) {
+          const left = x - whole;
+          const right = x + whole;
+          const a =
+            (left >= 0 ? line[left]! * (1 - fraction) : 0) +
+            (left > 0 ? line[left - 1]! * fraction : 0);
+          const b =
+            (right < width ? line[right]! * (1 - fraction) : 0) +
+            (right + 1 < width ? line[right + 1]! * fraction : 0);
+          value = Math.max(value, a, b);
+        }
+        const index = y * width + x;
+        result[index] = Math.max(result[index]!, Math.round(value));
+      }
+    }
+  }
+  return result;
+}
+
 export class Vector2 {
   x: number;
   y: number;
