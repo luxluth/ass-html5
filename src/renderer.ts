@@ -87,6 +87,8 @@ export class Renderer {
   currentTime = 0;
   private occupiedRects: Map<number, Rect[]> = new Map();
   private lastStateHash: string | null = null;
+  // unitsPerEm / (usWinAscent + usWinDescent) of the loaded fonts, by lowercase family
+  private fontRatios: Map<string, number>;
   // Dialogues on screen, see getSlices
   private byStart: PreProceesedAss[] = [];
   private nextStart = 0;
@@ -99,11 +101,13 @@ export class Renderer {
     sizes: OnInitSizes,
     video: HTMLVideoElement,
     log: LOGTYPE,
-    zIndex?: number
+    zIndex?: number,
+    fontRatios: Map<string, number> = new Map()
   ) {
     this._log = log;
     this.compiledASS = ass;
     this.styles = ass.styles;
+    this.fontRatios = fontRatios;
     if (this._log === 'DEBUG') {
       this.log('DEBUG', this.compiledASS);
     }
@@ -496,11 +500,7 @@ export class Renderer {
             font.t[field] = lerp(font.t[field] ?? 100, tag[field], t);
             break;
           case 'fs':
-            font.fontsize = lerp(
-              font.fontsize,
-              this.upscale(tag.fs, this.playerResY, this.layers[0]?.canvas.height || 0),
-              t
-            );
+            font.fontsize = lerp(font.fontsize, this.upscaleFontSize(tag.fs, font.fontname), t);
             break;
           case 'fsp':
             font.t.fsp = lerp(
@@ -1240,10 +1240,13 @@ export class Renderer {
     if (tag.i !== undefined) font.italic = tag.i === 1;
     if (tag.u !== undefined) font.underline = tag.u === 1;
     if (tag.s !== undefined) font.strikeout = tag.s === 1;
-    if (tag.fn !== undefined) font.fontname = tag.fn;
+    if (tag.fn !== undefined) {
+      // The size in pixels depends on the metrics of the font
+      font.fontsize *= this.getFontRatio(tag.fn) / this.getFontRatio(font.fontname);
+      font.fontname = tag.fn;
+    }
     if (tag.q !== undefined) font.t.q = tag.q;
-    if (tag.fs !== undefined)
-      font.fontsize = this.upscale(tag.fs, this.playerResY, this.layers[0]?.canvas.height || 0);
+    if (tag.fs !== undefined) font.fontsize = this.upscaleFontSize(tag.fs, font.fontname);
     if (tag.fscx !== undefined) font.t.fscx = tag.fscx;
     if (tag.fscy !== undefined) font.t.fscy = tag.fscy;
     if (tag.frz !== undefined) font.t.frz = tag.frz;
@@ -1279,6 +1282,24 @@ export class Renderer {
 
   private upscale(x: number, firstcomp: number, secondcomp: number) {
     return (ruleOfThree(firstcomp, secondcomp) * x) / 100;
+  }
+
+  /**
+   * libass scales a font so that its cell, usWinAscent + usWinDescent, is the ASS font size,
+   * while the canvas font size is the em square. The ratio between them comes from the font file
+   * (see `ASS.loadFont`). Fonts that were not loaded get the ratio of Arial, about 0.895.
+   */
+  private getFontRatio(fontname: string): number {
+    return this.fontRatios.get(fontname.toLowerCase()) ?? 0.895;
+  }
+
+  private upscaleFontSize(fs: number, fontname: string): number {
+    const size = this.upscale(
+      fs,
+      this.playerResY,
+      this.layers[0]?.canvas.height || this.playerResY
+    );
+    return size * this.getFontRatio(fontname);
   }
 
   private fontDecriptorString(font: StyleDescriptor) {
@@ -1321,7 +1342,7 @@ export class Renderer {
     const { PrimaryColour, OutlineColour, SecondaryColour, BorderStyle } = style.style;
 
     const font: StyleDescriptor = {
-      fontsize: this.upscale(fs, this.playerResY, this.layers[0]?.canvas.height || this.playerResY),
+      fontsize: this.upscaleFontSize(fs, fn),
       fontname: fn,
       bold: b === 1,
       italic: i === 1,

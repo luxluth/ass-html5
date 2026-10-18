@@ -1,6 +1,7 @@
 import { compile, type CompiledASS } from 'ass-compiler';
 import { Renderer } from './renderer';
 import type { OnInitSizes } from './types';
+import { parseFontMetrics } from './utils';
 
 export type ASSOptions = {
   /**
@@ -110,6 +111,8 @@ export class ASS {
   private onReady?: () => void;
   private logging: LOGTYPE = 'DISABLE';
   private compiledAss: CompiledASS | null = null;
+  // Size ratio of each loaded font, by lowercase family (see loadFont)
+  private fontRatios: Map<string, number> = new Map();
   private readonly onFullscreenChange = () => this.setCanvasSize();
   private readonly onLoadedMetadata = () => this.setCanvasSize();
 
@@ -183,7 +186,8 @@ export class ASS {
       sizes,
       this.videoElement,
       this.logging,
-      this.zIndex
+      this.zIndex,
+      this.fontRatios
     );
 
     // Ensure canvas size is set correctly on init
@@ -367,18 +371,18 @@ export class ASS {
     }
   }
 
-  private async getFontUrl(fontUrl: string) {
-    const response = await fetch(fontUrl);
-    const blob = await response.blob();
-    return URL.createObjectURL(blob);
-  }
-
+  /**
+   * The file is kept as an ArrayBuffer, so its metrics can be read: libass sizes text from them
+   * (see `parseFontMetrics`).
+   */
   private async loadFont(font: Font) {
-    const url = await this.getFontUrl(font.url);
-    const fontFace = new FontFace(font.family, `url(${url})`, font.descriptors || {});
+    const response = await fetch(font.url);
+    const buffer = await response.arrayBuffer();
+    const fontFace = new FontFace(font.family, buffer, font.descriptors || {});
     const loadedFace = await fontFace.load();
     // @ts-ignore
     document.fonts.add(loadedFace);
+    this.fontRatios.set(font.family.toLowerCase(), parseFontMetrics(buffer).ratio);
     return fontFace.status === 'loaded';
   }
 }
