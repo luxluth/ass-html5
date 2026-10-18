@@ -140,7 +140,7 @@ export enum CHARKIND {
 export type Margin = { left: number; right: number; vertical: number };
 
 export type DrawingInstruction = {
-  type: 'M' | 'L' | 'B'; // Move, Line, Bezier (C in ASS)
+  type: 'M' | 'L' | 'C'; // Move, Line, Cubic bezier (b and s in ASS)
   points: { x: number; y: number }[];
 };
 
@@ -189,12 +189,10 @@ export type Char =
       kind: CHARKIND.DRAWING;
       pos: Vector2;
       w: number;
-      h: number; // Height is relevant for drawings
       tag: CompiledTag;
       style: string;
       drawing: Drawing;
       scale: number; // p tag value
-      path: Path2D;
     };
 
 export type Word = {

@@ -38,7 +38,8 @@ import {
   interpolateColor,
   cleanFontName,
   stripWeightSuffix,
-  assWeight
+  assWeight,
+  buildDrawingPath
 } from './utils';
 
 type PreProceesedAss = {
@@ -61,6 +62,8 @@ type PreProceesedAss = {
 
 // Style of one glyph or drawing for the current frame, with its hash for grouping runs.
 type ResolvedChar = { font: StyleDescriptor; hash: number };
+
+type DrawingChar = Extract<Char, { kind: CHARKIND.DRAWING }>;
 
 // Face drawn for a style, see resolveFace. `family` is null for fonts that were not loaded.
 type ResolvedFace = { family: string | null; weight: number; embolden: boolean };
@@ -103,6 +106,7 @@ export class Renderer {
   private selected: PreProceesedAss[] = [];
   private selectedTime: number | null = null;
   private measureCache = new Map<string, TextMetrics>();
+  private drawingPaths = new WeakMap<Drawing, { x: number; y: number; path: Path2D }>();
 
   constructor(
     ass: CompiledASS,
@@ -273,17 +277,14 @@ export class Renderer {
           // However, ass-compiler usually returns drawing object only if valid.
           // But p0 disables drawing. So check scale != 0.
           if (scale > 0) {
-            const cachedPath = new Path2D(drawing.d);
             chars.push({
               kind: CHARKIND.DRAWING,
               pos: new Vector2(),
-              w: drawing.width * Math.pow(2, -(scale - 1)),
-              h: drawing.height * Math.pow(2, -(scale - 1)),
+              w: 0, // set on every frame from the style, see drawingBox
               tag: frag.tag,
               style,
               drawing,
-              scale,
-              path: cachedPath
+              scale
             });
           }
         } else {
@@ -551,12 +552,7 @@ export class Renderer {
           if (m.fontBoundingBoxAscent > maxAscent) maxAscent = m.fontBoundingBoxAscent;
           if (m.fontBoundingBoxDescent > maxDescent) maxDescent = m.fontBoundingBoxDescent;
         } else if (char.kind === CHARKIND.DRAWING) {
-          const Yratio = layer.canvas.height / this.playerResY;
-          const pScale = Math.pow(2, -(char.scale - 1));
-          const fscy = (char.tag?.fscy ?? 100) / 100;
-
-          const h = char.drawing.height * pScale * fscy * Yratio;
-
+          const { h } = this.drawingBox(char, resolved.get(char)!.font, layer);
           if (h > maxAscent) maxAscent = h;
         }
       });
@@ -573,9 +569,41 @@ export class Renderer {
       this.applyFont(resolved.get(char)!.font, layer);
       return this.measure(layer.ctx, char.c).width;
     } else if (char.kind === CHARKIND.DRAWING) {
-      return char.w;
+      return this.drawingBox(char, resolved.get(char)!.font, layer).w;
     }
     return 0;
+  }
+
+  // Scale from drawing units to output pixels: \p, \fscx, \fscy and the tilts. Layout and painting
+  // both use it, so a drawing is never laid out at one size and painted at another.
+  private drawingScale(char: DrawingChar, font: StyleDescriptor, layer: Layer) {
+    const t = font.t;
+    const tiltX = t.fry ? Math.cos((t.fry * Math.PI) / 180) : 1;
+    const tiltY = t.frx ? Math.cos((t.frx * Math.PI) / 180) : 1;
+    const pScale = Math.pow(2, -(char.scale - 1));
+    return {
+      x: ((t.fscx ?? 100) / 100) * tiltX * pScale * (layer.canvas.width / this.playerResX),
+      y: ((t.fscy ?? 100) / 100) * tiltY * pScale * (layer.canvas.height / this.playerResY)
+    };
+  }
+
+  // Advance (w) and ascent (h) of a drawing in output pixels
+  private drawingBox(char: DrawingChar, font: StyleDescriptor, layer: Layer) {
+    const scale = this.drawingScale(char, font, layer);
+    return {
+      w: Math.abs(scale.x) * char.drawing.width,
+      h: Math.abs(scale.y) * char.drawing.height
+    };
+  }
+
+  // Outline of a drawing for the last scale it was built at. Rotation and position are not part
+  // of it, so it only changes when the size changes.
+  private drawingPath(drawing: Drawing, sx: number, sy: number): Path2D {
+    const cached = this.drawingPaths.get(drawing);
+    if (cached && cached.x === sx && cached.y === sy) return cached.path;
+    const path = buildDrawingPath(drawing.instructions, sx, sy);
+    this.drawingPaths.set(drawing, { x: sx, y: sy, path });
+    return path;
   }
 
   private lineWidth(layer: Layer, chars: Char[], resolved: Map<Char, ResolvedChar>) {
@@ -899,12 +927,10 @@ export class Renderer {
           char.pos.x = cX;
 
           font = resolved.get(char)!.font;
-          const pScale = Math.pow(2, -(char.scale - 1));
-          const dw = char.drawing.width * pScale * Xratio;
-          const dh = char.drawing.height * pScale * Yratio;
-          charWidth = dw;
+          const box = this.drawingBox(char, font, layer);
+          charWidth = box.w;
 
-          char.pos.y = baseline - dh;
+          char.pos.y = baseline - box.h;
           char.w = charWidth;
         }
 
@@ -985,24 +1011,15 @@ export class Renderer {
       }
     } else if (clip.drawing) {
       const scaleFactor = Math.pow(2, -(clip.scale - 1));
-      const sx = scaleFactor * Xratio;
-      const sy = scaleFactor * Yratio;
+      const path = this.drawingPath(clip.drawing, scaleFactor * Xratio, scaleFactor * Yratio);
 
-      const p = new Path2D(clip.drawing.d);
-
-      if (typeof DOMMatrix !== 'undefined') {
-        const matrix = new DOMMatrix().scale(sx, sy);
-        const transformedPath = new Path2D();
-        transformedPath.addPath(p, matrix);
-
-        if (clip.inverse) {
-          const finalPath = new Path2D();
-          finalPath.rect(0, 0, layer.canvas.width, layer.canvas.height);
-          finalPath.addPath(transformedPath);
-          ctx.clip(finalPath, 'evenodd');
-        } else {
-          ctx.clip(transformedPath);
-        }
+      if (clip.inverse) {
+        const finalPath = new Path2D();
+        finalPath.rect(0, 0, layer.canvas.width, layer.canvas.height);
+        finalPath.addPath(path);
+        ctx.clip(finalPath, 'evenodd');
+      } else {
+        ctx.clip(path);
       }
     }
   }
@@ -1127,63 +1144,27 @@ export class Renderer {
     ctx.fillText(str, pos.x, pos.y);
   }
 
-  private drawDrawing(
-    char: Extract<Char, { kind: CHARKIND.DRAWING }>,
-    layer: Layer,
-    font: StyleDescriptor,
-    origin?: Vector2
-  ) {
-    const { pos, path, scale } = char;
+  private drawDrawing(char: DrawingChar, layer: Layer, font: StyleDescriptor, origin?: Vector2) {
+    const { pos } = char;
     const ctx = layer.ctx;
 
     ctx.save();
 
+    // Rotation and shear only: the size is already in the outline, so the border is not scaled
     this.applyTransform(ctx, font, pos, origin, true);
 
-    const pScale = Math.pow(2, -(scale - 1));
-    const t = font.t;
-    const scaleX = t.fry ? Math.cos((t.fry * Math.PI) / 180) : 1;
-    const scaleY = t.frx ? Math.cos((t.frx * Math.PI) / 180) : 1;
-    const fscx = (t.fscx / 100) * scaleX;
-    const fscy = (t.fscy / 100) * scaleY;
-
-    const Xratio = layer.canvas.width / this.playerResX;
-    const Yratio = layer.canvas.height / this.playerResY;
-
-    const sx = fscx * pScale * Xratio;
-    const sy = fscy * pScale * Yratio;
-
+    const { x: sx, y: sy } = this.drawingScale(char, font, layer);
+    const path = this.drawingPath(char.drawing, sx, sy);
     ctx.translate(pos.x, pos.y);
 
-    if (typeof DOMMatrix !== 'undefined' && 'addPath' in Path2D.prototype) {
-      try {
-        const matrix = new DOMMatrix().scale(sx, sy);
-
-        const scaledPath = new Path2D();
-        scaledPath.addPath(path, matrix);
-        // Border under the fill, as for text, and only the border blurred
-        if ((font.xbord ?? 0) > 0 || (font.ybord ?? 0) > 0) {
-          ctx.stroke(scaledPath);
-          ctx.filter = 'none';
-        }
-        ctx.fill(scaledPath);
-      } catch (e) {
-        this.fallbackDraw(ctx, path, sx, sy);
-      }
-    } else {
-      this.fallbackDraw(ctx, path, sx, sy);
+    // Border under the fill, as for text, and only the border blurred
+    if ((font.xbord ?? 0) > 0 || (font.ybord ?? 0) > 0) {
+      ctx.stroke(path);
+      ctx.filter = 'none';
     }
+    ctx.fill(path);
 
     ctx.restore();
-  }
-
-  private fallbackDraw(ctx: CanvasRenderingContext2D, path: Path2D, sx: number, sy: number) {
-    ctx.scale(sx, sy);
-    ctx.fill(path);
-    // NOTE: ctx.scale WILL distort the border thickness here.
-    // e.g. a vertical line might have a thicker border than a horizontal one
-    // if sx != sy.
-    if (ctx.lineWidth > 0) ctx.stroke(path);
   }
 
   private applyTransform(
