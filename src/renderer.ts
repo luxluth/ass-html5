@@ -397,12 +397,13 @@ export class Renderer {
   // }
 
   // Dialogues on screen at `time`, in layer order, then script order within a layer.
+  // An event is shown from its start up to, not including, its end, as in libass.
   // Playback moves forward, so the set only follows the events that start or end since the last
   // frame instead of scanning the whole script. Seeking back rebuilds it.
   private getSlices(time: number): PreProceesedAss[] {
     let changed = false;
     if (this.selectedTime === null || time < this.selectedTime) {
-      this.selected = this.byStart.filter((d) => d.start <= time && time <= d.end);
+      this.selected = this.byStart.filter((d) => d.start <= time && time < d.end);
       this.nextStart = this.byStart.findIndex((d) => d.start > time);
       if (this.nextStart === -1) this.nextStart = this.byStart.length;
       changed = true;
@@ -412,7 +413,7 @@ export class Renderer {
         this.nextStart++;
         changed = true;
       }
-      const alive = this.selected.filter((d) => time <= d.end);
+      const alive = this.selected.filter((d) => time < d.end);
       if (alive.length !== this.selected.length) changed = true;
       this.selected = alive;
     }
@@ -603,11 +604,18 @@ export class Renderer {
 
       let startPosition = new Vector2(d.move.from.x * Xratio, d.move.from.y * Yratio);
       let endPosition = new Vector2(d.move.to.x * Xratio, d.move.to.y * Yratio);
-      let actualPosition = vectorLerp(
-        startPosition,
-        endPosition,
-        (time - d.start) / (d.end - d.start)
-      );
+      // t1 and t2 count from the start of the event. Both 0 (or left out) mean the whole event.
+      let t1 = d.move.start;
+      let t2 = d.move.end;
+      if (t1 <= 0 && t2 <= 0) {
+        t1 = 0;
+        t2 = (d.end - d.start) * 1000;
+      }
+      const elapsed = (time - d.start) * 1000;
+      let progress = 1;
+      if (elapsed <= t1) progress = 0;
+      else if (elapsed < t2) progress = (elapsed - t1) / (t2 - t1);
+      let actualPosition = vectorLerp(startPosition, endPosition, progress);
 
       baseX = actualPosition.x;
       cX = baseX;

@@ -46,6 +46,17 @@ describe('Dialogue timing', () => {
   // The compiled order is by start time, so the draw order is not the file order: compare sets.
   const ends = (slices: { end: number }[]) => slices.map((d) => d.end).sort((a, b) => a - b);
 
+  it('should show an event from its start up to, not including, its end', async () => {
+    const ass = new ASS({ assText, video: videoElement });
+    await ass.render();
+    const renderer = (ass as any).renderer;
+
+    expect(ends(renderer.getSlices(0))).toEqual([1, 10]);
+    expect(ends(renderer.getSlices(1))).toEqual([2, 10]);
+    expect(ends(renderer.getSlices(10))).toEqual([]);
+    ass.destroy();
+  });
+
   it('should keep a long event when seeking back', async () => {
     const ass = new ASS({ assText, video: videoElement });
     await ass.render();
@@ -62,12 +73,49 @@ describe('Dialogue timing', () => {
     await ass.render();
     const renderer = (ass as any).renderer;
     const scan = (time: number) =>
-      renderer.ppass.filter((d: any) => d.start <= time && time <= d.end);
+      renderer.ppass.filter((d: any) => d.start <= time && time < d.end);
 
     // Forward playback, a jump forward, a jump back, and the end of the script
     for (const time of [0, 0.4, 0.99, 1.5, 1.99, 6, 0.2, 0.7, 3, 10, 11]) {
       expect(ends(renderer.getSlices(time))).toEqual(ends(scan(time)));
     }
     ass.destroy();
+  });
+
+  // x of the text drawn at each time, for a 2 s event aligned on the left (\an7)
+  async function moveX(move: string, times: number[]) {
+    const ass = new ASS({
+      assText: assText.replace(',,A', `,,{\\an7${move}}A`),
+      video: videoElement
+    });
+    await ass.render();
+    const renderer = (ass as any).renderer;
+    const ctx: CanvasRenderingContext2D = renderer.layers[0].ctx;
+    let x = NaN;
+    const fillText = ctx.fillText.bind(ctx);
+    ctx.fillText = (text: string, px: number, py: number) => {
+      if (text === 'A') x = px;
+      return fillText(text, px, py);
+    };
+    const xs = times.map((time) => {
+      renderer.forceRender(time);
+      return x;
+    });
+    ass.destroy();
+    return xs;
+  }
+
+  it('should move between t1 and t2 of \\move, counted from the start of the event', async () => {
+    const xs = await moveX('\\move(0,0,100,0,200,600)', [0.1, 0.4, 0.8]);
+    expect(xs[0]).toBeCloseTo(0, 5);
+    expect(xs[1]).toBeCloseTo(50, 5);
+    expect(xs[2]).toBeCloseTo(100, 5);
+  });
+
+  it('should move over the whole event when \\move has no times', async () => {
+    // A runs 0-1 s
+    const xs = await moveX('\\move(0,0,100,0)', [0, 0.5]);
+    expect(xs[0]).toBeCloseTo(0, 5);
+    expect(xs[1]).toBeCloseTo(50, 5);
   });
 });
