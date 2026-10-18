@@ -386,6 +386,11 @@ export class Renderer {
 
   destroy() {
     this.stop = true;
+    // Remove the overlay now, not on the next frame: a hidden tab gets no frames
+    if (this.animationHandle) {
+      cancelAnimationFrame(this.animationHandle);
+    }
+    this.renderDiv.remove();
   }
 
   private display(time: number) {
