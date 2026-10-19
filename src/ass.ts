@@ -349,6 +349,9 @@ export class ASS {
     overlay.style.bottom = fullscreen ? 'auto' : '';
     overlay.style.border = fullscreen ? 'none' : '';
     overlay.style.background = fullscreen ? 'none' : '';
+    overlay.style.transform = 'translateZ(0)';
+    overlay.style.willChange = 'transform';
+    overlay.style.isolation = 'isolate';
   }
 
   private async loadFonts(fonts: Font[]) {

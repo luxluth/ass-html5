@@ -243,6 +243,9 @@ export function newRender(
   render.style.boxSizing = 'border-box';
   render.style.padding = '0px';
   render.style.margin = '0px';
+  render.style.transform = 'translateZ(0)';
+  render.style.willChange = 'transform';
+  render.style.isolation = 'isolate';
   if (zIndex) {
     render.style.zIndex = zIndex.toString();
   }
@@ -271,6 +274,8 @@ export function newCanvas(
   canvas.style.top = '0px';
   canvas.style.left = '0px';
   canvas.style.pointerEvents = 'none';
+  canvas.style.transform = 'translateZ(0)';
+  canvas.style.willChange = 'transform';
   canvas.width = Math.round(width * dpr);
   canvas.height = Math.round(height * dpr);
   canvas.style.width = width + 'px';

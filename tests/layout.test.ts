@@ -375,11 +375,15 @@ describe('Painting', () => {
       ...args: any[]
     ) {
       const [text, x, y] = args;
+      const transform = this.getTransform();
+      this.setTransform(1, 0, 0, 1, 0, 0);
+      const measuredWidth = this.measureText(text).width;
+      this.setTransform(transform);
       fillCall = {
         x,
         y,
-        width: this.measureText(text).width,
-        matrix: this.getTransform()
+        width: measuredWidth,
+        matrix: transform
       };
       return original.apply(this, args);
     });

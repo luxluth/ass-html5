@@ -123,6 +123,14 @@ export type FontFaceInfo = {
   ratio: number;
 };
 
+export type Bitmap = {
+  data: Uint8ClampedArray;
+  width: number;
+  height: number;
+  x: number;
+  y: number;
+};
+
 export type Position = {
   x: number;
   y: number;
