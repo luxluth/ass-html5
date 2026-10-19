@@ -1,5 +1,20 @@
 # ass-html5
 
+## 0.7.0
+
+### Minor Changes
+
+- b34e812: Size fonts by their cell height like libass, so text no longer comes out about 10% too big
+
+### Patch Changes
+
+- 1612101: Remove the subtitle overlay and the loadedmetadata listener on destroy
+- 16fb3d3: Close drawing contours and lay drawings out at their painted size
+- f49ba15: Find loaded fonts by the names inside the file, and fall back to Arial and sans-serif
+- 20870d3: Draw loaded fonts at their real weight and embolden light faces like libass
+- 04818ff: Lay out \fscx and \fscy at their scaled size and keep the border width
+- 0e54e41: Optimize rotation rendering performance with fast affine resampling, static mask caching, and continuous animation clock interpolation
+
 ## 0.6.3
 
 ### Patch Changes
