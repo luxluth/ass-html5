@@ -1,8 +1,15 @@
 import { compile, type CompiledASS } from 'ass-compiler';
 import { Renderer } from './renderer';
-import type { FontFaceInfo, OnInitSizes } from './types';
+import type {
+  FontFaceInfo,
+  OnInitSizes,
+  SubtitleFrameCallback,
+  SubtitleCallbackMetadata
+} from './types';
 import { cleanFontName, parseFontMetrics, parseFontWeight } from './utils';
+import { DebugTracker } from './debug';
 
+export { SubtitleFrameCallback, SubtitleCallbackMetadata };
 export type ASSOptions = {
   /**
    * The ass text string.
@@ -46,6 +53,16 @@ export type ASSOptions = {
    * - `WARN` only warning will be shown
    */
   logging?: LOGTYPE;
+
+  /**
+   * Should the performance be mesured ?
+   */
+  debug?: boolean;
+  /**
+   * A callback to be notified of the frames rendering
+   * performance metrics.
+   */
+  onsubtitleFrameCallback?: SubtitleFrameCallback;
 };
 
 export type LOGTYPE = 'DISABLE' | 'VERBOSE' | 'DEBUG' | 'WARN';
@@ -109,6 +126,7 @@ export class ASS {
   private fonts?: Font[];
   private zIndex?: number;
   private onReady?: () => void;
+  private debugger?: DebugTracker;
   private logging: LOGTYPE = 'DISABLE';
   private compiledAss: CompiledASS | null = null;
   // Loaded faces by each of their lowercase names (see loadFont)
@@ -127,6 +145,12 @@ export class ASS {
     this.zIndex = options.zIndex;
     this.onReady = options.onReady;
     if (options.logging) this.logging = options.logging;
+    if (options.debug) {
+      this.debugger = new DebugTracker();
+      if (options.onsubtitleFrameCallback) {
+        this.debugger.onsubtitleFrameCallback = options.onsubtitleFrameCallback;
+      }
+    }
   }
 
   /**
@@ -187,7 +211,8 @@ export class ASS {
       this.videoElement,
       this.logging,
       this.zIndex,
-      this.fontFaces
+      this.fontFaces,
+      this.debugger
     );
 
     // Ensure canvas size is set correctly on init

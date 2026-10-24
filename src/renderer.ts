@@ -50,6 +50,7 @@ import {
   invertProjection
 } from './utils';
 import type { ProjectionMatrix } from './utils';
+import { DebugTracker } from './debug';
 
 type PreProceesedAss = {
   start: number;
@@ -157,12 +158,17 @@ export class Renderer {
     this.frameTime = null;
     this.lastSyncTimestamp = 0;
   };
+
+  private latestVideoMetadata: VideoFrameCallbackMetadata | null = null;
+
   private readonly onVideoFrame = (_now: number, metadata: VideoFrameCallbackMetadata) => {
     this.frameTime = metadata.mediaTime;
+    this.latestVideoMetadata = metadata;
     this.frameHandle = this.video.requestVideoFrameCallback(this.onVideoFrame);
   };
   private hasAnimated = false;
   private drawingPaths = new WeakMap<Drawing, { x: number; y: number; path: Path2D }>();
+  debug?: DebugTracker;
 
   constructor(
     ass: CompiledASS,
@@ -170,8 +176,10 @@ export class Renderer {
     video: HTMLVideoElement,
     log: LOGTYPE,
     zIndex?: number,
-    fonts: Map<string, FontFaceInfo[]> = new Map()
+    fonts: Map<string, FontFaceInfo[]> = new Map(),
+    debug?: DebugTracker
   ) {
+    this.debug = debug;
     this._log = log;
     this.compiledASS = ass;
     this.styles = ass.styles;
@@ -457,7 +465,16 @@ export class Renderer {
         this.lastSyncTimestamp = timestamp;
         time = this.frameTime ?? currentTime;
       }
+      this.debug?.startFrame();
       this.display(time);
+      const now = performance.now();
+      this.debug?.endFrame(now, {
+        mediaTime: time,
+        expectedDisplayTime: this.latestVideoMetadata?.expectedDisplayTime ?? now,
+        width: this.latestVideoMetadata?.width ?? this.video.videoWidth,
+        height: this.latestVideoMetadata?.height ?? this.video.videoHeight,
+        isAnimated: this.hasAnimated
+      });
       this.animationHandle = requestAnimationFrame(this.render.bind(this));
     }
   }

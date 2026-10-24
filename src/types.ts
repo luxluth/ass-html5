@@ -235,3 +235,24 @@ export type FadeAnimation =
       t3: number;
       t4: number;
     };
+
+export interface SubtitleCallbackMetadata {
+  fps: number;
+  processingDuration: number;
+  droppedFrames: number;
+  presentedFrames: number;
+  mistimedFrames: number;
+  presentationTime: DOMHighResTimeStamp;
+  expectedDisplayTime: DOMHighResTimeStamp;
+  width: number;
+  height: number;
+  mediaTime: number;
+  frameDelay: DOMHighResTimeStamp;
+  /** Optional ass-html5 specific metric: whether animated subtitles triggered a repaint */
+  isAnimated?: boolean;
+}
+
+export type SubtitleFrameCallback = (
+  now: DOMHighResTimeStamp,
+  metadata: SubtitleCallbackMetadata
+) => void;
