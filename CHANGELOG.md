@@ -1,5 +1,11 @@
 # ass-html5
 
+## 0.7.1
+
+### Patch Changes
+
+- 700c9d5: Added small debug hook
+
 ## 0.7.0
 
 ### Minor Changes
