@@ -37,7 +37,7 @@
   },
   "homepage": "https://github.com/luxluth/ass-html5#readme",
   "devDependencies": {
-    "@changesets/cli": "^2.30.0",
+    "@changesets/cli": "^3.0.3",
     "@rollup/plugin-commonjs": "^29.0.2",
     "@rollup/plugin-node-resolve": "^16.0.3",
     "@rollup/plugin-terser": "^1.0.0",
