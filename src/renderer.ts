@@ -170,6 +170,8 @@ export class Renderer {
   private drawingPaths = new WeakMap<Drawing, { x: number; y: number; path: Path2D }>();
   debug?: DebugTracker;
 
+  timeOffset: number;
+
   constructor(
     ass: CompiledASS,
     sizes: OnInitSizes,
@@ -177,8 +179,10 @@ export class Renderer {
     log: LOGTYPE,
     zIndex?: number,
     fonts: Map<string, FontFaceInfo[]> = new Map(),
-    debug?: DebugTracker
+    debug?: DebugTracker,
+    timeOffset: number = 0
   ) {
+    this.timeOffset = timeOffset;
     this.debug = debug;
     this._log = log;
     this.compiledASS = ass;
@@ -528,7 +532,8 @@ export class Renderer {
   // An event is shown from its start up to, not including, its end, as in libass.
   // Playback moves forward, so the set only follows the events that start or end since the last
   // frame instead of scanning the whole script. Seeking back rebuilds it.
-  private getSlices(time: number): PreProceesedAss[] {
+  private getSlices(rawtime: number): PreProceesedAss[] {
+    const time = rawtime + this.timeOffset;
     let changed = false;
     if (this.selectedTime === null || time < this.selectedTime) {
       this.selected = this.byStart.filter((d) => d.start <= time && time < d.end);

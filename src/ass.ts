@@ -6,7 +6,7 @@ import type {
   SubtitleFrameCallback,
   SubtitleCallbackMetadata
 } from './types';
-import { cleanFontName, parseFontMetrics, parseFontWeight } from './utils';
+import { parseFontMetrics } from './utils';
 import { DebugTracker } from './debug';
 
 export { SubtitleFrameCallback, SubtitleCallbackMetadata };
@@ -29,10 +29,10 @@ export type ASSOptions = {
   video: HTMLVideoElement | string;
 
   /**
-   * List of fonts to load. This ensures that all the fonts
+   * List of font urls to load. This ensures that all the fonts
    * needed for the rendering are present and loaded into the document
    */
-  fonts?: Font[];
+  font_urls?: string[];
 
   /**
    * Corresponds to the `z-index` to placed the Canvas renderer
@@ -63,41 +63,14 @@ export type ASSOptions = {
    * performance metrics.
    */
   onsubtitleFrameCallback?: SubtitleFrameCallback;
+
+  /**
+   * Number of seconds to offset the subtitles from
+   */
+  timeOffset?: number;
 };
 
 export type LOGTYPE = 'DISABLE' | 'VERBOSE' | 'DEBUG' | 'WARN';
-
-export type FontStyle = {
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/ascentOverride) */
-  ascentOverride: string;
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/descentOverride) */
-  descentOverride: string;
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/display) */
-  display: FontDisplay;
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/family) */
-  family: string;
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/featureSettings) */
-  featureSettings: string;
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/lineGapOverride) */
-  lineGapOverride: string;
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/stretch) */
-  stretch: string;
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/style) */
-  style: string;
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/unicodeRange) */
-  unicodeRange: string;
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/variant) */
-  variant: string;
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/weight) */
-  weight: string;
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/load) */
-};
-
-export type Font = {
-  family: string;
-  url: string;
-  descriptors?: Partial<FontStyle>;
-};
 
 /**
  * @class ASS
@@ -123,7 +96,8 @@ export class ASS {
   videoElement: HTMLVideoElement | null = null;
   private renderer: Renderer | null = null;
   private ro: ResizeObserver | null = null;
-  private fonts?: Font[];
+  private font_urls?: string[];
+  private timeOffset: number = 0;
   private zIndex?: number;
   private onReady?: () => void;
   private debugger?: DebugTracker;
@@ -141,7 +115,8 @@ export class ASS {
     }
     this.subUrl = options.subUrl;
     this.video = options.video;
-    this.fonts = options.fonts;
+    this.timeOffset = options.timeOffset ?? 0;
+    this.font_urls = options.font_urls;
     this.zIndex = options.zIndex;
     this.onReady = options.onReady;
     if (options.logging) this.logging = options.logging;
@@ -179,8 +154,8 @@ export class ASS {
 
     const sizes = this.setCanvasSize();
 
-    if (typeof this.fonts !== 'undefined') {
-      await this.loadFonts(this.fonts);
+    if (typeof this.font_urls !== 'undefined') {
+      await this.loadFonts(this.font_urls);
     }
 
     if (this.videoElement) {
@@ -212,7 +187,8 @@ export class ASS {
       this.logging,
       this.zIndex,
       this.fontFaces,
-      this.debugger
+      this.debugger,
+      this.timeOffset
     );
 
     // Ensure canvas size is set correctly on init
@@ -379,20 +355,19 @@ export class ASS {
     overlay.style.isolation = 'isolate';
   }
 
-  private async loadFonts(fonts: Font[]) {
+  private async loadFonts(fonts: string[]) {
     for (const font of fonts) {
       try {
         const loaded = await this.loadFont(font);
         if (loaded) {
-          if (this.logging == 'VERBOSE')
-            console.info(`Font ${font.family} loaded from ${font.url}`);
+          if (this.logging == 'VERBOSE') console.info(`Font ${font} loaded`);
         } else {
           if (this.logging == 'VERBOSE' || this.logging == 'WARN')
-            console.warn(`Unable to load font ${font.family} from ${font.url}`);
+            console.warn(`Unable to load font from ${font}`);
         }
       } catch (e) {
         if (this.logging == 'VERBOSE' || this.logging == 'WARN') {
-          console.warn(`Unable to load font ${font.family} from ${font.url}`);
+          console.warn(`Unable to load font from ${font}`);
           console.warn(e);
         }
       }
@@ -412,21 +387,19 @@ export class ASS {
    * the face's own weight instead and emboldens it like libass when needed.
    * `descriptors.weight` and `descriptors.style`, when given, take precedence over the file.
    */
-  private async loadFont(font: Font) {
-    const response = await fetch(font.url);
+  private async loadFont(font_url: string) {
+    const response = await fetch(font_url);
     const buffer = await response.arrayBuffer();
     const metrics = parseFontMetrics(buffer);
-    const explicitWeight = parseFontWeight(font.descriptors?.weight);
-    const [minWeight, maxWeight] = explicitWeight ?? [metrics.weight, metrics.weight];
-    const style = font.descriptors?.style ?? (metrics.italic ? 'italic' : 'normal');
+    const [minWeight, maxWeight] = [metrics.weight, metrics.weight];
+    const style = metrics.italic ? 'italic' : 'normal';
     const descriptors = {
-      ...font.descriptors,
-      weight: font.descriptors?.weight ?? String(metrics.weight),
+      weight: String(metrics.weight),
       style
     } as FontFaceDescriptors;
 
     const names: string[] = [];
-    [cleanFontName(font.family), ...metrics.names].forEach((name) => {
+    [...metrics.names].forEach((name) => {
       if (name && !names.some((n) => n.toLowerCase() === name.toLowerCase())) names.push(name);
     });
 
@@ -443,7 +416,7 @@ export class ASS {
         family: name,
         minWeight,
         maxWeight,
-        weightKnown: explicitWeight !== undefined || metrics.weightKnown,
+        weightKnown: metrics.weightKnown,
         bold: metrics.bold,
         italic: style !== 'normal',
         ratio: metrics.ratio
