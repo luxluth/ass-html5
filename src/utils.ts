@@ -1115,3 +1115,17 @@ export function parseFontMetrics(buffer: ArrayBuffer): FontMetrics {
     return unknown;
   }
 }
+
+/**
+ * Clean up malformed or nested curly braces inside ASS script events before passing to ass-compiler.
+ * Kara Effector or bad subtitle tools sometimes output nested override blocks like:
+ * `\fscx5\fscy7{\fnRough Flowers...}` inside `{...}`.
+ * ass-compiler splits on `/{(.*?)}/`, causing nested `{` to break parsing and turn numeric tags into NaN.
+ */
+export function sanitizeAssText(text: string): string {
+  let cleaned = text;
+  while (/{([^{}]*){/g.test(cleaned)) {
+    cleaned = cleaned.replace(/{([^{}]*){/g, '{$1');
+  }
+  return cleaned;
+}

@@ -157,6 +157,7 @@ export class Renderer {
   private readonly onSeeking = () => {
     this.frameTime = null;
     this.lastSyncTimestamp = 0;
+    this.invalidate();
   };
 
   private latestVideoMetadata: VideoFrameCallbackMetadata | null = null;
@@ -449,6 +450,14 @@ export class Renderer {
       // (e.g. rotations, moves) update smoothly on every display refresh using continuous rAF interpolation.
       const playing = !this.video.paused;
       const currentTime = this.video.currentTime;
+
+      // Handle video loop or backward seek: when playback wraps back, reset stale frames and invalidate
+      if (currentTime < this.lastSyncVideoTime - 0.2) {
+        this.frameTime = null;
+        this.lastSyncTimestamp = 0;
+        this.invalidate();
+      }
+
       let time: number;
       if (playing && this.hasAnimated) {
         if (
@@ -2054,8 +2063,8 @@ export class Renderer {
     ) {
       font.fontsize = this.upscaleFontSize(font.scriptSize, font);
     }
-    if (tag.fscx !== undefined) font.t.fscx = tag.fscx;
-    if (tag.fscy !== undefined) font.t.fscy = tag.fscy;
+    if (tag.fscx != null && !Number.isNaN(tag.fscx)) font.t.fscx = tag.fscx;
+    if (tag.fscy != null && !Number.isNaN(tag.fscy)) font.t.fscy = tag.fscy;
     if (tag.frz !== undefined) font.t.frz = tag.frz;
     if (tag.frx !== undefined) font.t.frx = tag.frx;
     if (tag.fry !== undefined) font.t.fry = tag.fry;

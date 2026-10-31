@@ -6,7 +6,7 @@ import type {
   SubtitleFrameCallback,
   SubtitleCallbackMetadata
 } from './types';
-import { parseFontMetrics } from './utils';
+import { parseFontMetrics, sanitizeAssText } from './utils';
 import { DebugTracker } from './debug';
 
 export { SubtitleFrameCallback, SubtitleCallbackMetadata };
@@ -110,7 +110,7 @@ export class ASS {
 
   constructor(options: ASSOptions) {
     if (options.assText) {
-      this.assText = options.assText;
+      this.assText = sanitizeAssText(options.assText);
       this.compiledAss = compile(this.assText, {});
     }
     this.subUrl = options.subUrl;
@@ -171,7 +171,7 @@ export class ASS {
 
   private async fetchAss(url: string) {
     const response = await fetch(url);
-    this.assText = await response.text();
+    this.assText = sanitizeAssText(await response.text());
     this.compiledAss = compile(this.assText, {});
   }
 
@@ -207,7 +207,7 @@ export class ASS {
    * @param text The new ASS text content
    */
   async setAssText(text: string) {
-    this.assText = text;
+    this.assText = sanitizeAssText(text);
     this.compiledAss = compile(this.assText, {});
 
     if (this.renderer) {
