@@ -91,6 +91,10 @@ type WordMasks = {
   font: StyleDescriptor;
   // Part of the fill karaoke has not reached yet, in the secondary color
   secondary?: Bitmap;
+  transform?: {
+    origin: { x: number; y: number };
+    frz: number;
+  };
 };
 
 type MoveAnimation = {
@@ -145,6 +149,10 @@ export class Renderer {
     { fill: Bitmap; border?: Bitmap; penX: number; penY: number }
   >();
   private filteredMaskCacheSize = 0;
+  private paintedMaskCache = new WeakMap<
+    Uint8ClampedArray,
+    { canvas: LayerCanvas; color: string; alpha: number }
+  >();
   private glyphIds = new WeakMap<Bitmap, number>();
   private nextGlyphId = 0;
   private paintCanvas = createScratchCanvas();
@@ -1148,6 +1156,13 @@ export class Renderer {
         const bitmap = word[phase];
         if (!bitmap) continue;
         const { colors, opacity } = word.font;
+        const transform = word.transform;
+        if (transform && transform.frz) {
+          layer.ctx.save();
+          layer.ctx.translate(transform.origin.x, transform.origin.y);
+          layer.ctx.rotate((transform.frz * Math.PI) / 180);
+          layer.ctx.translate(-transform.origin.x, -transform.origin.y);
+        }
         if (phase === 'fill') {
           this.paintMask(
             bitmap,
@@ -1163,6 +1178,9 @@ export class Renderer {
           this.paintMask(bitmap, colors.c3, colors.a3, opacity, layer);
         } else {
           this.paintMask(bitmap, colors.c4, colors.a4, opacity, layer);
+        }
+        if (transform && transform.frz) {
+          layer.ctx.restore();
         }
       }
     }
@@ -1247,8 +1265,11 @@ export class Renderer {
     const font = word.font;
     // Rotated or sheared coverage is resampled, so it is rasterized with 2x2 samples per pixel.
     // Otherwise it already lands on whole pixels and is used as it is.
-    const flat = !font.t.frx && !font.t.fry && !font.t.frz && !font.t.fax && !font.t.fay;
-    const supersample = flat ? 1 : 2;
+    const has3D = font.t.frx || font.t.fry || font.t.fax || font.t.fay;
+    const flat = !has3D && !font.t.frz;
+    const gpu2D = !has3D && Boolean(font.t.frz);
+    const isFlatMask = flat || gpu2D;
+    const supersample = isFlatMask ? 1 : 2;
     const glyph = this.glyphBitmap(word, layer, subX, subY, supersample);
     if (!glyph) return null;
     const layout = this.layoutRes();
@@ -1296,7 +1317,7 @@ export class Renderer {
           );
         })
     );
-    if (flat || !isAnimatedTransform) {
+    if (isFlatMask || !isAnimatedTransform) {
       let id = this.glyphIds.get(glyph);
       if (id === undefined) {
         id = this.nextGlyphId++;
@@ -1312,7 +1333,7 @@ export class Renderer {
         0,
         Math.ceil(sourceY + height / supersample) + padding - layer.canvas.height
       );
-      if (flat) {
+      if (isFlatMask) {
         cacheKey = `${id}|${borderX}|${borderY}|${box}|${word.w}|${sigmaX}|${sigmaY}|${be}|${padding}|${layer.canvas.width}|${layer.canvas.height}|${subX}|${subY}|${cropLeft}|${cropTop}|${cropRight}|${cropBottom}`;
       } else {
         const ox = origin ? origin.x : head.pos.x;
@@ -1376,16 +1397,18 @@ export class Renderer {
       }
       const sx = font.t.fscx / 100;
       const sy = font.t.fscy / 100;
-      const matrix = assProjection(
-        origin ?? head.pos,
-        {
-          ...font.t,
-          fax: (font.t.fax ?? 0) * (sx / sy),
-          fay: (font.t.fay ?? 0) * (sy / sx),
-          shearOrigin: { x: head.pos.x, y: head.pos.y - font.fontsize * sy }
-        },
-        312.5 * blurScaleY
-      );
+      const matrix = isFlatMask
+        ? ([1, 0, 0, 0, 1, 0, 0, 0, 1] as ProjectionMatrix)
+        : assProjection(
+            origin ?? head.pos,
+            {
+              ...font.t,
+              fax: (font.t.fax ?? 0) * (sx / sy),
+              fay: (font.t.fay ?? 0) * (sy / sx),
+              shearOrigin: { x: head.pos.x, y: head.pos.y - font.fontsize * sy }
+            },
+            312.5 * blurScaleY
+          );
       const result = this.projectBitmap(source, border, matrix, layer, padding, supersample);
       if (!result) return null;
       projected = result;
@@ -1421,7 +1444,17 @@ export class Renderer {
         this.filteredMaskCacheSize += size;
       }
     }
-    const masks: WordMasks = { fill: projected.fill, border: projected.border, font };
+    const masks: WordMasks = {
+      fill: projected.fill,
+      border: projected.border,
+      font,
+      transform: gpu2D
+        ? {
+            origin: origin ?? head.pos,
+            frz: font.t.frz
+          }
+        : undefined
+    };
     const { fill } = masks;
     const karaoke = word.value.some((char) => char.kind === CHARKIND.NORMAL && char.karaoke);
     const hasShadow = shadowX !== 0 || shadowY !== 0;
@@ -1985,6 +2018,26 @@ export class Renderer {
     secondaryAlpha = alpha
   ) {
     if ((alpha >= 255 && (!secondary || secondaryAlpha >= 255)) || opacity <= 0) return;
+
+    if (!secondary) {
+      const cached = this.paintedMaskCache.get(bitmap.data);
+      if (cached && cached.color === color && cached.alpha === alpha) {
+        layer.ctx.globalAlpha = opacity;
+        layer.ctx.drawImage(
+          cached.canvas,
+          0,
+          0,
+          bitmap.width,
+          bitmap.height,
+          bitmap.x,
+          bitmap.y,
+          bitmap.width,
+          bitmap.height
+        );
+        return;
+      }
+    }
+
     const canvas = this.paintCanvas;
     const large = canvas.width * canvas.height > MAX_SCRATCH_CANVAS_PIXELS;
     if (canvas.width < bitmap.width || canvas.height < bitmap.height || large) {
@@ -2031,6 +2084,28 @@ export class Renderer {
       }
     }
     ctx.putImageData(pixels, 0, 0);
+
+    if (!secondary && bitmap.width > 0 && bitmap.height > 0) {
+      const scratch = createScratchCanvas(bitmap.width, bitmap.height);
+      const sCtx = scratch.getContext('2d') as LayerContext;
+      sCtx.drawImage(canvas, 0, 0, bitmap.width, bitmap.height, 0, 0, bitmap.width, bitmap.height);
+      this.paintedMaskCache.set(bitmap.data, { canvas: scratch, color, alpha });
+
+      layer.ctx.globalAlpha = opacity;
+      layer.ctx.drawImage(
+        scratch,
+        0,
+        0,
+        bitmap.width,
+        bitmap.height,
+        bitmap.x,
+        bitmap.y,
+        bitmap.width,
+        bitmap.height
+      );
+      return;
+    }
+
     layer.ctx.globalAlpha = opacity;
     layer.ctx.drawImage(
       canvas,
