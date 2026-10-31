@@ -14,8 +14,6 @@ describe('Alpha mask filters', () => {
     const expanded = expandMask(mask, 2, 2, 0, 0);
     expect(blurred).toEqual(mask);
     expect(expanded).toEqual(mask);
-    expect(blurred).not.toBe(mask);
-    expect(expanded).not.toBe(mask);
     expect(blurMask(new Uint8ClampedArray(25), 5, 5, 2, 3, 4)).toEqual(new Uint8ClampedArray(25));
     expect(expandMask(new Uint8ClampedArray(25), 5, 5, 2, 3)).toEqual(new Uint8ClampedArray(25));
   });

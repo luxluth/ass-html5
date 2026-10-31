@@ -504,14 +504,19 @@ export function blurMask(
   be: number
 ): Uint8ClampedArray {
   checkMaskSize(mask, width, height);
+  const radX = maskRadius(sigmaX);
+  const radY = maskRadius(sigmaY);
+  const passes = Math.min(127, Math.floor(maskRadius(be) + 0.5));
+  if (!radX && !radY && !passes) {
+    return mask;
+  }
   const result = mask.slice();
-  if (maskRadius(sigmaX) || maskRadius(sigmaY)) {
+  if (radX || radY) {
     let values: Float32Array = new Float32Array(mask);
-    values = gaussianMaskAxis(values, width, height, maskRadius(sigmaX), false);
-    values = gaussianMaskAxis(values, width, height, maskRadius(sigmaY), true);
+    values = gaussianMaskAxis(values, width, height, radX, false);
+    values = gaussianMaskAxis(values, width, height, radY, true);
     for (let i = 0; i < values.length; i++) result[i] = Math.round(values[i]!);
   }
-  const passes = Math.min(127, Math.floor(maskRadius(be) + 0.5));
   if (passes && result.length) {
     const horizontal = new Uint16Array(result.length);
     if (passes > 1) {
@@ -656,8 +661,8 @@ export function expandMask(
   checkMaskSize(mask, width, height);
   rx = maskRadius(rx);
   ry = maskRadius(ry);
+  if (!mask.length || (!rx && !ry)) return mask;
   const result = mask.slice();
-  if (!result.length || (!rx && !ry)) return result;
 
   const rows = new Set<number>([0]);
   const limit = Math.min(ry, height);
