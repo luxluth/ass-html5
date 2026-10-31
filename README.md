@@ -49,15 +49,15 @@ pnpm add ass-html5
 
 ### Options
 
-| option  |                                                 description                                                 | required |             type              |        default        |
-| :-----: | :---------------------------------------------------------------------------------------------------------: | :------: | :---------------------------: | :-------------------: |
-| assText |                                             The ass text string                                             |    🚫    |           `string`            |      `undefined`      |
-| subUrl  |                                      URL to fetch the ASS content from                                      |    🚫    |           `string`            |      `undefined`      |
-|  video  | The video to display the subtile on. Can be either an `HTMLVideoElement` or `string` (html query selector ) |    ✅    | `HTMLVideoElement` / `string` |      `undefined`      |
-|  fonts  |                                            Custom fonts to load                                             |    🚫    |  [`Font[]`](src/ass.ts#L78)   |      `undefined`      |
-| zIndex  |                                        zIndex of the rendering frame                                        |    🚫    |           `number`            | Drawn after the video |
-| onReady |              A Callback that is invoked when the preprocess of the ass text by render is done               |    🚫    |         `() => void`          |      `undefined`      |
-| logging |                                               Type of logging                                               |    🚫    |  [`LOGTYPE`](src/ass.ts#L50)  |   `LOGTYPE.DISABLE`   |
+|  option   |                                                 description                                                 | required |             type              |        default        |
+| :-------: | :---------------------------------------------------------------------------------------------------------: | :------: | :---------------------------: | :-------------------: |
+|  assText  |                                             The ass text string                                             |    🚫    |           `string`            |      `undefined`      |
+|  subUrl   |                                      URL to fetch the ASS content from                                      |    🚫    |           `string`            |      `undefined`      |
+|   video   | The video to display the subtile on. Can be either an `HTMLVideoElement` or `string` (html query selector ) |    ✅    | `HTMLVideoElement` / `string` |      `undefined`      |
+| font_urls |                                            Custom fonts url load                                            |    🚫    |          `string[]`           |      `undefined`      |
+|  zIndex   |                                        zIndex of the rendering frame                                        |    🚫    |           `number`            | Drawn after the video |
+|  onReady  |              A Callback that is invoked when the preprocess of the ass text by render is done               |    🚫    |         `() => void`          |      `undefined`      |
+|  logging  |                                               Type of logging                                               |    🚫    |  [`LOGTYPE`](src/ass.ts#L50)  |   `LOGTYPE.DISABLE`   |
 
 > One of `assText` or `subUrl` is required.
 
