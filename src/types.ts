@@ -62,9 +62,12 @@ export type StyleDescriptor = {
   textBaseline: Baseline;
 };
 
+export type LayerCanvas = HTMLCanvasElement | OffscreenCanvas;
+export type LayerContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+
 export type Layer = {
-  canvas: HTMLCanvasElement;
-  ctx: CanvasRenderingContext2D;
+  canvas: LayerCanvas;
+  ctx: LayerContext;
 };
 
 export type Colors = {
@@ -256,3 +259,66 @@ export type SubtitleFrameCallback = (
   now: DOMHighResTimeStamp,
   metadata: SubtitleCallbackMetadata
 ) => void;
+
+export type PlayheadSource = {
+  currentTime: number;
+  paused: boolean;
+  playbackRate: number;
+  videoWidth: number;
+  videoHeight: number;
+  addEventListener?: (type: string, listener: () => void) => void;
+  removeEventListener?: (type: string, listener: () => void) => void;
+  requestVideoFrameCallback?: (callback: VideoFrameRequestCallback) => number;
+  cancelVideoFrameCallback?: (handle: number) => void;
+};
+
+// Worker Message Protocol Types
+export type WorkerInitMessage = {
+  type: 'init';
+  offscreen: OffscreenCanvas;
+  compiledAss: any;
+  sizes: OnInitSizes;
+  timeOffset: number;
+  logging: 'DISABLE' | 'VERBOSE' | 'DEBUG' | 'WARN';
+  fontFaces: [string, FontFaceInfo[]][];
+  fontBuffers?: { name: string; buffer: ArrayBuffer; descriptors?: FontFaceDescriptors }[];
+  debug: boolean;
+};
+
+export type WorkerTimeMessage = {
+  type: 'time';
+  currentTime: number;
+  playing: boolean;
+  playbackRate: number;
+  videoWidth: number;
+  videoHeight: number;
+  expectedDisplayTime?: number;
+};
+
+export type WorkerResizeMessage = {
+  type: 'resize';
+  sizes: OnInitSizes;
+  dpr: number;
+};
+
+export type WorkerDestroyMessage = {
+  type: 'destroy';
+};
+
+export type WorkerInboundMessage =
+  | WorkerInitMessage
+  | WorkerTimeMessage
+  | WorkerResizeMessage
+  | WorkerDestroyMessage;
+
+export type WorkerReadyMessage = {
+  type: 'ready';
+};
+
+export type WorkerMetricsMessage = {
+  type: 'metrics';
+  now: number;
+  metadata: SubtitleCallbackMetadata;
+};
+
+export type WorkerOutboundMessage = WorkerReadyMessage | WorkerMetricsMessage;

@@ -17,7 +17,10 @@ import type {
   Clip,
   Rect,
   FontFaceInfo,
-  Bitmap
+  Bitmap,
+  LayerCanvas,
+  LayerContext,
+  PlayheadSource
 } from './types';
 import { CHARKIND, LOGTYPE, Align, Baseline, FadeKind } from './types';
 import {
@@ -26,6 +29,7 @@ import {
   swapBBGGRR,
   newCanvas,
   newRender,
+  createScratchCanvas,
   Vector2,
   stringHash,
   chunkCharWidth,
@@ -109,9 +113,9 @@ const MAX_RASTER_PIXELS = 16 * 1024 * 1024;
 
 export class Renderer {
   private compiledASS: CompiledASS;
-  renderDiv: HTMLDivElement;
+  renderDiv: HTMLDivElement | null;
   layers: Layer[];
-  private video: HTMLVideoElement;
+  private video: HTMLVideoElement | PlayheadSource;
   private playerResX: number;
   private playerResY: number;
   private stop: boolean = false;
@@ -143,11 +147,11 @@ export class Renderer {
   private filteredMaskCacheSize = 0;
   private glyphIds = new WeakMap<Bitmap, number>();
   private nextGlyphId = 0;
-  private paintCanvas = document.createElement('canvas');
+  private paintCanvas = createScratchCanvas();
   private paintImageData?: ImageData;
   private texelBuffer = new Uint8ClampedArray(256 * 4);
   private texelWords = new Uint32Array(this.texelBuffer.buffer);
-  private glyphContext?: CanvasRenderingContext2D;
+  private glyphContext?: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
   // Media time of the video frame on screen (requestVideoFrameCallback); null from a seek until
   // its frame is shown, and where the browser has no such callback.
   private frameTime: number | null = null;
@@ -165,7 +169,9 @@ export class Renderer {
   private readonly onVideoFrame = (_now: number, metadata: VideoFrameCallbackMetadata) => {
     this.frameTime = metadata.mediaTime;
     this.latestVideoMetadata = metadata;
-    this.frameHandle = this.video.requestVideoFrameCallback(this.onVideoFrame);
+    if (this.video.requestVideoFrameCallback) {
+      this.frameHandle = this.video.requestVideoFrameCallback(this.onVideoFrame);
+    }
   };
   private hasAnimated = false;
   private drawingPaths = new WeakMap<Drawing, { x: number; y: number; path: Path2D }>();
@@ -176,12 +182,13 @@ export class Renderer {
   constructor(
     ass: CompiledASS,
     sizes: OnInitSizes,
-    video: HTMLVideoElement,
+    video: HTMLVideoElement | PlayheadSource,
     log: LOGTYPE,
     zIndex?: number,
     fonts: Map<string, FontFaceInfo[]> = new Map(),
     debug?: DebugTracker,
-    timeOffset: number = 0
+    timeOffset: number = 0,
+    canvas?: LayerCanvas
   ) {
     this.timeOffset = timeOffset;
     this.debug = debug;
@@ -207,22 +214,44 @@ export class Renderer {
       this.playerResX = width;
       this.playerResY = height;
     }
-    this.renderDiv = newRender(sizes.y, sizes.x, sizes.width, sizes.height, zIndex, video);
-    // Every ASS layer is drawn on this one canvas, lower layers first (see display)
-    const canvas = newCanvas(sizes.width, sizes.height, 0, 'subtitles', this.renderDiv);
-    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
-    if (ctx === null) {
-      throw new Error('Unable to initilize the Canvas 2D context');
-    }
-    //@ts-ignore
-    ctx.textRendering = 'geometricPrecision';
-
-    this.layers = [
-      {
-        canvas,
-        ctx
+    if (canvas) {
+      const ctx = canvas.getContext('2d') as LayerContext;
+      if (ctx === null) {
+        throw new Error('Unable to initialize the Canvas 2D context');
       }
-    ];
+      //@ts-ignore
+      ctx.textRendering = 'geometricPrecision';
+      this.layers = [
+        {
+          canvas,
+          ctx
+        }
+      ];
+      this.renderDiv = null;
+    } else {
+      this.renderDiv = newRender(
+        sizes.y,
+        sizes.x,
+        sizes.width,
+        sizes.height,
+        zIndex,
+        video as HTMLElement
+      );
+      // Every ASS layer is drawn on this one canvas, lower layers first (see display)
+      const c = newCanvas(sizes.width, sizes.height, 0, 'subtitles', this.renderDiv);
+      const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+      if (ctx === null) {
+        throw new Error('Unable to initialize the Canvas 2D context');
+      }
+      //@ts-ignore
+      ctx.textRendering = 'geometricPrecision';
+      this.layers = [
+        {
+          canvas: c,
+          ctx
+        }
+      ];
+    }
     this.video = video;
   }
 
@@ -427,11 +456,14 @@ export class Renderer {
   }
 
   async startRendering() {
-    if ('requestVideoFrameCallback' in this.video) {
-      this.video.addEventListener('seeking', this.onSeeking);
+    if (
+      'requestVideoFrameCallback' in this.video &&
+      typeof this.video.requestVideoFrameCallback === 'function'
+    ) {
+      this.video.addEventListener?.('seeking', this.onSeeking);
       this.frameHandle = this.video.requestVideoFrameCallback(this.onVideoFrame);
     }
-    window.requestAnimationFrame((_timestamp) => {
+    requestAnimationFrame((_timestamp) => {
       // this.previous = timestamp;
       this.animationHandle = requestAnimationFrame(this.render.bind(this));
     });
@@ -440,7 +472,7 @@ export class Renderer {
   private render(timestamp: number) {
     if (this.stop === true) {
       if (this.animationHandle) {
-        this.renderDiv.remove();
+        this.renderDiv?.remove();
         (typeof window !== 'undefined' ? window.cancelAnimationFrame : cancelAnimationFrame)(
           this.animationHandle
         );
@@ -500,9 +532,13 @@ export class Renderer {
         this.animationHandle
       );
     }
-    this.video.removeEventListener('seeking', this.onSeeking);
-    if (this.frameHandle !== null) this.video.cancelVideoFrameCallback(this.frameHandle);
-    this.renderDiv.remove();
+    if (typeof this.video.removeEventListener === 'function') {
+      this.video.removeEventListener('seeking', this.onSeeking);
+    }
+    if (this.frameHandle !== null && typeof this.video.cancelVideoFrameCallback === 'function') {
+      this.video.cancelVideoFrameCallback(this.frameHandle);
+    }
+    this.renderDiv?.remove();
   }
 
   /** Paints the frame at `time` now, instead of on the next animation frame */
@@ -648,7 +684,7 @@ export class Renderer {
 
   // measureText runs for every glyph of every frame, and the same runs repeat. Results are kept
   // until the canvas is invalidated.
-  private measure(ctx: CanvasRenderingContext2D, text: string): TextMetrics {
+  private measure(ctx: LayerContext, text: string): TextMetrics {
     const key = `${ctx.font}|${ctx.letterSpacing}|${ctx.fontKerning}|${text}`;
     let metrics = this.measureCache.get(key);
     if (metrics === undefined) {
@@ -1542,9 +1578,9 @@ export class Renderer {
     const rasterWidth = width * factorX;
     const rasterHeight = height * factorY;
     // One scratch surface, read back on every use: willReadFrequently keeps it on the CPU.
-    const ctx = (this.glyphContext ??= document
-      .createElement('canvas')
-      .getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D);
+    const ctx = (this.glyphContext ??= createScratchCanvas().getContext('2d', {
+      willReadFrequently: true
+    }) as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D);
     const canvas = ctx.canvas;
     // Resizing reallocates the surface, so it only grows (up to 4M pixels); just the raster's
     // corner is cleared and read.
@@ -1955,7 +1991,7 @@ export class Renderer {
       canvas.width = Math.max(bitmap.width, large ? 0 : canvas.width);
       canvas.height = Math.max(bitmap.height, large ? 0 : canvas.height);
     }
-    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+    const ctx = canvas.getContext('2d') as LayerContext;
     let pixels = this.paintImageData;
     if (!pixels || pixels.width !== bitmap.width || pixels.height !== bitmap.height) {
       pixels = this.paintImageData = ctx.createImageData(bitmap.width, bitmap.height);

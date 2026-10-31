@@ -2,6 +2,7 @@ import {
   type Tag,
   type Char,
   type DrawingInstruction,
+  type LayerCanvas,
   CHARKIND,
   FadeAnimation,
   FadeKind
@@ -257,6 +258,19 @@ export function newRender(
   }
 
   return render;
+}
+
+export function createScratchCanvas(width = 0, height = 0): LayerCanvas {
+  if (typeof OffscreenCanvas !== 'undefined') {
+    return new OffscreenCanvas(Math.max(1, width), Math.max(1, height));
+  }
+  if (typeof document !== 'undefined') {
+    const c = document.createElement('canvas');
+    c.width = width;
+    c.height = height;
+    return c;
+  }
+  throw new Error('Neither OffscreenCanvas nor document is available');
 }
 
 export function newCanvas(

@@ -4,10 +4,13 @@ import type {
   FontFaceInfo,
   OnInitSizes,
   SubtitleFrameCallback,
-  SubtitleCallbackMetadata
+  SubtitleCallbackMetadata,
+  WorkerInitMessage,
+  WorkerOutboundMessage
 } from './types';
-import { parseFontMetrics, sanitizeAssText } from './utils';
+import { newCanvas, newRender, parseFontMetrics, sanitizeAssText } from './utils';
 import { DebugTracker } from './debug';
+import { getWorkerCode } from './worker-bundle';
 
 export { SubtitleFrameCallback, SubtitleCallbackMetadata };
 export type ASSOptions = {
@@ -68,6 +71,12 @@ export type ASSOptions = {
    * Number of seconds to offset the subtitles from
    */
   timeOffset?: number;
+
+  /**
+   * Whether to run rendering in a Web Worker via OffscreenCanvas if available.
+   * Defaults to `true`.
+   */
+  useWorker?: boolean;
 };
 
 export type LOGTYPE = 'DISABLE' | 'VERBOSE' | 'DEBUG' | 'WARN';
@@ -95,6 +104,14 @@ export class ASS {
   private video: HTMLVideoElement | string;
   videoElement: HTMLVideoElement | null = null;
   private renderer: Renderer | null = null;
+  private worker: Worker | null = null;
+  private workerUrl: string | null = null;
+  private useWorker: boolean = true;
+  private canvas: HTMLCanvasElement | null = null;
+  private renderDiv: HTMLDivElement | null = null;
+  private fontBuffers: { name: string; buffer: ArrayBuffer; descriptors: FontFaceDescriptors }[] =
+    [];
+  private frameHandle: number | null = null;
   private ro: ResizeObserver | null = null;
   private font_urls?: string[];
   private timeOffset: number = 0;
@@ -107,6 +124,7 @@ export class ASS {
   private fontFaces: Map<string, FontFaceInfo[]> = new Map();
   private readonly onFullscreenChange = () => this.setCanvasSize();
   private readonly onLoadedMetadata = () => this.setCanvasSize();
+  private readonly onVideoEvent = () => this.postTimeToWorker();
 
   constructor(options: ASSOptions) {
     if (options.assText) {
@@ -116,6 +134,7 @@ export class ASS {
     this.subUrl = options.subUrl;
     this.video = options.video;
     this.timeOffset = options.timeOffset ?? 0;
+    this.useWorker = options.useWorker ?? true;
     this.font_urls = options.font_urls;
     this.zIndex = options.zIndex;
     this.onReady = options.onReady;
@@ -180,6 +199,62 @@ export class ASS {
 
     if (!sizes) sizes = this.setCanvasSize();
 
+    const canUseWorker =
+      this.useWorker &&
+      typeof Worker !== 'undefined' &&
+      typeof HTMLCanvasElement !== 'undefined' &&
+      'transferControlToOffscreen' in HTMLCanvasElement.prototype;
+
+    if (canUseWorker) {
+      this.renderDiv = newRender(
+        sizes.y,
+        sizes.x,
+        sizes.width,
+        sizes.height,
+        this.zIndex,
+        this.videoElement
+      );
+      this.canvas = newCanvas(sizes.width, sizes.height, 0, 'subtitles', this.renderDiv);
+      const offscreen = this.canvas.transferControlToOffscreen();
+
+      const workerCode = getWorkerCode();
+      const blob = new Blob([workerCode], { type: 'application/javascript' });
+      this.workerUrl = URL.createObjectURL(blob);
+      this.worker = new Worker(this.workerUrl);
+
+      this.worker.onmessage = (event: MessageEvent<WorkerOutboundMessage>) => {
+        const msg = event.data;
+        if (msg.type === 'ready') {
+          if (this.onReady) {
+            this.onReady();
+          }
+        } else if (msg.type === 'metrics') {
+          if (this.debugger?.onsubtitleFrameCallback) {
+            this.debugger.onsubtitleFrameCallback(msg.now, msg.metadata);
+          }
+        }
+      };
+
+      const serializedFontFaces = Array.from(this.fontFaces.entries());
+      const initMsg: WorkerInitMessage = {
+        type: 'init',
+        offscreen,
+        compiledAss: this.compiledAss,
+        sizes,
+        timeOffset: this.timeOffset,
+        logging: this.logging,
+        fontFaces: serializedFontFaces,
+        fontBuffers: this.fontBuffers,
+        debug: Boolean(this.debugger)
+      };
+
+      this.worker.postMessage(initMsg, [offscreen]);
+
+      this.bindVideoEvents();
+      this.setCanvasSize();
+      return;
+    }
+
     this.renderer = new Renderer(
       this.compiledAss,
       sizes,
@@ -202,6 +277,87 @@ export class ASS {
     await this.renderer.startRendering();
   }
 
+  private bindVideoEvents() {
+    if (!this.videoElement) return;
+
+    this.videoElement.addEventListener('play', this.onVideoEvent);
+    this.videoElement.addEventListener('pause', this.onVideoEvent);
+    this.videoElement.addEventListener('seeking', this.onVideoEvent);
+    this.videoElement.addEventListener('seeked', this.onVideoEvent);
+    this.videoElement.addEventListener('ratechange', this.onVideoEvent);
+
+    const video = this.videoElement as any;
+    if (typeof video.requestVideoFrameCallback === 'function') {
+      this.frameHandle = video.requestVideoFrameCallback(this.onVideoFrame);
+    } else {
+      this.videoElement.addEventListener('timeupdate', this.onVideoEvent);
+    }
+  }
+
+  private unbindVideoEvents() {
+    if (!this.videoElement) return;
+    this.videoElement.removeEventListener('play', this.onVideoEvent);
+    this.videoElement.removeEventListener('pause', this.onVideoEvent);
+    this.videoElement.removeEventListener('seeking', this.onVideoEvent);
+    this.videoElement.removeEventListener('seeked', this.onVideoEvent);
+    this.videoElement.removeEventListener('ratechange', this.onVideoEvent);
+    this.videoElement.removeEventListener('timeupdate', this.onVideoEvent);
+
+    if (this.frameHandle !== null && 'cancelVideoFrameCallback' in this.videoElement) {
+      this.videoElement.cancelVideoFrameCallback(this.frameHandle);
+      this.frameHandle = null;
+    }
+  }
+
+  private readonly onVideoFrame = (_now: number, metadata: VideoFrameCallbackMetadata) => {
+    if (!this.worker || !this.videoElement) return;
+    this.worker.postMessage({
+      type: 'time',
+      currentTime: metadata.mediaTime,
+      playing: !this.videoElement.paused,
+      playbackRate: this.videoElement.playbackRate || 1.0,
+      videoWidth: metadata.width,
+      videoHeight: metadata.height,
+      expectedDisplayTime: metadata.expectedDisplayTime
+    });
+    if ('requestVideoFrameCallback' in this.videoElement) {
+      this.frameHandle = this.videoElement.requestVideoFrameCallback(this.onVideoFrame);
+    }
+  };
+
+  private postTimeToWorker() {
+    if (!this.worker || !this.videoElement) return;
+    this.worker.postMessage({
+      type: 'time',
+      currentTime: this.videoElement.currentTime,
+      playing: !this.videoElement.paused,
+      playbackRate: this.videoElement.playbackRate || 1.0,
+      videoWidth: this.videoElement.videoWidth,
+      videoHeight: this.videoElement.videoHeight
+    });
+  }
+
+  private cleanupCurrentRenderer() {
+    this.unbindVideoEvents();
+    if (this.worker) {
+      this.worker.postMessage({ type: 'destroy' });
+      this.worker.terminate();
+      this.worker = null;
+    }
+    if (this.workerUrl) {
+      URL.revokeObjectURL(this.workerUrl);
+      this.workerUrl = null;
+    }
+    this.renderDiv?.remove();
+    this.renderDiv = null;
+    this.canvas = null;
+
+    if (this.renderer) {
+      this.renderer.destroy();
+      this.renderer = null;
+    }
+  }
+
   /**
    * Switch the ASS text content dynamically.
    * @param text The new ASS text content
@@ -210,9 +366,8 @@ export class ASS {
     this.assText = sanitizeAssText(text);
     this.compiledAss = compile(this.assText, {});
 
-    if (this.renderer) {
-      this.renderer.destroy();
-      this.renderer = null;
+    if (this.worker || this.renderer) {
+      this.cleanupCurrentRenderer();
       if (this.videoElement) {
         await this.initRenderer();
       }
@@ -227,9 +382,8 @@ export class ASS {
     this.subUrl = url;
     await this.fetchAss(url);
 
-    if (this.renderer) {
-      this.renderer.destroy();
-      this.renderer = null;
+    if (this.worker || this.renderer) {
+      this.cleanupCurrentRenderer();
       if (this.videoElement) {
         await this.initRenderer();
       }
@@ -244,8 +398,7 @@ export class ASS {
     document.removeEventListener('fullscreenchange', this.onFullscreenChange);
     this.ro?.disconnect();
 
-    this.renderer?.destroy();
-    this.renderer = null;
+    this.cleanupCurrentRenderer();
   }
 
   private setCanvasSize() {
@@ -300,16 +453,30 @@ export class ASS {
 
     const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
 
-    if (this.renderer?.renderDiv) {
-      this.placeOverlay(this.renderer.renderDiv, fullscreen);
-      this.renderer.renderDiv.style.width = width + 'px';
-      this.renderer.renderDiv.style.height = height + 'px';
-      this.renderer.renderDiv.style.top = y + 'px';
-      this.renderer.renderDiv.style.left = x + 'px';
+    const overlay = this.renderDiv || this.renderer?.renderDiv;
+    if (overlay) {
+      this.placeOverlay(overlay, fullscreen);
+      overlay.style.width = width + 'px';
+      overlay.style.height = height + 'px';
+      overlay.style.top = y + 'px';
+      overlay.style.left = x + 'px';
     }
 
     const canvasWidth = Math.round(width * dpr);
     const canvasHeight = Math.round(height * dpr);
+
+    if (this.canvas) {
+      this.canvas.style.width = width + 'px';
+      this.canvas.style.height = height + 'px';
+    }
+
+    if (this.worker) {
+      this.worker.postMessage({
+        type: 'resize',
+        sizes,
+        dpr
+      });
+    }
 
     // Setting the size of a canvas clears it, even to the same value
     let resized = false;
@@ -319,8 +486,10 @@ export class ASS {
         layer.canvas.height = canvasHeight;
         resized = true;
       }
-      layer.canvas.style.width = width + 'px';
-      layer.canvas.style.height = height + 'px';
+      if ('style' in layer.canvas) {
+        layer.canvas.style.width = width + 'px';
+        layer.canvas.style.height = height + 'px';
+      }
       // @ts-ignore
       layer.ctx.textRendering = 'geometricPrecision';
     });
@@ -405,10 +574,20 @@ export class ASS {
 
     let loaded = false;
     for (const name of names) {
-      const fontFace = await new FontFace(name, buffer.slice(0), descriptors).load();
-      // @ts-ignore
-      document.fonts.add(fontFace);
-      if (fontFace.status === 'loaded') loaded = true;
+      this.fontBuffers.push({
+        name,
+        buffer: buffer.slice(0),
+        descriptors
+      });
+
+      if (typeof FontFace !== 'undefined') {
+        const fontFace = await new FontFace(name, buffer.slice(0), descriptors).load();
+        if (typeof document !== 'undefined' && 'fonts' in document) {
+          // @ts-ignore
+          document.fonts.add(fontFace);
+        }
+        if (fontFace.status === 'loaded') loaded = true;
+      }
 
       const key = name.toLowerCase();
       const faces = this.fontFaces.get(key) ?? [];
