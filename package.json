@@ -39,7 +39,7 @@
   "homepage": "https://github.com/luxluth/ass-html5#readme",
   "devDependencies": {
     "@changesets/cli": "^3.0.3",
-    "@types/node": "^25.5.0",
+    "@types/node": "^26.6.6",
     "ass-compiler": "^0.1.16",
     "canvas": "^3.2.1",
     "jsdom": "^29.0.1",
