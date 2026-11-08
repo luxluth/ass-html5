@@ -1296,7 +1296,6 @@ export class Renderer {
     const padding = Math.ceil(
       Math.max(sigmaX, sigmaY) * 4 +
         Math.min(be, 5) +
-        Math.max(Math.abs(shadowX), Math.abs(shadowY)) +
         2
     );
     let cacheKey: string | undefined;
